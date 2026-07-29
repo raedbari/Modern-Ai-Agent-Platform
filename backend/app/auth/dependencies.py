@@ -1,91 +1,124 @@
-"""FastAPI dependencies for authentication and authorization."""
+"""FastAPI dependencies for authentication and tenant context."""
 
-from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
-from backend.app.auth.models import AuthenticatedContext
-from backend.app.auth.security import verify_api_key
-from backend.app.db import get_db
-from backend.app.db.models import ApiKey, Tenant
+from backend.app.auth.security import is_api_key_expired, verify_api_key
+from backend.app.core.config import Settings, get_settings
+from backend.app.db.base import get_db
+from backend.app.db.models import ApiKey, Client
 
 
-async def get_authenticated_context(
-    x_api_key: Annotated[str, Header(description="API Key for authentication")],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> AuthenticatedContext:
+class TenantContext:
     """
-    FastAPI dependency that extracts and verifies the API key from headers.
+    Authenticated tenant context extracted from API key.
+    This is the ONLY trusted source of client_id in the system.
+    """
+
+    def __init__(self, client_id: str, client_name: str):
+        self.client_id = client_id
+        self.client_name = client_name
+
+    def __repr__(self) -> str:
+        return f"TenantContext(client_id={self.client_id}, client_name={self.client_name})"
+
+
+async def extract_api_key(
+    x_api_key: Annotated[str | None, Header()] = None,
+    settings: Settings = Depends(get_settings),
+) -> str:
+    """
+    Extract API key from request header.
     
-    Security rules:
-    - Extracts key from X-API-Key header
-    - Hashes the key and compares with stored hash
-    - Verifies the tenant is active
-    - Verifies the key is active and not expired
-    - Updates last_used_at timestamp
-    - Never logs the plain API key
-    
-    Args:
-        x_api_key: The API key from X-API-Key header
-        db: Database session
-        
-    Returns:
-        AuthenticatedContext with tenant_id and key metadata
-        
     Raises:
-        HTTPException(401): If authentication fails for any reason
+        HTTPException: 401 if API key is missing
     """
-    # Query all active API keys to verify against
-    # We cannot query by hash directly because we need to check all keys
-    # This is a security tradeoff - we accept the performance cost
-    result = await db.execute(
-        select(ApiKey, Tenant)
-        .join(Tenant, ApiKey.tenant_id == Tenant.id)
-        .where(ApiKey.is_active == True)
-        .where(Tenant.is_active == True)
-    )
-    
-    api_keys = result.all()
-    
-    # Try to verify against each active key
-    matched_key: ApiKey | None = None
-    matched_tenant: Tenant | None = None
-    
-    for api_key, tenant in api_keys:
-        # Check if key is expired
-        if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
-            continue
-            
-        # Verify the key hash
-        if verify_api_key(x_api_key, api_key.key_hash):
-            matched_key = api_key
-            matched_tenant = tenant
-            break
-    
-    # If no match found, return generic error
-    # Do not reveal whether the key exists or is invalid
-    if not matched_key or not matched_tenant:
+    if not x_api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired API key",
+            detail="API key is required",
             headers={"WWW-Authenticate": "ApiKey"},
         )
     
-    # Update last_used_at timestamp asynchronously
-    # Don't wait for this to complete
-    await db.execute(
-        update(ApiKey)
-        .where(ApiKey.id == matched_key.id)
-        .values(last_used_at=datetime.now(timezone.utc))
-    )
-    await db.commit()
+    return x_api_key
+
+
+async def get_tenant_context(
+    api_key: Annotated[str, Depends(extract_api_key)],
+    db: Session = Depends(get_db),
+) -> TenantContext:
+    """
+    Authenticate API key and return trusted tenant context.
     
-    # Return authenticated context
-    return AuthenticatedContext(
-        tenant_id=matched_tenant.id,
-        api_key_id=matched_key.id,
-        api_key_name=matched_key.name,
+    This dependency:
+    1. Hashes the provided API key
+    2. Looks up the hash in database
+    3. Validates the key is active and not expired
+    4. Returns authenticated TenantContext
+    
+    NEVER accept client_id from user input - only from this dependency.
+    
+    Raises:
+        HTTPException: 401 if authentication fails
+    """
+    # Find all active API keys and verify against hashes
+    # We cannot query by hash directly since we need to verify each one
+    api_keys = (
+        db.query(ApiKey)
+        .filter(ApiKey.is_active == True)  # noqa: E712
+        .all()
     )
+    
+    authenticated_key = None
+    for key_record in api_keys:
+        if verify_api_key(api_key, key_record.key_hash):
+            authenticated_key = key_record
+            break
+    
+    if not authenticated_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    # Check if key is expired
+    if is_api_key_expired(authenticated_key.expires_at):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key has expired",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    # Get client information
+    client = db.query(Client).filter(Client.id == authenticated_key.client_id).first()
+    
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Client not found",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    if not client.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Client account is disabled",
+        )
+    
+    # Update last used timestamp (async in production, but OK for now)
+    authenticated_key.last_used_at = datetime.now(timezone.utc)
+    db.commit()
+    
+    return TenantContext(
+        client_id=client.id,
+        client_name=client.name,
+    )
+
+
+# Type alias for dependency injection
+from datetime import datetime, timezone
+
+AuthenticatedClient = Annotated[TenantContext, Depends(get_tenant_context)]

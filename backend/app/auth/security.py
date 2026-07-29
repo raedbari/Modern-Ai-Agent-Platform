@@ -1,37 +1,50 @@
-"""Security utilities for API key hashing and verification."""
+"""Security utilities for API key hashing and validation."""
 
-from passlib.context import CryptContext
-
-# Use bcrypt for hashing API keys
-# Bcrypt is deliberately slow to make brute-force attacks harder
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from datetime import datetime, timezone
+from passlib.hash import bcrypt
 
 
-def hash_api_key(plain_key: str) -> str:
+def hash_api_key(api_key: str) -> str:
     """
     Hash an API key using bcrypt.
     
     Args:
-        plain_key: The plain text API key
+        api_key: The plain text API key
         
     Returns:
-        The bcrypt hash of the key
-        
-    Note:
-        This is a one-way operation. The plain key cannot be recovered.
+        The hashed API key
     """
-    return pwd_context.hash(plain_key)
+    return bcrypt.hash(api_key)
 
 
 def verify_api_key(plain_key: str, hashed_key: str) -> bool:
     """
-    Verify a plain API key against its stored hash.
+    Verify a plain API key against a hashed key.
     
     Args:
-        plain_key: The plain text API key to verify
-        hashed_key: The stored bcrypt hash
+        plain_key: The plain text API key
+        hashed_key: The stored hashed key
         
     Returns:
         True if the key matches, False otherwise
     """
-    return pwd_context.verify(plain_key, hashed_key)
+    try:
+        return bcrypt.verify(plain_key, hashed_key)
+    except Exception:
+        return False
+
+
+def is_api_key_expired(expires_at: datetime | None) -> bool:
+    """
+    Check if an API key has expired.
+    
+    Args:
+        expires_at: The expiration datetime (UTC)
+        
+    Returns:
+        True if expired, False if still valid or no expiration
+    """
+    if expires_at is None:
+        return False
+    
+    return datetime.now(timezone.utc) >= expires_at
