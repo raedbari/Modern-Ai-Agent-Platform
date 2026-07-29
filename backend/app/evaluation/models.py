@@ -3,7 +3,7 @@
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-
+from datetime import datetime
 
 class EvaluationExpectations(BaseModel):
     """Conditions used later to evaluate a generated response."""
@@ -67,3 +67,27 @@ class EvaluationCaseResult(BaseModel):
 
     checks: EvaluationChecks
     error_code: Literal["generation_failed"] | None = None
+
+class EvaluationSummary(BaseModel):
+    """Aggregated metrics for one evaluation run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    total_cases: int = Field(ge=0)
+    passed_cases: int = Field(ge=0)
+    failed_cases: int = Field(ge=0)
+    error_cases: int = Field(ge=0)
+    pass_rate_percent: float = Field(ge=0, le=100)
+    total_prompt_tokens: int = Field(ge=0)
+    total_completion_tokens: int = Field(ge=0)
+    average_latency_ms: float = Field(ge=0)
+
+
+class EvaluationReport(BaseModel):
+    """Complete serializable report for one evaluation run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    created_at: datetime
+    summary: EvaluationSummary
+    results: list[EvaluationCaseResult]
