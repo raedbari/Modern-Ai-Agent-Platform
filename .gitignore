@@ -1,0 +1,26 @@
+﻿# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Next.js
+node_modules/
+.next/
+out/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Temporary backup
+frontend_failed_20260728_193615/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
