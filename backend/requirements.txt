@@ -3,3 +3,7 @@ httpx>=0.28,<0.29
 pydantic-settings>=2.7,<3.0
 pytest>=8.3,<10.0
 uvicorn[standard]>=0.34,<0.40
+langchain>=1.0,<2.0
+langchain-deepseek>=1.0,<2.0
+langchain-ollama>=1.0,<2.0
+langgraph>=1.0,<2.0
