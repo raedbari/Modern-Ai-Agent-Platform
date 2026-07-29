@@ -31,6 +31,15 @@ class Settings(BaseSettings):
     embedding_dimension: int = Field(default=1024, gt=0)
     ollama_timeout_seconds: float = Field(default=30.0, gt=0)
 
+    # Database
+    database_url: str = Field(
+        default="postgresql+asyncpg://maap:maap@localhost:5432/maap_dev",
+        description="Async PostgreSQL connection string",
+    )
+    database_pool_size: int = Field(default=5, gt=0, le=50)
+    database_max_overflow: int = Field(default=10, gt=0, le=50)
+    database_echo: bool = Field(default=False)
+
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
