@@ -15,6 +15,7 @@ out/
 .env
 .env.*
 !.env.example
+!.env.compose.example
 
 # Temporary backup
 frontend_failed_20260728_193615/

@@ -23,6 +23,7 @@ RUNTIME_ENVIRONMENT_VARIABLES = (
     "MAAP_EMBEDDING_BATCH_SIZE",
     "MAAP_RETRIEVAL_TOP_K",
     "MAAP_RETRIEVAL_MIN_SIMILARITY",
+    "MAAP_RAG_MAX_CONTEXT_CHARS",
 )
 
 
@@ -45,6 +46,7 @@ def test_runtime_settings_have_expected_defaults():
     assert settings.ollama_embedding_model == "qwen3-embedding:0.6b"
     assert settings.embedding_dimension == 1024
     assert settings.embedding_batch_size == 32
+    assert settings.rag_max_context_chars == 12000
     assert ".md" in settings.allowed_extensions
     assert ".html" not in settings.allowed_extensions
 

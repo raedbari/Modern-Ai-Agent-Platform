@@ -133,6 +133,10 @@ class Agent(Base):
             "id",
             name="uq_agents_tenant_id_id",
         ),
+        CheckConstraint(
+            "knowledge_mode IN ('required', 'preferred', 'disabled')",
+            name="ck_agents_knowledge_mode",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
@@ -144,6 +148,19 @@ class Agent(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     system_prompt: Mapped[str | None] = mapped_column(Text)
+    knowledge_mode: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="preferred",
+        server_default="preferred",
+    )
+    fallback_message: Mapped[str | None] = mapped_column(Text)
+    handoff_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -263,6 +280,10 @@ class Message(Base):
     )
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(
+        "metadata",
+        JSON,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

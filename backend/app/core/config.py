@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     # in retrieval results. Range: 0.0 (no filtering) – 1.0 (exact match).
     retrieval_min_similarity: float = Field(default=0.5, ge=0.0, le=1.0)
 
+    # Hard ceiling for retrieved text injected into one generation request.
+    rag_max_context_chars: int = Field(default=12000, ge=500, le=100000)
+
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",

@@ -76,6 +76,57 @@ Open `http://127.0.0.1:8000/health`. The endpoint returns:
 Interactive API documentation is available at
 `http://127.0.0.1:8000/docs`.
 
+## Reproducible local stack on Windows
+
+The repository includes a local-first Compose stack that keeps PostgreSQL
+private, applies Alembic migrations before the API starts, and connects the API
+container to Ollama running on Windows through `host.docker.internal`.
+
+Prerequisites:
+
+- Docker Desktop is running.
+- Ollama is running on `127.0.0.1:11434`.
+- `qwen3-embedding:0.6b` is installed.
+
+Start the stack from PowerShell:
+
+```powershell
+.\scripts\local-up.ps1 -Build
+```
+
+The script creates a Git-ignored `.env.compose` with a random database
+password when one does not exist. It also copies `backend/.env.example` to the
+Git-ignored `backend/.env` on first use. Add the real
+`MAAP_DEEPSEEK_API_KEY` to `backend/.env` before testing live generation.
+
+Create the first tenant, agent, and server-side API key:
+
+```powershell
+docker compose --env-file .env.compose -f compose.local.yaml exec api `
+  python -m backend.app.cli.bootstrap_customer `
+  --tenant-id tenant-demo `
+  --tenant-name "Demo Tenant" `
+  --agent-id agent-demo `
+  --agent-name "Demo Agent" `
+  --system-prompt "Answer only from verified platform knowledge."
+```
+
+The raw API key is shown once. Store it securely. It is a server-side
+credential and must not be embedded in browser JavaScript.
+
+Inspect service state:
+
+```powershell
+docker compose --env-file .env.compose -f compose.local.yaml ps
+Invoke-RestMethod http://127.0.0.1:8000/ready
+```
+
+Stop containers without deleting PostgreSQL data:
+
+```powershell
+docker compose --env-file .env.compose -f compose.local.yaml down
+```
+
 ## Knowledge API
 
 All knowledge routes require the same trusted headers as chat:

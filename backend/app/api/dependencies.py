@@ -110,6 +110,9 @@ async def require_chat_context(
         tenant_id=tenant.id,
         agent_id=agent.id,
         system_prompt=agent.system_prompt,
+        knowledge_mode=agent.knowledge_mode,
+        fallback_message=agent.fallback_message,
+        handoff_enabled=agent.handoff_enabled,
     )
 
 

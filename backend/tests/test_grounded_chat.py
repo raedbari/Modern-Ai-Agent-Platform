@@ -1,0 +1,273 @@
+"""Evidence-first chat orchestration tests."""
+
+from pathlib import Path
+from unittest.mock import AsyncMock
+
+import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from backend.app.ai.contracts import GenerationResult
+from backend.app.auth.context import ChatExecutionContext
+from backend.app.db.base import Base
+from backend.app.db.models import Agent, Message, Tenant
+from backend.app.domain.exceptions import RetrievalError
+from backend.app.domain.models.chunk import Chunk
+from backend.app.domain.ports.retrieval import (
+    RetrievalQuery,
+    RetrievedChunk,
+)
+from backend.app.services.chat import ChatService
+
+
+class StubRetrieval:
+    def __init__(
+        self,
+        results: list[RetrievedChunk] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.results = results or []
+        self.error = error
+        self.queries: list[RetrievalQuery] = []
+
+    async def retrieve(
+        self,
+        query: RetrievalQuery,
+    ) -> list[RetrievedChunk]:
+        self.queries.append(query)
+        if self.error is not None:
+            raise self.error
+        return list(self.results)
+
+
+def _retrieved_chunk(
+    *,
+    content: str = "Refunds are accepted within 14 days.",
+    score: float = 0.91,
+) -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk=Chunk(
+            id="chunk-a",
+            tenant_id="tenant-a",
+            agent_id="agent-a",
+            knowledge_base_id="kb-a",
+            document_id="document-a",
+            source_name="refund-policy.pdf",
+            page_number=1,
+            chunk_index=0,
+            content=content,
+            content_hash="hash-a",
+        ),
+        similarity_score=score,
+    )
+
+
+async def _database(database_path: Path):
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{database_path.as_posix()}",
+    )
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with sessions() as session:
+        session.add_all(
+            [
+                Tenant(id="tenant-a", name="Tenant A"),
+                Agent(
+                    id="agent-a",
+                    tenant_id="tenant-a",
+                    name="Agent A",
+                ),
+            ]
+        )
+        await session.commit()
+    return engine, sessions
+
+
+def _runtime() -> AsyncMock:
+    runtime = AsyncMock()
+    runtime.generate.return_value = GenerationResult(
+        content="Refunds are accepted within 14 days [S1].",
+        model="test-model",
+        finish_reason="stop",
+        prompt_tokens=20,
+        completion_tokens=8,
+    )
+    return runtime
+
+
+def _context(
+    *,
+    knowledge_mode: str = "required",
+    fallback_message: str | None = None,
+    handoff_enabled: bool = True,
+) -> ChatExecutionContext:
+    return ChatExecutionContext(
+        tenant_id="tenant-a",
+        agent_id="agent-a",
+        system_prompt="Be precise.",
+        knowledge_mode=knowledge_mode,
+        fallback_message=fallback_message,
+        handoff_enabled=handoff_enabled,
+    )
+
+
+@pytest.mark.asyncio
+async def test_required_mode_generates_with_bounded_verified_sources(
+    tmp_path: Path,
+) -> None:
+    engine, sessions = await _database(tmp_path / "grounded.sqlite3")
+    runtime = _runtime()
+    retrieval = StubRetrieval([_retrieved_chunk()])
+    try:
+        async with sessions() as session:
+            result = await ChatService(
+                runtime,
+                retrieval=retrieval,
+                max_context_chars=1000,
+            ).execute(
+                session=session,
+                context=_context(),
+                message="What is the refund policy?",
+                conversation_id=None,
+            )
+
+        assert result.answer_status == "grounded"
+        assert result.handoff_required is False
+        assert len(result.sources) == 1
+        assert result.sources[0].citation_id == "S1"
+        assert result.sources[0].page_number == 2
+        assert retrieval.queries[0].tenant_id == "tenant-a"
+        assert retrieval.queries[0].agent_id == "agent-a"
+
+        generation_request = runtime.generate.await_args.args[0]
+        assert [item.role for item in generation_request.messages] == [
+            "system",
+            "system",
+            "user",
+        ]
+        evidence_prompt = generation_request.messages[1].content
+        assert "untrusted data" in evidence_prompt
+        assert "[S1]" in evidence_prompt
+        assert "Refunds are accepted within 14 days." in evidence_prompt
+
+        async with sessions() as session:
+            assistant = await session.scalar(
+                select(Message).where(Message.role == "assistant")
+            )
+        assert assistant is not None
+        assert assistant.metadata_json is not None
+        assert assistant.metadata_json["answer_status"] == "grounded"
+        assert assistant.metadata_json["sources"][0]["citation_id"] == "S1"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_required_mode_falls_back_without_calling_generation(
+    tmp_path: Path,
+) -> None:
+    engine, sessions = await _database(tmp_path / "fallback.sqlite3")
+    runtime = _runtime()
+    retrieval = StubRetrieval([])
+    try:
+        async with sessions() as session:
+            result = await ChatService(
+                runtime,
+                retrieval=retrieval,
+            ).execute(
+                session=session,
+                context=_context(
+                    fallback_message="سأحوّل طلبك إلى الفريق المختص.",
+                ),
+                message="Give me an unsupported price.",
+                conversation_id=None,
+            )
+
+        assert result.reply == "سأحوّل طلبك إلى الفريق المختص."
+        assert result.answer_status == "insufficient_knowledge"
+        assert result.sources == ()
+        assert result.handoff_required is True
+        assert result.model == "platform-fallback"
+        runtime.generate.assert_not_awaited()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_required_mode_marks_retrieval_failure_as_temporary(
+    tmp_path: Path,
+) -> None:
+    engine, sessions = await _database(tmp_path / "unavailable.sqlite3")
+    runtime = _runtime()
+    retrieval = StubRetrieval(error=RetrievalError("database failed"))
+    try:
+        async with sessions() as session:
+            result = await ChatService(
+                runtime,
+                retrieval=retrieval,
+            ).execute(
+                session=session,
+                context=_context(),
+                message="Question",
+                conversation_id=None,
+            )
+
+        assert result.answer_status == "temporarily_unavailable"
+        assert result.handoff_required is True
+        runtime.generate.assert_not_awaited()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_preferred_mode_can_generate_without_evidence(
+    tmp_path: Path,
+) -> None:
+    engine, sessions = await _database(tmp_path / "preferred.sqlite3")
+    runtime = _runtime()
+    retrieval = StubRetrieval([])
+    try:
+        async with sessions() as session:
+            result = await ChatService(
+                runtime,
+                retrieval=retrieval,
+            ).execute(
+                session=session,
+                context=_context(knowledge_mode="preferred"),
+                message="Hello",
+                conversation_id=None,
+            )
+
+        assert result.answer_status == "generated"
+        assert result.sources == ()
+        assert result.handoff_required is False
+        runtime.generate.assert_awaited_once()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_disabled_mode_skips_retrieval(
+    tmp_path: Path,
+) -> None:
+    engine, sessions = await _database(tmp_path / "disabled.sqlite3")
+    runtime = _runtime()
+    retrieval = StubRetrieval([_retrieved_chunk()])
+    try:
+        async with sessions() as session:
+            result = await ChatService(
+                runtime,
+                retrieval=retrieval,
+            ).execute(
+                session=session,
+                context=_context(knowledge_mode="disabled"),
+                message="Hello",
+                conversation_id=None,
+            )
+
+        assert result.answer_status == "generated"
+        assert retrieval.queries == []
+        runtime.generate.assert_awaited_once()
+    finally:
+        await engine.dispose()
