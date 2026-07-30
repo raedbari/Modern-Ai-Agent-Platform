@@ -1,11 +1,14 @@
 # Modern AI Agent Platform — Backend
 
-This directory contains the initial FastAPI backend foundation. It currently
-provides configuration loading and a public health endpoint only.
+This directory contains the FastAPI backend for authenticated multi-tenant
+chat and the knowledge RAG pipeline. It includes SQLAlchemy persistence,
+Alembic migrations, document parsing/chunking/embedding, and tenant- and
+agent-scoped vector retrieval.
 
 ## Requirements
 
 - Python 3.12
+- PostgreSQL with the `vector` extension available
 - Run commands from the project root
 
 ## Windows setup
@@ -34,6 +37,23 @@ Copy-Item backend\.env.example backend\.env
 
 Settings use the `MAAP_` prefix and are loaded from operating-system
 environment variables or `backend/.env`. Do not commit `backend/.env`.
+
+## Database migrations
+
+Apply the schema before starting the API:
+
+```powershell
+python -m alembic -c backend\alembic.ini upgrade head
+```
+
+The knowledge migration enables `vector`, creates a `VECTOR(1024)` embedding
+column, and adds an HNSW cosine index. The configured database role therefore
+needs permission to create the extension. If production policy disallows
+that permission, a database administrator must run this once:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
 
 ## Run the API
 

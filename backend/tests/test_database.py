@@ -47,6 +47,10 @@ def test_metadata_defines_expected_tables() -> None:
         "agents",
         "conversations",
         "messages",
+        "knowledge_bases",
+        "agent_knowledge_bases",
+        "documents",
+        "chunks",
     }
 
 
