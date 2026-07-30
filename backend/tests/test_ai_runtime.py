@@ -16,7 +16,7 @@ from backend.app.ai.runtime import CoreAIRuntime
 
 
 @pytest.mark.asyncio
-async def test_runtime_generates_through_langgraph():
+async def test_runtime_delegates_generation_to_provider():
     generation_provider = AsyncMock()
     embedding_provider = AsyncMock()
 

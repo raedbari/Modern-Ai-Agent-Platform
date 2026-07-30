@@ -177,6 +177,38 @@ the chatbot's configured `contact_message`. This message should contain the
 company's approved phone number, email address, or other customer-service
 channel. No human-response workflow is created inside the platform.
 
+### LangGraph boundary
+
+The chat answer path uses one reusable compiled `StateGraph` for every tenant
+and chatbot:
+
+```text
+START
+  -> retrieve
+  -> prepare_prompt
+  -> generate ---------> END
+       |
+       +-> contact_fallback -> END
+```
+
+The conditional branch selects `contact_fallback` when knowledge is required
+but verified evidence is absent. Tenant identity, chatbot identity,
+`system_prompt`, knowledge policy, and contact message are supplied as trusted
+LangGraph runtime context for each invocation. They are not accepted from the
+public chat request body. Input and output schemas expose only the chat-turn
+input and final answer; retrieval and prompt-building state remain internal.
+
+Customer onboarding, chatbot settings, knowledge-base CRUD, uploads, and
+background ingestion remain platform application services outside LangGraph.
+LangGraph orchestrates the answer workflow; it is not the platform database,
+authorization layer, or admin API. Conversation history is already durable in
+PostgreSQL, so this per-turn workflow does not add a LangGraph checkpointer or
+human-in-the-loop interrupt.
+
+The implementation follows the official LangGraph Graph API patterns for
+[state, nodes, edges, and compilation](https://docs.langchain.com/oss/python/langgraph/graph-api)
+and [per-invocation runtime context](https://docs.langchain.com/oss/python/langgraph/use-graph-api#add-runtime-configuration).
+
 ## Run the tests
 
 From the project root:
