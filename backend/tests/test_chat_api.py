@@ -197,6 +197,7 @@ async def test_chat_persists_messages_with_trusted_runtime_context(
         assert payload["answer_status"] == "generated"
         assert payload["sources"] == []
         assert payload["handoff_required"] is False
+        assert payload["handoff_id"] is None
 
         request = runtime.generate.await_args.args[0]
         assert request.context.tenant_id == "tenant-a"

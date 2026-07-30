@@ -18,6 +18,10 @@ RUNTIME_ENVIRONMENT_VARIABLES = (
     "MAAP_OLLAMA_TIMEOUT_SECONDS",
     "MAAP_MAX_UPLOAD_SIZE_BYTES",
     "MAAP_MAX_PDF_PAGES",
+    "MAAP_UPLOAD_STORAGE_ROOT",
+    "MAAP_INGESTION_WORKER_POLL_SECONDS",
+    "MAAP_INGESTION_JOB_LOCK_TIMEOUT_SECONDS",
+    "MAAP_INGESTION_JOB_MAX_ATTEMPTS",
     "MAAP_CHUNK_SIZE",
     "MAAP_CHUNK_OVERLAP",
     "MAAP_EMBEDDING_BATCH_SIZE",
@@ -47,6 +51,7 @@ def test_runtime_settings_have_expected_defaults():
     assert settings.embedding_dimension == 1024
     assert settings.embedding_batch_size == 32
     assert settings.rag_max_context_chars == 12000
+    assert settings.ingestion_job_max_attempts == 3
     assert ".md" in settings.allowed_extensions
     assert ".html" not in settings.allowed_extensions
 

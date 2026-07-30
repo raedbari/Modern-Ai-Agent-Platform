@@ -14,13 +14,15 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from backend.app.ai.contracts import EmbeddingResult
-from backend.app.api.dependencies import get_core_ai_runtime
+from backend.app.api.dependencies import get_embedding_provider
 from backend.app.auth.api_keys import IssuedApiKey, issue_api_key
+from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import Base, get_db
 from backend.app.db.models import (
     Agent,
     ChunkModel,
     DocumentModel,
+    IngestionJob,
     KnowledgeBaseModel,
     Tenant,
     ApiKey,
@@ -73,7 +75,7 @@ async def _open_test_app(
             yield session
 
     application.dependency_overrides[get_db] = override_get_db
-    application.dependency_overrides[get_core_ai_runtime] = lambda: runtime
+    application.dependency_overrides[get_embedding_provider] = lambda: runtime
     return application, engine, session_factory, runtime
 
 
@@ -302,6 +304,85 @@ async def test_upload_lists_status_and_deduplicates_document(
         assert len(listed.json()) == 1
         assert runtime.embed.await_count == 1
     finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_document_job_retains_file_without_blocking_for_embeddings(
+    tmp_path: Path,
+) -> None:
+    app, engine, session_factory, runtime = await _open_test_app(
+        tmp_path / "knowledge-job.sqlite3"
+    )
+    storage_root = tmp_path / "retained"
+    settings = Settings(
+        upload_storage_root=storage_root,
+        _env_file=None,
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    content = b"Queued verified support information."
+    try:
+        issued = await _seed_tenant(
+            session_factory,
+            tenant_id="tenant-a",
+            agent_ids=("agent-a",),
+        )
+        headers = _headers(issued, "agent-a")
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            knowledge_base_id = await _create_knowledge_base(
+                client,
+                headers,
+            )
+            queued = await client.post(
+                f"/api/knowledge-bases/{knowledge_base_id}/document-jobs",
+                headers=headers,
+                files={
+                    "file": (
+                        "queued.txt",
+                        content,
+                        "text/plain",
+                    )
+                },
+            )
+            job_id = queued.json()["job_id"]
+            polled = await client.get(
+                (
+                    f"/api/knowledge-bases/{knowledge_base_id}/"
+                    f"document-jobs/{job_id}"
+                ),
+                headers=headers,
+            )
+            duplicate = await client.post(
+                f"/api/knowledge-bases/{knowledge_base_id}/document-jobs",
+                headers=headers,
+                files={
+                    "file": (
+                        "queued.txt",
+                        content,
+                        "text/plain",
+                    )
+                },
+            )
+
+        assert queued.status_code == 202, queued.text
+        assert queued.json()["status"] == "pending"
+        assert queued.json()["document"]["status"] == "pending"
+        assert polled.status_code == 200
+        assert polled.json()["job_id"] == job_id
+        assert duplicate.status_code == 202
+        assert duplicate.json()["duplicate"] is True
+        assert duplicate.json()["job_id"] is None
+        runtime.embed.assert_not_awaited()
+
+        async with session_factory() as session:
+            job = await session.get(IngestionJob, job_id)
+        assert job is not None
+        assert (storage_root / job.storage_key).read_bytes() == content
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
         await engine.dispose()
 
 

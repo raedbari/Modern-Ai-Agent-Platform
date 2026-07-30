@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, NoReturn
 from uuid import uuid4
 
@@ -15,14 +16,16 @@ from fastapi import (
     UploadFile,
     status,
 )
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.dependencies import (
-    get_core_ai_runtime,
+    get_embedding_provider,
     require_chat_context,
 )
 from backend.app.api.schemas.knowledge import (
     DocumentIngestionResponse,
+    DocumentJobResponse,
     DocumentResponse,
     KnowledgeBaseCreate,
     KnowledgeBaseResponse,
@@ -32,6 +35,7 @@ from backend.app.ai.ports import EmbeddingProvider
 from backend.app.auth.context import ChatExecutionContext
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
+from backend.app.db.models import IngestionJob
 from backend.app.domain.exceptions import (
     ChunkingError,
     DocumentNotFoundError,
@@ -44,20 +48,19 @@ from backend.app.domain.exceptions import (
 from backend.app.domain.models.document import Document
 from backend.app.domain.models.knowledge_base import KnowledgeBase
 from backend.app.infrastructure.database.repositories import (
-    SQLAlchemyChunkRepository,
     SQLAlchemyDocumentRepository,
     SQLAlchemyKnowledgeBaseRepository,
 )
-from backend.app.infrastructure.parsers.factory import DefaultParserFactory
-from backend.app.services.knowledge.chunking_service import ChunkingService
-from backend.app.services.knowledge.embedding_service import EmbeddingService
+from backend.app.infrastructure.storage import LocalUploadStorage
+from backend.app.operations.ingestion_runtime import build_ingestion_service
 from backend.app.services.knowledge.ingestion_service import (
     IngestionRequest,
     IngestionResult,
-    IngestionService,
 )
+from backend.app.services.knowledge.job_service import IngestionJobService
 
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge"])
+LOGGER = logging.getLogger(__name__)
 
 
 def _knowledge_response(item: KnowledgeBase) -> KnowledgeBaseResponse:
@@ -106,36 +109,6 @@ async def _require_assigned_knowledge_base(
     return item
 
 
-def _build_ingestion_service(
-    *,
-    session: AsyncSession,
-    runtime: EmbeddingProvider,
-    settings: Settings,
-) -> IngestionService:
-    return IngestionService(
-        parser_factory=DefaultParserFactory(),
-        chunking_service=ChunkingService(
-            chunk_size=settings.chunk_size,
-            chunk_overlap=settings.chunk_overlap,
-        ),
-        embedding_service=EmbeddingService(
-            provider=runtime,
-            batch_size=settings.embedding_batch_size,
-            embedding_dimensions=settings.embedding_dimension,
-        ),
-        document_repository=SQLAlchemyDocumentRepository(session),
-        chunk_repository=SQLAlchemyChunkRepository(
-            session,
-            embedding_dimension=settings.embedding_dimension,
-        ),
-        knowledge_base_repository=SQLAlchemyKnowledgeBaseRepository(session),
-        max_upload_size_bytes=settings.max_upload_size_bytes,
-        max_pdf_pages=settings.max_pdf_pages,
-        allowed_extensions=settings.allowed_extensions,
-        allowed_mime_types=settings.allowed_mime_types,
-    )
-
-
 async def _read_upload(file: UploadFile, size_limit: int) -> bytes:
     content = await file.read(size_limit + 1)
     if len(content) > size_limit:
@@ -153,6 +126,55 @@ def _ingestion_response(result: IngestionResult) -> DocumentIngestionResponse:
         chunks_persisted=result.chunks_persisted,
         duplicate=result.duplicate,
     )
+
+
+def _job_response(
+    *,
+    document: Document,
+    job=None,
+    duplicate: bool = False,
+) -> DocumentJobResponse:
+    if job is None:
+        return DocumentJobResponse(
+            job_id=None,
+            document=_document_response(document),
+            status="duplicate",
+            attempts=0,
+            max_attempts=0,
+            last_error=None,
+            duplicate=True,
+            created_at=None,
+            updated_at=None,
+            completed_at=None,
+        )
+    return DocumentJobResponse(
+        job_id=job.id,
+        document=_document_response(document),
+        status=job.status,
+        attempts=job.attempts,
+        max_attempts=job.max_attempts,
+        last_error=job.last_error,
+        duplicate=duplicate,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        completed_at=job.completed_at,
+    )
+
+
+async def _delete_stored_uploads(
+    storage: LocalUploadStorage,
+    storage_keys: list[str],
+) -> None:
+    """Best-effort cleanup after the database transaction is committed."""
+
+    for storage_key in storage_keys:
+        try:
+            await storage.delete(storage_key)
+        except Exception:
+            LOGGER.exception(
+                "Could not delete retained upload object %s",
+                storage_key,
+            )
 
 
 async def _commit_failed_ingestion(
@@ -307,6 +329,7 @@ async def delete_knowledge_base(
         Depends(require_chat_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> Response:
     repository = SQLAlchemyKnowledgeBaseRepository(session)
     await _require_assigned_knowledge_base(
@@ -314,11 +337,25 @@ async def delete_knowledge_base(
         context,
         knowledge_base_id,
     )
+    storage_keys = list(
+        (
+            await session.scalars(
+                select(IngestionJob.storage_key).where(
+                    IngestionJob.tenant_id == context.tenant_id,
+                    IngestionJob.knowledge_base_id == knowledge_base_id,
+                )
+            )
+        ).all()
+    )
     await repository.delete_by_id(
         knowledge_base_id=knowledge_base_id,
         tenant_id=context.tenant_id,
     )
     await session.commit()
+    await _delete_stored_uploads(
+        LocalUploadStorage(settings.upload_storage_root),
+        storage_keys,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -364,7 +401,7 @@ async def upload_document(
     session: Annotated[AsyncSession, Depends(get_db)],
     runtime: Annotated[
         EmbeddingProvider,
-        Depends(get_core_ai_runtime),
+        Depends(get_embedding_provider),
     ],
     settings: Annotated[Settings, Depends(get_settings)],
     source_name: Annotated[
@@ -373,7 +410,7 @@ async def upload_document(
     ] = "upload",
 ) -> DocumentIngestionResponse:
     content = await _read_upload(file, settings.max_upload_size_bytes)
-    service = _build_ingestion_service(
+    service = build_ingestion_service(
         session=session,
         runtime=runtime,
         settings=settings,
@@ -394,6 +431,130 @@ async def upload_document(
     except DomainError as exc:
         await _commit_failed_ingestion(session, exc)
     return _ingestion_response(result)
+
+
+@router.post(
+    "/{knowledge_base_id}/document-jobs",
+    response_model=DocumentJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def queue_document(
+    knowledge_base_id: str,
+    file: Annotated[UploadFile, File()],
+    context: Annotated[
+        ChatExecutionContext,
+        Depends(require_chat_context),
+    ],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    runtime: Annotated[
+        EmbeddingProvider,
+        Depends(get_embedding_provider),
+    ],
+    settings: Annotated[Settings, Depends(get_settings)],
+    source_name: Annotated[
+        str,
+        Form(min_length=1, max_length=512),
+    ] = "upload",
+) -> DocumentJobResponse:
+    """Retain a source upload and enqueue durable background ingestion."""
+
+    content = await _read_upload(file, settings.max_upload_size_bytes)
+    request = IngestionRequest(
+        content=content,
+        filename=file.filename or "upload",
+        mime_type=file.content_type or "application/octet-stream",
+        tenant_id=context.tenant_id,
+        agent_id=context.agent_id,
+        knowledge_base_id=knowledge_base_id,
+        source_name=source_name,
+    )
+    service = build_ingestion_service(
+        session=session,
+        runtime=runtime,
+        settings=settings,
+    )
+    storage = LocalUploadStorage(settings.upload_storage_root)
+    storage_key: str | None = None
+    try:
+        prepared = await service.prepare(request)
+        if prepared.duplicate:
+            await session.commit()
+            return _job_response(
+                document=prepared.document,
+                duplicate=True,
+            )
+
+        # Persist the pending document before creating a job that references it.
+        await session.flush()
+        storage_key = await storage.store(
+            tenant_id=context.tenant_id,
+            document_id=prepared.document.id,
+            content=content,
+        )
+        job = await IngestionJobService.enqueue(
+            session,
+            tenant_id=context.tenant_id,
+            agent_id=context.agent_id,
+            knowledge_base_id=knowledge_base_id,
+            document_id=prepared.document.id,
+            storage_key=storage_key,
+            max_attempts=settings.ingestion_job_max_attempts,
+        )
+        await session.commit()
+        return _job_response(document=prepared.document, job=job)
+    except DomainError as exc:
+        if storage_key is not None:
+            await storage.delete(storage_key)
+        await _commit_failed_ingestion(session, exc)
+    except Exception:
+        await session.rollback()
+        if storage_key is not None:
+            await storage.delete(storage_key)
+        raise
+
+
+@router.get(
+    "/{knowledge_base_id}/document-jobs/{job_id}",
+    response_model=DocumentJobResponse,
+)
+async def get_document_job(
+    knowledge_base_id: str,
+    job_id: str,
+    context: Annotated[
+        ChatExecutionContext,
+        Depends(require_chat_context),
+    ],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> DocumentJobResponse:
+    """Return one tenant- and agent-scoped ingestion job."""
+
+    await _require_assigned_knowledge_base(
+        SQLAlchemyKnowledgeBaseRepository(session),
+        context,
+        knowledge_base_id,
+    )
+    job = await IngestionJobService.get_scoped(
+        session,
+        job_id=job_id,
+        tenant_id=context.tenant_id,
+        agent_id=context.agent_id,
+        knowledge_base_id=knowledge_base_id,
+    )
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document job not found",
+        )
+    document = await SQLAlchemyDocumentRepository(session).get_by_id(
+        document_id=job.document_id,
+        tenant_id=context.tenant_id,
+    )
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document job not found",
+        )
+    return _job_response(document=document, job=job)
 
 
 @router.get(
@@ -439,11 +600,22 @@ async def delete_document(
         Depends(require_chat_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> Response:
     await _require_assigned_knowledge_base(
         SQLAlchemyKnowledgeBaseRepository(session),
         context,
         knowledge_base_id,
+    )
+    storage_keys = list(
+        (
+            await session.scalars(
+                select(IngestionJob.storage_key).where(
+                    IngestionJob.tenant_id == context.tenant_id,
+                    IngestionJob.document_id == document_id,
+                )
+            )
+        ).all()
     )
     deleted = await SQLAlchemyDocumentRepository(session).delete_by_id(
         document_id=document_id,
@@ -457,6 +629,10 @@ async def delete_document(
             detail="Document not found",
         )
     await session.commit()
+    await _delete_stored_uploads(
+        LocalUploadStorage(settings.upload_storage_root),
+        storage_keys,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -475,7 +651,7 @@ async def reindex_document(
     session: Annotated[AsyncSession, Depends(get_db)],
     runtime: Annotated[
         EmbeddingProvider,
-        Depends(get_core_ai_runtime),
+        Depends(get_embedding_provider),
     ],
     settings: Annotated[Settings, Depends(get_settings)],
     source_name: Annotated[
@@ -484,7 +660,7 @@ async def reindex_document(
     ] = "upload",
 ) -> DocumentIngestionResponse:
     content = await _read_upload(file, settings.max_upload_size_bytes)
-    service = _build_ingestion_service(
+    service = build_ingestion_service(
         session=session,
         runtime=runtime,
         settings=settings,

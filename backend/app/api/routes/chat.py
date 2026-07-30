@@ -103,4 +103,5 @@ async def chat(
             for source in result.sources
         ],
         handoff_required=result.handoff_required,
+        handoff_id=result.handoff_id,
     )

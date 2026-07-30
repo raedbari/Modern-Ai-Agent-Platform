@@ -97,7 +97,43 @@ class IngestionService:
 
     async def ingest(self, request: IngestionRequest) -> IngestionResult:
         """Run the ingestion pipeline with tenant and agent authorization."""
+        prepared = await self.prepare(request)
+        if prepared.duplicate:
+            return prepared
+
         extension, mime_type = self._validate_upload(request)
+        document = prepared.document
+
+        try:
+            await self._set_status(
+                document,
+                DocumentProcessingStatus.PROCESSING,
+            )
+            records = await self._prepare_chunk_records(
+                document=document,
+                request=request,
+                extension=extension,
+                mime_type=mime_type,
+            )
+            persisted = await self._persist_all(records)
+
+            await self._set_status(document, DocumentProcessingStatus.READY)
+            return IngestionResult(
+                document=document,
+                chunks_persisted=len(persisted),
+            )
+        except Exception:
+            await self._set_status(
+                document,
+                DocumentProcessingStatus.FAILED,
+                failure_reason="Document processing failed.",
+            )
+            raise
+
+    async def prepare(self, request: IngestionRequest) -> IngestionResult:
+        """Validate and persist a pending document without processing it."""
+
+        _, mime_type = self._validate_upload(request)
         await self._require_authorized_knowledge_base(request)
 
         content_hash = hashlib.sha256(request.content).hexdigest()
@@ -125,32 +161,11 @@ class IngestionService:
             content_hash=content_hash,
         )
         document = await self._document_repository.create(document)
-
-        try:
-            await self._set_status(
-                document,
-                DocumentProcessingStatus.PROCESSING,
-            )
-            records = await self._prepare_chunk_records(
-                document=document,
-                request=request,
-                extension=extension,
-                mime_type=mime_type,
-            )
-            persisted = await self._persist_all(records)
-
-            await self._set_status(document, DocumentProcessingStatus.READY)
-            return IngestionResult(
-                document=document,
-                chunks_persisted=len(persisted),
-            )
-        except Exception:
-            await self._set_status(
-                document,
-                DocumentProcessingStatus.FAILED,
-                failure_reason="Document processing failed.",
-            )
-            raise
+        return IngestionResult(
+            document=document,
+            chunks_persisted=0,
+            duplicate=False,
+        )
 
     async def reindex(
         self,

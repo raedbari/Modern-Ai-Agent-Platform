@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.auth.api_keys import parse_api_key, verify_api_key_secret
+from backend.app.ai.ports import EmbeddingProvider
 from backend.app.auth.context import ChatExecutionContext
 from backend.app.core.config import get_settings
 from backend.app.db.base import get_db
@@ -131,3 +132,12 @@ def get_core_ai_runtime() -> GenerationRuntime:
         generation_provider=DeepSeekGenerationProvider(settings),
         embedding_provider=OllamaEmbeddingProvider(settings),
     )
+
+
+@lru_cache
+def get_embedding_provider() -> EmbeddingProvider:
+    """Build embeddings without requiring a generation-provider API key."""
+
+    from backend.app.ai.providers.ollama import OllamaEmbeddingProvider
+
+    return OllamaEmbeddingProvider(get_settings())

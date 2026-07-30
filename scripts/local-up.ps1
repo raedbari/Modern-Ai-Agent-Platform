@@ -107,8 +107,22 @@ if (-not $isReady) {
     & docker compose `
         --env-file $composeEnv `
         -f (Join-Path $projectRoot "compose.local.yaml") `
-        logs --tail 100 api migrate postgres
+        logs --tail 100 api ingestion-worker migrate postgres storage-init
     throw "The local API did not become ready."
+}
+
+$runningServices = @(
+    & docker compose `
+        --env-file $composeEnv `
+        -f (Join-Path $projectRoot "compose.local.yaml") `
+        ps --status running --services
+)
+if ("ingestion-worker" -notin $runningServices) {
+    & docker compose `
+        --env-file $composeEnv `
+        -f (Join-Path $projectRoot "compose.local.yaml") `
+        logs --tail 100 ingestion-worker
+    throw "The ingestion worker is not running."
 }
 
 Write-Host ""

@@ -1,7 +1,7 @@
 """HTTP schemas for the authenticated Knowledge API."""
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -65,3 +65,24 @@ class DocumentResponse(BaseModel):
 class DocumentIngestionResponse(DocumentResponse):
     chunks_persisted: int = Field(ge=0)
     duplicate: bool
+
+
+class DocumentJobResponse(BaseModel):
+    """Durable asynchronous ingestion job and its document."""
+
+    job_id: str | None
+    document: DocumentResponse
+    status: Literal[
+        "pending",
+        "processing",
+        "succeeded",
+        "failed",
+        "duplicate",
+    ]
+    attempts: int = Field(ge=0)
+    max_attempts: int = Field(ge=0)
+    last_error: str | None
+    duplicate: bool
+    created_at: datetime | None
+    updated_at: datetime | None
+    completed_at: datetime | None

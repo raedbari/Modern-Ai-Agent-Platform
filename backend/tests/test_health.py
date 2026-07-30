@@ -2,6 +2,8 @@
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
+import pytest
 from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
@@ -29,7 +31,8 @@ def test_health_endpoint_returns_expected_payload() -> None:
     }
 
 
-def test_readiness_endpoint_checks_database() -> None:
+@pytest.mark.asyncio
+async def test_readiness_endpoint_checks_database() -> None:
     application = create_app()
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     sessions = async_sessionmaker(engine, expire_on_commit=False)
@@ -40,10 +43,14 @@ def test_readiness_endpoint_checks_database() -> None:
 
     application.dependency_overrides[get_db] = override_get_db
     try:
-        with TestClient(application) as client:
-            response = client.get("/ready")
+        async with AsyncClient(
+            transport=ASGITransport(app=application),
+            base_url="http://test",
+        ) as client:
+            response = await client.get("/ready")
     finally:
         application.dependency_overrides.clear()
+        await engine.dispose()
 
     assert response.status_code == 200
     assert response.json() == {

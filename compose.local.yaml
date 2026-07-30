@@ -7,6 +7,7 @@ x-api-environment: &api-environment
   MAAP_OLLAMA_BASE_URL: http://host.docker.internal:11434
   MAAP_OLLAMA_EMBEDDING_MODEL: qwen3-embedding:0.6b
   MAAP_EMBEDDING_DIMENSION: "1024"
+  MAAP_UPLOAD_STORAGE_ROOT: /var/lib/maap/uploads
 
 services:
   postgres:
@@ -63,6 +64,23 @@ services:
     networks:
       - backend
 
+  storage-init:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    user: "0:0"
+    command:
+      [
+        "sh",
+        "-c",
+        "mkdir -p /var/lib/maap/uploads && chown -R 10001:10001 /var/lib/maap/uploads",
+      ]
+    restart: "no"
+    volumes:
+      - uploads:/var/lib/maap/uploads
+    security_opt:
+      - no-new-privileges:true
+
   api:
     build:
       context: .
@@ -77,6 +95,8 @@ services:
       - "127.0.0.1:${MAAP_API_PORT:-8000}:8000"
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      storage-init:
         condition: service_completed_successfully
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -95,6 +115,42 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      - uploads:/var/lib/maap/uploads
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+      - edge
+
+  ingestion-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command:
+      [
+        "python",
+        "-m",
+        "backend.app.workers.ingestion_worker",
+      ]
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment: *api-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      storage-init:
+        condition: service_completed_successfully
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - uploads:/var/lib/maap/uploads
     security_opt:
       - no-new-privileges:true
     networks:
@@ -103,6 +159,7 @@ services:
 
 volumes:
   postgres_data:
+  uploads:
 
 networks:
   backend:

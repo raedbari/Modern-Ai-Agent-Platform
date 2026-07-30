@@ -80,7 +80,9 @@ Interactive API documentation is available at
 
 The repository includes a local-first Compose stack that keeps PostgreSQL
 private, applies Alembic migrations before the API starts, and connects the API
-container to Ollama running on Windows through `host.docker.internal`.
+and ingestion-worker containers to Ollama running on Windows through
+`host.docker.internal`. Original uploads are retained in a private named
+volume, while the durable ingestion queue is stored in PostgreSQL.
 
 Prerequisites:
 
@@ -147,10 +149,37 @@ Available operations:
 - `POST|GET /api/knowledge-bases/{knowledge_base_id}/documents`
 - `GET|DELETE /api/knowledge-bases/{knowledge_base_id}/documents/{document_id}`
 - `POST /api/knowledge-bases/{knowledge_base_id}/documents/{document_id}/reindex`
+- `POST /api/knowledge-bases/{knowledge_base_id}/document-jobs`
+- `GET /api/knowledge-bases/{knowledge_base_id}/document-jobs/{job_id}`
 
 Document upload and reindex requests use `multipart/form-data` with a required
 `file` field and an optional `source_name`. Reindexing requires the source file
-again because raw uploads are not retained after parsing.
+again for legacy synchronous uploads.
+
+For customer-facing operation, prefer `document-jobs`. It returns `202`, stores
+the original source in the shared uploads volume, and lets the separate worker
+parse, chunk, embed, and index it. Poll the returned job URL until its status is
+`succeeded` or `failed`. Jobs use PostgreSQL row locking with `SKIP LOCKED`,
+bounded retries, and stale-lock recovery.
+
+## Evidence-first chat and handoffs
+
+The public chat route is `POST /api/chat`. Each agent has an independent
+knowledge policy:
+
+- `required`: never calls generation without retrieved evidence.
+- `preferred`: uses evidence when available and may otherwise generate.
+- `disabled`: skips RAG for agents that intentionally do not use knowledge.
+
+Grounded responses include structured `sources`. When a `required` agent has
+no sufficient evidence, the API persists a tenant-scoped handoff and returns
+`handoff_required=true` plus `handoff_id`.
+
+Trusted server-side handoff operations:
+
+- `GET /api/handoffs`
+- `GET /api/handoffs/{handoff_id}`
+- `PATCH /api/handoffs/{handoff_id}`
 
 ## Run the tests
 

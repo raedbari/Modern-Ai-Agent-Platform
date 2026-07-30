@@ -17,7 +17,7 @@ from backend.app.ai.contracts import (
     RuntimeContext,
 )
 from backend.app.auth.context import ChatExecutionContext
-from backend.app.db.models import Conversation, Message
+from backend.app.db.models import Conversation, Handoff, Message
 from backend.app.domain.exceptions import (
     EmbeddingError,
     RetrievalError,
@@ -99,6 +99,7 @@ class ChatResult:
     answer_status: AnswerStatus
     sources: tuple[ChatSource, ...]
     handoff_required: bool
+    handoff_id: str | None
 
 
 class ChatService:
@@ -170,6 +171,7 @@ class ChatService:
             required_without_evidence = (
                 context.knowledge_mode == "required" and not sources
             )
+            handoff_id: str | None = None
             if required_without_evidence:
                 answer_status: AnswerStatus = (
                     "temporarily_unavailable"
@@ -185,6 +187,19 @@ class ChatService:
                 prompt_tokens = 0
                 completion_tokens = 0
                 handoff_required = context.handoff_enabled
+                if handoff_required:
+                    # The handoff has tenant-scoped foreign keys to the new
+                    # conversation and trigger message. Flush them inside the
+                    # same transaction before inserting the handoff row.
+                    await session.flush()
+                    handoff = await self._get_or_create_handoff(
+                        session=session,
+                        context=context,
+                        conversation_id=conversation.id,
+                        trigger_message_id=user_message.id,
+                        reason=answer_status,
+                    )
+                    handoff_id = handoff.id
             else:
                 generation = await self._runtime.generate(
                     GenerationRequest(
@@ -219,6 +234,7 @@ class ChatService:
                         source.as_metadata() for source in sources
                     ],
                     "handoff_required": handoff_required,
+                    "handoff_id": handoff_id,
                 },
                 created_at=max(
                     datetime.now(timezone.utc),
@@ -243,6 +259,7 @@ class ChatService:
             answer_status=answer_status,
             sources=sources,
             handoff_required=handoff_required,
+            handoff_id=handoff_id,
         )
 
     async def _retrieve(
@@ -390,6 +407,42 @@ class ChatService:
         if temporarily_unavailable:
             return TEMPORARY_FALLBACK_MESSAGE
         return DEFAULT_FALLBACK_MESSAGE
+
+    @staticmethod
+    async def _get_or_create_handoff(
+        *,
+        session: AsyncSession,
+        context: ChatExecutionContext,
+        conversation_id: str,
+        trigger_message_id: str,
+        reason: str,
+    ) -> Handoff:
+        """Reuse an active conversation handoff or create one."""
+
+        existing = await session.scalar(
+            select(Handoff)
+            .where(
+                Handoff.tenant_id == context.tenant_id,
+                Handoff.agent_id == context.agent_id,
+                Handoff.conversation_id == conversation_id,
+                Handoff.status.in_(("open", "assigned")),
+            )
+            .order_by(Handoff.created_at, Handoff.id)
+            .limit(1)
+        )
+        if existing is not None:
+            return existing
+
+        handoff = Handoff(
+            id=str(uuid4()),
+            tenant_id=context.tenant_id,
+            agent_id=context.agent_id,
+            conversation_id=conversation_id,
+            trigger_message_id=trigger_message_id,
+            reason=reason,
+        )
+        session.add(handoff)
+        return handoff
 
     @staticmethod
     async def _load_or_create_conversation(

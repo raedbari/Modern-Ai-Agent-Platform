@@ -48,6 +48,18 @@ class Settings(BaseSettings):
     # Maximum number of pages accepted from a PDF document.
     max_pdf_pages: int = Field(default=500, gt=0)
 
+    # Durable local object storage shared by API and ingestion workers.
+    upload_storage_root: Path = BACKEND_DIR / ".data" / "uploads"
+
+    # PostgreSQL-backed ingestion worker controls.
+    ingestion_worker_poll_seconds: float = Field(default=2.0, gt=0, le=60)
+    ingestion_job_lock_timeout_seconds: int = Field(
+        default=600,
+        ge=30,
+        le=86400,
+    )
+    ingestion_job_max_attempts: int = Field(default=3, ge=1, le=10)
+
     # File extensions accepted by the ingestion pipeline.
     allowed_extensions: frozenset[str] = frozenset(
         {".pdf", ".docx", ".txt", ".md", ".markdown"}

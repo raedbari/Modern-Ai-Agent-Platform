@@ -266,6 +266,11 @@ class Message(Base):
             "tenant_id",
             "conversation_id",
         ),
+        UniqueConstraint(
+            "tenant_id",
+            "id",
+            name="uq_messages_tenant_id_id",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
@@ -292,6 +297,79 @@ class Message(Base):
 
     conversation: Mapped[Conversation] = relationship(
         back_populates="messages"
+    )
+
+
+class Handoff(Base):
+    """A tenant-scoped request for human follow-up."""
+
+    __tablename__ = "handoffs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "agent_id"],
+            ["agents.tenant_id", "agents.id"],
+            ondelete="CASCADE",
+            name="fk_handoffs_tenant_agent",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "conversation_id"],
+            ["conversations.tenant_id", "conversations.id"],
+            ondelete="CASCADE",
+            name="fk_handoffs_tenant_conversation",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "trigger_message_id"],
+            ["messages.tenant_id", "messages.id"],
+            ondelete="CASCADE",
+            name="fk_handoffs_tenant_trigger_message",
+        ),
+        CheckConstraint(
+            "status IN ('open', 'assigned', 'closed')",
+            name="ck_handoffs_status",
+        ),
+        Index(
+            "ix_handoffs_tenant_agent_status",
+            "tenant_id",
+            "agent_id",
+            "status",
+            "updated_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    conversation_id: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+    )
+    trigger_message_id: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+    )
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="open",
+        server_default="open",
+    )
+    assigned_to: Mapped[str | None] = mapped_column(String(255))
+    resolution_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -480,6 +558,106 @@ class DocumentModel(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+
+class IngestionJob(Base):
+    """Durable PostgreSQL-backed document ingestion job."""
+
+    __tablename__ = "ingestion_jobs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "agent_id"],
+            ["agents.tenant_id", "agents.id"],
+            ondelete="CASCADE",
+            name="fk_ingestion_jobs_tenant_agent",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "knowledge_base_id", "document_id"],
+            [
+                "documents.tenant_id",
+                "documents.knowledge_base_id",
+                "documents.id",
+            ],
+            ondelete="CASCADE",
+            name="fk_ingestion_jobs_tenant_kb_document",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'succeeded', 'failed')",
+            name="ck_ingestion_jobs_status",
+        ),
+        CheckConstraint(
+            "attempts >= 0 AND max_attempts > 0",
+            name="ck_ingestion_jobs_attempts",
+        ),
+        Index(
+            "ix_ingestion_jobs_claim",
+            "status",
+            "available_at",
+            "created_at",
+        ),
+        Index(
+            "ix_ingestion_jobs_tenant_agent",
+            "tenant_id",
+            "agent_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    knowledge_base_id: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+    )
+    document_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+    max_attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=3,
+        server_default="3",
+    )
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    locked_by: Mapped[str | None] = mapped_column(String(255))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
     )
 
 

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.app.ai.contracts import GenerationResult
 from backend.app.auth.context import ChatExecutionContext
 from backend.app.db.base import Base
-from backend.app.db.models import Agent, Message, Tenant
+from backend.app.db.models import Agent, Handoff, Message, Tenant
 from backend.app.domain.exceptions import RetrievalError
 from backend.app.domain.models.chunk import Chunk
 from backend.app.domain.ports.retrieval import (
@@ -188,8 +188,16 @@ async def test_required_mode_falls_back_without_calling_generation(
         assert result.answer_status == "insufficient_knowledge"
         assert result.sources == ()
         assert result.handoff_required is True
+        assert result.handoff_id is not None
         assert result.model == "platform-fallback"
         runtime.generate.assert_not_awaited()
+
+        async with sessions() as session:
+            handoff = await session.get(Handoff, result.handoff_id)
+        assert handoff is not None
+        assert handoff.tenant_id == "tenant-a"
+        assert handoff.agent_id == "agent-a"
+        assert handoff.reason == "insufficient_knowledge"
     finally:
         await engine.dispose()
 
@@ -215,6 +223,7 @@ async def test_required_mode_marks_retrieval_failure_as_temporary(
 
         assert result.answer_status == "temporarily_unavailable"
         assert result.handoff_required is True
+        assert result.handoff_id is not None
         runtime.generate.assert_not_awaited()
     finally:
         await engine.dispose()
@@ -269,5 +278,39 @@ async def test_disabled_mode_skips_retrieval(
         assert result.answer_status == "generated"
         assert retrieval.queries == []
         runtime.generate.assert_awaited_once()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_repeated_fallback_reuses_active_conversation_handoff(
+    tmp_path: Path,
+) -> None:
+    engine, sessions = await _database(tmp_path / "reuse-handoff.sqlite3")
+    runtime = _runtime()
+    retrieval = StubRetrieval([])
+    service = ChatService(runtime, retrieval=retrieval)
+    try:
+        async with sessions() as session:
+            first = await service.execute(
+                session=session,
+                context=_context(),
+                message="First unsupported question",
+                conversation_id=None,
+            )
+        async with sessions() as session:
+            second = await service.execute(
+                session=session,
+                context=_context(),
+                message="Second unsupported question",
+                conversation_id=first.conversation_id,
+            )
+
+        assert first.handoff_id is not None
+        assert second.handoff_id == first.handoff_id
+
+        async with sessions() as session:
+            handoffs = list((await session.scalars(select(Handoff))).all())
+        assert len(handoffs) == 1
     finally:
         await engine.dispose()

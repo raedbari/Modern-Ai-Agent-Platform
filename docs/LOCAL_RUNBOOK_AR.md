@@ -25,7 +25,8 @@ Docker، والـAPI لا يستمع إلا على `127.0.0.1` حتى نضيف �
 2. ينشئ `.env.compose` بكلمة مرور عشوائية إذا لم يكن موجودًا.
 3. يشغّل PostgreSQL 16 مع `pgvector 0.8.6`.
 4. يطبق Alembic migrations.
-5. يشغّل FastAPI ويتحقق من `/ready`.
+5. يشغّل FastAPI وWorker منفصلًا لمعالجة الملفات.
+6. يتحقق من `/ready` ومن استمرار تشغيل الـWorker.
 
 ## إنشاء أول عميل ووكيل
 
@@ -41,6 +42,39 @@ docker compose --env-file .env.compose -f compose.local.yaml exec api `
 
 سيظهر مفتاح API مرة واحدة فقط. لا تضع هذا المفتاح داخل `widget.js` أو أي
 كود يصل إلى متصفح العميل.
+
+## رفع الملفات بطريقة غير متزامنة
+
+للعملاء استخدم:
+
+```text
+POST /api/knowledge-bases/{knowledge_base_id}/document-jobs
+```
+
+يعيد الطلب `202` مع `job_id`. تابع الحالة عبر:
+
+```text
+GET /api/knowledge-bases/{knowledge_base_id}/document-jobs/{job_id}
+```
+
+الـAPI يحتفظ بالملف الأصلي داخل Volume خاص، والـWorker ينفذ Parsing وChunking
+وOllama Embeddings. لا ينتظر طلب HTTP انتهاء الفهرسة.
+
+## المحادثة والتحويل البشري
+
+المسار العام الوحيد للمحادثة هو:
+
+```text
+POST /api/chat
+```
+
+عندما يكون `knowledge_mode=required` ولا توجد معرفة كافية، لا يُستدعى نموذج
+التوليد. تُحفظ إحالة بشرية ويُعاد `handoff_id`. إدارتها تتم عبر:
+
+```text
+GET /api/handoffs
+PATCH /api/handoffs/{handoff_id}
+```
 
 ## التحقق
 
