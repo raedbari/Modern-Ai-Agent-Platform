@@ -49,8 +49,7 @@ async def bootstrap_customer(
     system_prompt: str | None,
     key_name: str,
     knowledge_mode: str = "required",
-    fallback_message: str | None = None,
-    handoff_enabled: bool = True,
+    contact_message: str | None = None,
     rotate_key: bool = False,
 ) -> CustomerBootstrapResult:
     """Create one tenant-scoped agent and issue a server-side API key.
@@ -70,7 +69,7 @@ async def bootstrap_customer(
         raise ValueError(
             "knowledge_mode must be required, preferred, or disabled."
         )
-    normalized_fallback = (fallback_message or "").strip() or None
+    normalized_contact = (contact_message or "").strip() or None
 
     tenant = await session.get(Tenant, tenant_id)
     tenant_created = tenant is None
@@ -88,8 +87,7 @@ async def bootstrap_customer(
             name=agent_name,
             system_prompt=normalized_prompt,
             knowledge_mode=knowledge_mode,
-            fallback_message=normalized_fallback,
-            handoff_enabled=handoff_enabled,
+            contact_message=normalized_contact,
         )
         session.add(agent)
         await session.flush()

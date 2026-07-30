@@ -154,13 +154,7 @@ class Agent(Base):
         default="preferred",
         server_default="preferred",
     )
-    fallback_message: Mapped[str | None] = mapped_column(Text)
-    handoff_enabled: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True,
-        server_default="true",
-    )
+    contact_message: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -266,11 +260,6 @@ class Message(Base):
             "tenant_id",
             "conversation_id",
         ),
-        UniqueConstraint(
-            "tenant_id",
-            "id",
-            name="uq_messages_tenant_id_id",
-        ),
     )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
@@ -297,79 +286,6 @@ class Message(Base):
 
     conversation: Mapped[Conversation] = relationship(
         back_populates="messages"
-    )
-
-
-class Handoff(Base):
-    """A tenant-scoped request for human follow-up."""
-
-    __tablename__ = "handoffs"
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ["tenant_id", "agent_id"],
-            ["agents.tenant_id", "agents.id"],
-            ondelete="CASCADE",
-            name="fk_handoffs_tenant_agent",
-        ),
-        ForeignKeyConstraint(
-            ["tenant_id", "conversation_id"],
-            ["conversations.tenant_id", "conversations.id"],
-            ondelete="CASCADE",
-            name="fk_handoffs_tenant_conversation",
-        ),
-        ForeignKeyConstraint(
-            ["tenant_id", "trigger_message_id"],
-            ["messages.tenant_id", "messages.id"],
-            ondelete="CASCADE",
-            name="fk_handoffs_tenant_trigger_message",
-        ),
-        CheckConstraint(
-            "status IN ('open', 'assigned', 'closed')",
-            name="ck_handoffs_status",
-        ),
-        Index(
-            "ix_handoffs_tenant_agent_status",
-            "tenant_id",
-            "agent_id",
-            "status",
-            "updated_at",
-        ),
-    )
-
-    id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    tenant_id: Mapped[str] = mapped_column(
-        String(128),
-        ForeignKey("tenants.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    conversation_id: Mapped[str] = mapped_column(
-        String(128),
-        nullable=False,
-    )
-    trigger_message_id: Mapped[str] = mapped_column(
-        String(128),
-        nullable=False,
-    )
-    reason: Mapped[str] = mapped_column(String(64), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="open",
-        server_default="open",
-    )
-    assigned_to: Mapped[str | None] = mapped_column(String(255))
-    resolution_note: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
     )
 
 

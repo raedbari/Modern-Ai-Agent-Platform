@@ -56,5 +56,3 @@ class ChatResponse(BaseModel):
         "temporarily_unavailable",
     ] = "generated"
     sources: list[ChatSource] = Field(default_factory=list)
-    handoff_required: bool = False
-    handoff_id: str | None = None

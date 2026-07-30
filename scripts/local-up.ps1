@@ -41,8 +41,16 @@ if ($embeddingModel -notin $availableModels) {
 }
 
 if (-not (Test-Path $composeEnv)) {
-    $passwordBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
-    $password = [Convert]::ToHexString($passwordBytes).ToLowerInvariant()
+    $passwordBytes = New-Object byte[] 32
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($passwordBytes)
+    } finally {
+        $rng.Dispose()
+    }
+    $password = (
+        [BitConverter]::ToString($passwordBytes) -replace "-", ""
+    ).ToLowerInvariant()
     @(
         "MAAP_POSTGRES_USER=maap"
         "MAAP_POSTGRES_PASSWORD=$password"

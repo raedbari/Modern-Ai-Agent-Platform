@@ -12,5 +12,4 @@ class ChatExecutionContext:
     agent_id: str
     system_prompt: str | None
     knowledge_mode: Literal["required", "preferred", "disabled"] = "preferred"
-    fallback_message: str | None = None
-    handoff_enabled: bool = True
+    contact_message: str | None = None

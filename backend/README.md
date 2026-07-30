@@ -162,7 +162,7 @@ parse, chunk, embed, and index it. Poll the returned job URL until its status is
 `succeeded` or `failed`. Jobs use PostgreSQL row locking with `SKIP LOCKED`,
 bounded retries, and stale-lock recovery.
 
-## Evidence-first chat and handoffs
+## Evidence-first chat and contact fallback
 
 The public chat route is `POST /api/chat`. Each agent has an independent
 knowledge policy:
@@ -171,15 +171,11 @@ knowledge policy:
 - `preferred`: uses evidence when available and may otherwise generate.
 - `disabled`: skips RAG for agents that intentionally do not use knowledge.
 
-Grounded responses include structured `sources`. When a `required` agent has
-no sufficient evidence, the API persists a tenant-scoped handoff and returns
-`handoff_required=true` plus `handoff_id`.
-
-Trusted server-side handoff operations:
-
-- `GET /api/handoffs`
-- `GET /api/handoffs/{handoff_id}`
-- `PATCH /api/handoffs/{handoff_id}`
+Grounded responses include structured `sources`. When a `required` chatbot has
+no sufficient evidence, the API does not call the generation model and returns
+the chatbot's configured `contact_message`. This message should contain the
+company's approved phone number, email address, or other customer-service
+channel. No human-response workflow is created inside the platform.
 
 ## Run the tests
 

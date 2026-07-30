@@ -29,11 +29,12 @@ def _parser() -> argparse.ArgumentParser:
         choices=("required", "preferred", "disabled"),
         default="required",
     )
-    parser.add_argument("--fallback-message")
     parser.add_argument(
-        "--no-handoff",
-        action="store_true",
-        help="Do not request human handoff when required knowledge is absent.",
+        "--contact-message",
+        help=(
+            "Exact message shown when verified knowledge is insufficient, "
+            "including the company's phone, email, or other contact channels."
+        ),
     )
     parser.add_argument("--key-name", default="local-server")
     parser.add_argument(
@@ -56,8 +57,7 @@ async def _run(args: argparse.Namespace) -> int:
                 system_prompt=args.system_prompt,
                 key_name=args.key_name,
                 knowledge_mode=args.knowledge_mode,
-                fallback_message=args.fallback_message,
-                handoff_enabled=not args.no_handoff,
+                contact_message=args.contact_message,
                 rotate_key=args.rotate_key,
             )
             await session.commit()

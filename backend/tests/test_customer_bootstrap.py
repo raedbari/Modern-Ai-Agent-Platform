@@ -38,6 +38,9 @@ async def test_bootstrap_creates_scoped_customer_and_hashed_key(
                 agent_id="agent-a",
                 agent_name="Agent A",
                 system_prompt="Use verified knowledge.",
+                contact_message=(
+                    "Contact support at support@example.test or 012345678."
+                ),
                 key_name="local-server",
             )
             await session.commit()
@@ -57,6 +60,9 @@ async def test_bootstrap_creates_scoped_customer_and_hashed_key(
         assert agent is not None
         assert agent.tenant_id == tenant.id
         assert agent.system_prompt == "Use verified knowledge."
+        assert agent.contact_message == (
+            "Contact support at support@example.test or 012345678."
+        )
         assert key is not None
         assert key.tenant_id == tenant.id
         assert result.api_key not in key.key_digest

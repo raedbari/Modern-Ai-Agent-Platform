@@ -28,7 +28,7 @@ Docker، والـAPI لا يستمع إلا على `127.0.0.1` حتى نضيف �
 5. يشغّل FastAPI وWorker منفصلًا لمعالجة الملفات.
 6. يتحقق من `/ready` ومن استمرار تشغيل الـWorker.
 
-## إنشاء أول عميل ووكيل
+## إنشاء أول عميل وChatbot
 
 ```powershell
 docker compose --env-file .env.compose -f compose.local.yaml exec api `
@@ -36,8 +36,9 @@ docker compose --env-file .env.compose -f compose.local.yaml exec api `
   --tenant-id tenant-demo `
   --tenant-name "Demo Tenant" `
   --agent-id agent-demo `
-  --agent-name "Demo Agent" `
-  --system-prompt "أجب اعتمادًا على المعرفة الموثقة فقط."
+  --agent-name "Demo Chatbot" `
+  --system-prompt "أجب اعتمادًا على المعرفة الموثقة فقط." `
+  --contact-message "لا أملك معلومات مؤكدة كافية. تواصل مع الشركة على 012345678 أو support@example.com."
 ```
 
 سيظهر مفتاح API مرة واحدة فقط. لا تضع هذا المفتاح داخل `widget.js` أو أي
@@ -60,7 +61,7 @@ GET /api/knowledge-bases/{knowledge_base_id}/document-jobs/{job_id}
 الـAPI يحتفظ بالملف الأصلي داخل Volume خاص، والـWorker ينفذ Parsing وChunking
 وOllama Embeddings. لا ينتظر طلب HTTP انتهاء الفهرسة.
 
-## المحادثة والتحويل البشري
+## المحادثة ورسالة التواصل
 
 المسار العام الوحيد للمحادثة هو:
 
@@ -69,12 +70,9 @@ POST /api/chat
 ```
 
 عندما يكون `knowledge_mode=required` ولا توجد معرفة كافية، لا يُستدعى نموذج
-التوليد. تُحفظ إحالة بشرية ويُعاد `handoff_id`. إدارتها تتم عبر:
-
-```text
-GET /api/handoffs
-PATCH /api/handoffs/{handoff_id}
-```
+التوليد، ولا تُنشأ أي عملية تحويل أو رد بشري داخل المنصة. يعيد الـChatbot نص
+`contact_message` الخاص به، وفيه أرقام الشركة أو بريدها أو قنوات التواصل
+المعتمدة.
 
 ## التحقق
 

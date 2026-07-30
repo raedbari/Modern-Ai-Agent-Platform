@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.app.ai.contracts import GenerationResult
 from backend.app.auth.context import ChatExecutionContext
 from backend.app.db.base import Base
-from backend.app.db.models import Agent, Handoff, Message, Tenant
+from backend.app.db.models import Agent, Message, Tenant
 from backend.app.domain.exceptions import RetrievalError
 from backend.app.domain.models.chunk import Chunk
 from backend.app.domain.ports.retrieval import (
@@ -99,16 +99,14 @@ def _runtime() -> AsyncMock:
 def _context(
     *,
     knowledge_mode: str = "required",
-    fallback_message: str | None = None,
-    handoff_enabled: bool = True,
+    contact_message: str | None = None,
 ) -> ChatExecutionContext:
     return ChatExecutionContext(
         tenant_id="tenant-a",
         agent_id="agent-a",
         system_prompt="Be precise.",
         knowledge_mode=knowledge_mode,
-        fallback_message=fallback_message,
-        handoff_enabled=handoff_enabled,
+        contact_message=contact_message,
     )
 
 
@@ -133,7 +131,6 @@ async def test_required_mode_generates_with_bounded_verified_sources(
             )
 
         assert result.answer_status == "grounded"
-        assert result.handoff_required is False
         assert len(result.sources) == 1
         assert result.sources[0].citation_id == "S1"
         assert result.sources[0].page_number == 2
@@ -178,26 +175,31 @@ async def test_required_mode_falls_back_without_calling_generation(
             ).execute(
                 session=session,
                 context=_context(
-                    fallback_message="سأحوّل طلبك إلى الفريق المختص.",
+                    contact_message=(
+                        "لا أملك معلومة مؤكدة. تواصل مع الشركة على 012345678."
+                    ),
                 ),
                 message="Give me an unsupported price.",
                 conversation_id=None,
             )
 
-        assert result.reply == "سأحوّل طلبك إلى الفريق المختص."
+        assert result.reply == (
+            "لا أملك معلومة مؤكدة. تواصل مع الشركة على 012345678."
+        )
         assert result.answer_status == "insufficient_knowledge"
         assert result.sources == ()
-        assert result.handoff_required is True
-        assert result.handoff_id is not None
         assert result.model == "platform-fallback"
         runtime.generate.assert_not_awaited()
 
         async with sessions() as session:
-            handoff = await session.get(Handoff, result.handoff_id)
-        assert handoff is not None
-        assert handoff.tenant_id == "tenant-a"
-        assert handoff.agent_id == "agent-a"
-        assert handoff.reason == "insufficient_knowledge"
+            assistant = await session.scalar(
+                select(Message).where(Message.role == "assistant")
+            )
+        assert assistant is not None
+        assert assistant.metadata_json == {
+            "answer_status": "insufficient_knowledge",
+            "sources": [],
+        }
     finally:
         await engine.dispose()
 
@@ -222,8 +224,7 @@ async def test_required_mode_marks_retrieval_failure_as_temporary(
             )
 
         assert result.answer_status == "temporarily_unavailable"
-        assert result.handoff_required is True
-        assert result.handoff_id is not None
+        assert "temporarily unavailable" in result.reply
         runtime.generate.assert_not_awaited()
     finally:
         await engine.dispose()
@@ -250,7 +251,6 @@ async def test_preferred_mode_can_generate_without_evidence(
 
         assert result.answer_status == "generated"
         assert result.sources == ()
-        assert result.handoff_required is False
         runtime.generate.assert_awaited_once()
     finally:
         await engine.dispose()
@@ -283,34 +283,48 @@ async def test_disabled_mode_skips_retrieval(
 
 
 @pytest.mark.asyncio
-async def test_repeated_fallback_reuses_active_conversation_handoff(
+async def test_repeated_fallback_uses_contact_message_without_workflow_state(
     tmp_path: Path,
 ) -> None:
-    engine, sessions = await _database(tmp_path / "reuse-handoff.sqlite3")
+    engine, sessions = await _database(tmp_path / "repeat-contact.sqlite3")
     runtime = _runtime()
     retrieval = StubRetrieval([])
     service = ChatService(runtime, retrieval=retrieval)
+    context = _context(
+        contact_message="للمساعدة تواصل عبر support@example.test."
+    )
     try:
         async with sessions() as session:
             first = await service.execute(
                 session=session,
-                context=_context(),
+                context=context,
                 message="First unsupported question",
                 conversation_id=None,
             )
         async with sessions() as session:
             second = await service.execute(
                 session=session,
-                context=_context(),
+                context=context,
                 message="Second unsupported question",
                 conversation_id=first.conversation_id,
             )
 
-        assert first.handoff_id is not None
-        assert second.handoff_id == first.handoff_id
+        assert first.reply == "للمساعدة تواصل عبر support@example.test."
+        assert second.reply == first.reply
+        runtime.generate.assert_not_awaited()
 
         async with sessions() as session:
-            handoffs = list((await session.scalars(select(Handoff))).all())
-        assert len(handoffs) == 1
+            assistant_messages = list(
+                (
+                    await session.scalars(
+                        select(Message).where(Message.role == "assistant")
+                    )
+                ).all()
+            )
+        assert len(assistant_messages) == 2
+        assert all(
+            "handoff_id" not in (message.metadata_json or {})
+            for message in assistant_messages
+        )
     finally:
         await engine.dispose()
