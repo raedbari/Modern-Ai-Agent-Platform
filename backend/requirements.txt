@@ -7,3 +7,13 @@ langchain>=1.0,<2.0
 langchain-deepseek>=1.0,<2.0
 langchain-ollama>=1.0,<2.0
 langgraph>=1.0,<2.0
+
+# Document parsing
+pypdf>=6.14,<7.0
+python-docx>=1.2,<2.0
+
+# Hashing
+xxhash>=3.8,<4.0
+
+# Test async support
+pytest-asyncio>=0.24,<1.0
