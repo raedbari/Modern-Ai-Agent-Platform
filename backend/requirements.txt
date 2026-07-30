@@ -15,5 +15,11 @@ python-docx>=1.2,<2.0
 # Hashing
 xxhash>=3.8,<4.0
 
+# Database
+sqlalchemy>=2.0,<3.0
+alembic>=1.13,<2.0
+asyncpg>=0.29,<1.0
+aiosqlite>=0.20,<1.0
+
 # Test async support
-pytest-asyncio>=0.24,<1.0
+pytest-asyncio>=0.24,<2.0

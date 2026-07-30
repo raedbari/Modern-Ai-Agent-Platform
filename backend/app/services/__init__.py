@@ -1,1 +1,1 @@
-"""Service layer — business logic and orchestration."""
+"""Application services."""

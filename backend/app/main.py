@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from backend.app.api.routes.chat import router as chat_router
 from backend.app.api.routes.health import router as health_router
 from backend.app.core.config import get_settings
 
@@ -16,6 +17,7 @@ def create_app() -> FastAPI:
         debug=settings.debug,
     )
     application.include_router(health_router)
+    application.include_router(chat_router)
 
     return application
 

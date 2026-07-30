@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     ollama_embedding_model: str = "qwen3-embedding:0.6b"
     embedding_dimension: int = Field(default=1024, gt=0)
     ollama_timeout_seconds: float = Field(default=30.0, gt=0)
+    database_url: str = (
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/maap"
+    )
 
     # ------------------------------------------------------------------ #
     # File processing                                                      #
