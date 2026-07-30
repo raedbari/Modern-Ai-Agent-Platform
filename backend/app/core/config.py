@@ -31,6 +31,21 @@ class Settings(BaseSettings):
     embedding_dimension: int = Field(default=1024, gt=0)
     ollama_timeout_seconds: float = Field(default=30.0, gt=0)
 
+    # Database settings
+    database_url: str = "sqlite:///./maap.db"
+
+    # Security settings
+    api_key_header: str = "X-API-Key"
+    rate_limit_per_minute: int = Field(default=60, gt=0)
+    max_message_length: int = Field(default=10000, gt=0)
+    max_conversation_history: int = Field(default=50, gt=0)
+    
+    # CORS settings
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    cors_allow_credentials: bool = True
+    cors_allow_methods: list[str] = Field(default_factory=lambda: ["GET", "POST", "PUT", "DELETE"])
+    cors_allow_headers: list[str] = Field(default_factory=lambda: ["*"])
+
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
