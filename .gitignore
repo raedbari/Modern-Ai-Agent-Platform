@@ -24,3 +24,6 @@ frontend_failed_20260728_193615/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Kiro IDE configuration (local only)
+.kiro/
