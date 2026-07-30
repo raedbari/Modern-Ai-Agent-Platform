@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.models import (
     EMBEDDING_DIMENSION,
+    Agent,
     AgentKnowledgeBase,
     ChunkModel,
     DocumentModel,
@@ -186,6 +187,24 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         if result.rowcount != 1:
             raise DocumentNotFoundError("Document not found.")
         await self._session.flush()
+
+    async def delete_by_id(
+        self,
+        document_id: str,
+        tenant_id: str,
+        knowledge_base_id: str,
+    ) -> bool:
+        """Delete one document inside its complete tenant/KB scope."""
+
+        result = await self._session.execute(
+            delete(DocumentModel).where(
+                DocumentModel.id == document_id,
+                DocumentModel.tenant_id == tenant_id,
+                DocumentModel.knowledge_base_id == knowledge_base_id,
+            )
+        )
+        await self._session.flush()
+        return result.rowcount == 1
 
     async def _get_row(
         self,
@@ -403,6 +422,97 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def create(
+        self,
+        knowledge_base: KnowledgeBase,
+        agent_id: str,
+    ) -> KnowledgeBase:
+        """Create a knowledge base and assign it to one tenant agent."""
+
+        agent_exists = await self._session.scalar(
+            select(Agent.id)
+            .where(
+                Agent.id == agent_id,
+                Agent.tenant_id == knowledge_base.tenant_id,
+                Agent.is_active.is_(True),
+            )
+            .limit(1)
+        )
+        if agent_exists is None:
+            raise ValueError("The agent is unavailable for this tenant.")
+
+        row = KnowledgeBaseModel(
+            id=knowledge_base.id,
+            tenant_id=knowledge_base.tenant_id,
+            name=knowledge_base.name,
+            description=knowledge_base.description,
+            status=knowledge_base.status.value,
+        )
+        self._session.add(row)
+        await self._session.flush()
+        self._session.add(
+            AgentKnowledgeBase(
+                tenant_id=knowledge_base.tenant_id,
+                agent_id=agent_id,
+                knowledge_base_id=knowledge_base.id,
+            )
+        )
+        await self._session.flush()
+        return _knowledge_base_to_domain(row)
+
+    async def update(self, knowledge_base: KnowledgeBase) -> KnowledgeBase:
+        """Update one tenant-owned knowledge base."""
+
+        row = await self._session.scalar(
+            select(KnowledgeBaseModel).where(
+                KnowledgeBaseModel.id == knowledge_base.id,
+                KnowledgeBaseModel.tenant_id == knowledge_base.tenant_id,
+            )
+        )
+        if row is None:
+            raise ValueError("Knowledge base not found.")
+
+        row.name = knowledge_base.name
+        row.description = knowledge_base.description
+        row.status = knowledge_base.status.value
+        await self._session.flush()
+        return _knowledge_base_to_domain(row)
+
+    async def delete_by_id(
+        self,
+        knowledge_base_id: str,
+        tenant_id: str,
+    ) -> bool:
+        """Delete one knowledge base inside its tenant scope."""
+
+        result = await self._session.execute(
+            delete(KnowledgeBaseModel).where(
+                KnowledgeBaseModel.id == knowledge_base_id,
+                KnowledgeBaseModel.tenant_id == tenant_id,
+            )
+        )
+        await self._session.flush()
+        return result.rowcount == 1
+
+    async def is_assigned_to_agent(
+        self,
+        knowledge_base_id: str,
+        tenant_id: str,
+        agent_id: str,
+    ) -> bool:
+        """Check the tenant-safe assignment used by management endpoints."""
+
+        value = await self._session.scalar(
+            select(AgentKnowledgeBase.knowledge_base_id)
+            .where(
+                AgentKnowledgeBase.knowledge_base_id == knowledge_base_id,
+                AgentKnowledgeBase.tenant_id == tenant_id,
+                AgentKnowledgeBase.agent_id == agent_id,
+            )
+            .limit(1)
+        )
+        return value is not None
 
     async def get_by_id(
         self,

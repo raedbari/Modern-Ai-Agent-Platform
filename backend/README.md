@@ -76,6 +76,31 @@ Open `http://127.0.0.1:8000/health`. The endpoint returns:
 Interactive API documentation is available at
 `http://127.0.0.1:8000/docs`.
 
+## Knowledge API
+
+All knowledge routes require the same trusted headers as chat:
+
+```text
+X-API-Key: maap_<key-id>.<secret>
+X-Agent-ID: <active-agent-id>
+```
+
+The API never accepts `tenant_id` or `agent_id` from request bodies. A newly
+created knowledge base is assigned to the selected agent automatically.
+
+Available operations:
+
+- `POST /api/knowledge-bases`
+- `GET /api/knowledge-bases`
+- `GET|PATCH|DELETE /api/knowledge-bases/{knowledge_base_id}`
+- `POST|GET /api/knowledge-bases/{knowledge_base_id}/documents`
+- `GET|DELETE /api/knowledge-bases/{knowledge_base_id}/documents/{document_id}`
+- `POST /api/knowledge-bases/{knowledge_base_id}/documents/{document_id}/reindex`
+
+Document upload and reindex requests use `multipart/form-data` with a required
+`file` field and an optional `source_name`. Reindexing requires the source file
+again because raw uploads are not retained after parsing.
+
 ## Run the tests
 
 From the project root:
