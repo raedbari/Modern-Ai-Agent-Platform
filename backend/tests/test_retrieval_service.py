@@ -17,6 +17,11 @@ from __future__ import annotations
 
 import pytest
 
+from backend.app.ai.contracts import (
+    EmbeddingRequest,
+    EmbeddingResult as ProviderEmbeddingResult,
+)
+from backend.app.ai.ports import EmbeddingProvider
 from backend.app.domain.exceptions import (
     EmbeddingError,
     RetrievalError,
@@ -25,7 +30,6 @@ from backend.app.domain.exceptions import (
 from backend.app.domain.models.chunk import Chunk
 from backend.app.domain.models.enums import KnowledgeBaseStatus
 from backend.app.domain.models.knowledge_base import KnowledgeBase
-from backend.app.domain.ports.embedding_provider import EmbeddingProvider
 from backend.app.domain.ports.repositories import ChunkRepository, KnowledgeBaseRepository
 from backend.app.domain.ports.retrieval import RetrievalQuery, RetrievedChunk
 from backend.app.services.knowledge.retrieval_service import RetrievalService
@@ -102,26 +106,30 @@ class StubEmbeddingProvider(EmbeddingProvider):
         self.call_count = 0
         self.last_text: str | None = None
 
-    async def embed_text(self, text: str) -> list[float]:
+    async def embed(
+        self,
+        request: EmbeddingRequest,
+    ) -> ProviderEmbeddingResult:
         self.call_count += 1
-        self.last_text = text
-        return list(self._vector)
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        return [list(self._vector) for _ in texts]
+        self.last_text = request.texts[0]
+        return ProviderEmbeddingResult(
+            embeddings=[list(self._vector) for _ in request.texts],
+            model="test-embedding",
+            dimension=len(self._vector),
+        )
 
 
 class FailingEmbeddingProvider(EmbeddingProvider):
-    async def embed_text(self, text: str) -> list[float]:
-        raise EmbeddingError("Provider is down.")
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    async def embed(
+        self,
+        request: EmbeddingRequest,
+    ) -> ProviderEmbeddingResult:
         raise EmbeddingError("Provider is down.")
 
 
 class StubKBRepository(KnowledgeBaseRepository):
     def __init__(self, kbs: list[KnowledgeBase] | None = None) -> None:
-        self._kbs = kbs or [_make_kb()]
+        self._kbs = [_make_kb()] if kbs is None else kbs
 
     async def get_by_id(self, knowledge_base_id: str, tenant_id: str):
         for kb in self._kbs:

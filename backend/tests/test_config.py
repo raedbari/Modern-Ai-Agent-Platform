@@ -16,6 +16,13 @@ RUNTIME_ENVIRONMENT_VARIABLES = (
     "MAAP_OLLAMA_EMBEDDING_MODEL",
     "MAAP_EMBEDDING_DIMENSION",
     "MAAP_OLLAMA_TIMEOUT_SECONDS",
+    "MAAP_MAX_UPLOAD_SIZE_BYTES",
+    "MAAP_MAX_PDF_PAGES",
+    "MAAP_CHUNK_SIZE",
+    "MAAP_CHUNK_OVERLAP",
+    "MAAP_EMBEDDING_BATCH_SIZE",
+    "MAAP_RETRIEVAL_TOP_K",
+    "MAAP_RETRIEVAL_MIN_SIMILARITY",
 )
 
 
@@ -37,6 +44,9 @@ def test_runtime_settings_have_expected_defaults():
     assert settings.deepseek_max_retries == 2
     assert settings.ollama_embedding_model == "qwen3-embedding:0.6b"
     assert settings.embedding_dimension == 1024
+    assert settings.embedding_batch_size == 32
+    assert ".md" in settings.allowed_extensions
+    assert ".html" not in settings.allowed_extensions
 
 
 def test_runtime_settings_can_be_overridden_from_environment(
@@ -72,3 +82,12 @@ def test_deepseek_api_key_is_masked():
     assert "test-secret-value" not in repr(settings)
     assert settings.deepseek_api_key is not None
     assert settings.deepseek_api_key.get_secret_value() == "test-secret-value"
+
+
+def test_chunk_overlap_must_be_smaller_than_chunk_size():
+    with pytest.raises(ValidationError, match="chunk_overlap"):
+        Settings(
+            chunk_size=100,
+            chunk_overlap=100,
+            _env_file=None,
+        )

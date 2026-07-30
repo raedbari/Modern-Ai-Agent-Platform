@@ -349,14 +349,14 @@ class TestDefaultParserFactory:
         parser = self.factory.get_parser(mime_type="APPLICATION/PDF")
         assert isinstance(parser, PdfParser)
 
-    # --- MIME takes precedence over extension ---
+    # --- MIME and extension must agree ---
 
-    def test_mime_takes_precedence_over_extension(self) -> None:
-        """When MIME resolves, extension is ignored."""
-        parser = self.factory.get_parser(
-            mime_type="application/pdf", extension=".txt"
-        )
-        assert isinstance(parser, PdfParser)
+    def test_mime_extension_mismatch_is_rejected(self) -> None:
+        with pytest.raises(UnsupportedDocumentTypeError):
+            self.factory.get_parser(
+                mime_type="application/pdf",
+                extension=".txt",
+            )
 
     # --- Unsupported types ---
 
@@ -372,12 +372,12 @@ class TestDefaultParserFactory:
         with pytest.raises(ValueError):
             self.factory.get_parser()
 
-    def test_unknown_mime_falls_back_to_extension(self) -> None:
-        """Unknown MIME falls through to extension resolution."""
-        parser = self.factory.get_parser(
-            mime_type="application/octet-stream", extension=".pdf"
-        )
-        assert isinstance(parser, PdfParser)
+    def test_unknown_mime_with_known_extension_is_rejected(self) -> None:
+        with pytest.raises(UnsupportedDocumentTypeError):
+            self.factory.get_parser(
+                mime_type="application/octet-stream",
+                extension=".pdf",
+            )
 
     def test_unknown_mime_and_unknown_extension_raises(self) -> None:
         with pytest.raises(UnsupportedDocumentTypeError):

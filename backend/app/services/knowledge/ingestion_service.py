@@ -1,4 +1,273 @@
-"""Document ingestion and processing service.
+"""Application service coordinating one complete document ingestion."""
 
-TODO: Implement document parsing, chunking, and embedding generation orchestration.
-"""
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass
+from pathlib import Path
+from uuid import uuid4
+
+from backend.app.domain.exceptions import (
+    DomainError,
+    EmbeddingError,
+    KnowledgeBaseNotFoundError,
+    ParseError,
+    UnsupportedDocumentTypeError,
+)
+from backend.app.domain.models.document import Document
+from backend.app.domain.models.enums import (
+    DocumentProcessingStatus,
+    KnowledgeBaseStatus,
+)
+from backend.app.domain.ports.parser import (
+    ParsedDocument,
+    ParserFactory,
+    SupportedDocumentType,
+)
+from backend.app.domain.ports.repositories import (
+    ChunkRepository,
+    ChunkWrite,
+    DocumentRepository,
+    KnowledgeBaseRepository,
+)
+from backend.app.services.knowledge.chunking_service import ChunkingService
+from backend.app.services.knowledge.embedding_service import EmbeddingService
+
+
+@dataclass(frozen=True)
+class IngestionRequest:
+    """Validated-by-service input for one tenant-scoped upload."""
+
+    content: bytes
+    filename: str
+    mime_type: str
+    tenant_id: str
+    agent_id: str
+    knowledge_base_id: str
+    source_name: str = "upload"
+
+
+@dataclass(frozen=True)
+class IngestionResult:
+    """Outcome of ingestion or an idempotent duplicate upload."""
+
+    document: Document
+    chunks_persisted: int
+    duplicate: bool = False
+
+
+class IngestionService:
+    """Validate, parse, chunk, embed, and persist one uploaded document."""
+
+    def __init__(
+        self,
+        *,
+        parser_factory: ParserFactory,
+        chunking_service: ChunkingService,
+        embedding_service: EmbeddingService,
+        document_repository: DocumentRepository,
+        chunk_repository: ChunkRepository,
+        knowledge_base_repository: KnowledgeBaseRepository,
+        max_upload_size_bytes: int,
+        max_pdf_pages: int,
+        allowed_extensions: frozenset[str],
+        allowed_mime_types: frozenset[str],
+    ) -> None:
+        if max_upload_size_bytes <= 0:
+            raise ValueError("max_upload_size_bytes must be positive.")
+        if max_pdf_pages <= 0:
+            raise ValueError("max_pdf_pages must be positive.")
+        self._parser_factory = parser_factory
+        self._chunking_service = chunking_service
+        self._embedding_service = embedding_service
+        self._document_repository = document_repository
+        self._chunk_repository = chunk_repository
+        self._knowledge_base_repository = knowledge_base_repository
+        self._max_upload_size_bytes = max_upload_size_bytes
+        self._max_pdf_pages = max_pdf_pages
+        self._allowed_extensions = {
+            self._normalise_extension(value) for value in allowed_extensions
+        }
+        self._allowed_mime_types = {
+            self._normalise_mime(value) for value in allowed_mime_types
+        }
+
+    async def ingest(self, request: IngestionRequest) -> IngestionResult:
+        """Run the ingestion pipeline with tenant and agent authorization."""
+        extension, mime_type = self._validate_upload(request)
+        await self._require_authorized_knowledge_base(request)
+
+        content_hash = hashlib.sha256(request.content).hexdigest()
+        existing = await self._document_repository.get_by_content_hash(
+            content_hash=content_hash,
+            tenant_id=request.tenant_id,
+            knowledge_base_id=request.knowledge_base_id,
+        )
+        if existing is not None:
+            return IngestionResult(
+                document=existing,
+                chunks_persisted=0,
+                duplicate=True,
+            )
+
+        document = Document(
+            id=str(uuid4()),
+            tenant_id=request.tenant_id,
+            knowledge_base_id=request.knowledge_base_id,
+            agent_id=request.agent_id,
+            source_name=request.source_name,
+            original_filename=request.filename,
+            mime_type=mime_type,
+            file_size_bytes=len(request.content),
+            content_hash=content_hash,
+        )
+        document = await self._document_repository.create(document)
+
+        try:
+            await self._set_status(
+                document,
+                DocumentProcessingStatus.PROCESSING,
+            )
+            parser = self._parser_factory.get_parser(
+                mime_type=mime_type,
+                extension=extension,
+            )
+            parsed = await parser.parse(request.content, request.filename)
+            self._enforce_pdf_page_limit(parsed)
+
+            chunks = self._chunking_service.chunk_document(
+                parsed,
+                document_id=document.id,
+                tenant_id=request.tenant_id,
+                agent_id=request.agent_id,
+                knowledge_base_id=request.knowledge_base_id,
+                source_name=request.source_name,
+            )
+            embedding_result = await self._embedding_service.embed_chunks(chunks)
+            if embedding_result.has_failures:
+                raise EmbeddingError(
+                    "One or more chunks could not be embedded."
+                )
+
+            records = [
+                ChunkWrite(
+                    chunk=embedded.chunk,
+                    embedding=tuple(embedded.embedding),
+                )
+                for embedded in embedding_result.embedded
+            ]
+            persisted = await self._chunk_repository.create_many(records)
+            if len(persisted) != len(records):
+                raise DomainError(
+                    "The chunk repository did not persist every record."
+                )
+
+            await self._set_status(document, DocumentProcessingStatus.READY)
+            return IngestionResult(
+                document=document,
+                chunks_persisted=len(persisted),
+            )
+        except Exception:
+            await self._set_status(
+                document,
+                DocumentProcessingStatus.FAILED,
+                failure_reason="Document processing failed.",
+            )
+            raise
+
+    def _validate_upload(
+        self,
+        request: IngestionRequest,
+    ) -> tuple[str, str]:
+        for field_name, value in (
+            ("filename", request.filename),
+            ("mime_type", request.mime_type),
+            ("tenant_id", request.tenant_id),
+            ("agent_id", request.agent_id),
+            ("knowledge_base_id", request.knowledge_base_id),
+            ("source_name", request.source_name),
+        ):
+            if not value or not value.strip():
+                raise ValueError(f"{field_name} must not be empty.")
+        if not request.content:
+            raise ParseError("The uploaded document is empty.")
+        if len(request.content) > self._max_upload_size_bytes:
+            raise ParseError("The uploaded document exceeds the size limit.")
+
+        extension = self._normalise_extension(Path(request.filename).suffix)
+        mime_type = self._normalise_mime(request.mime_type)
+        if extension not in self._allowed_extensions:
+            raise UnsupportedDocumentTypeError(
+                mime_type=mime_type,
+                extension=extension,
+            )
+        if mime_type not in self._allowed_mime_types:
+            raise UnsupportedDocumentTypeError(
+                mime_type=mime_type,
+                extension=extension,
+            )
+
+        # The factory rejects a known extension paired with an incompatible
+        # MIME type before any parser handles attacker-controlled bytes.
+        self._parser_factory.get_parser(
+            mime_type=mime_type,
+            extension=extension,
+        )
+        return extension, mime_type
+
+    async def _require_authorized_knowledge_base(
+        self,
+        request: IngestionRequest,
+    ) -> None:
+        knowledge_bases = (
+            await self._knowledge_base_repository.list_for_agent(
+                agent_id=request.agent_id,
+                tenant_id=request.tenant_id,
+            )
+        )
+        authorized = any(
+            knowledge_base.id == request.knowledge_base_id
+            and knowledge_base.tenant_id == request.tenant_id
+            and knowledge_base.status == KnowledgeBaseStatus.ACTIVE
+            for knowledge_base in knowledge_bases
+        )
+        if not authorized:
+            raise KnowledgeBaseNotFoundError(
+                "The knowledge base is unavailable for this agent."
+            )
+
+    def _enforce_pdf_page_limit(
+        self,
+        parsed_document: ParsedDocument,
+    ) -> None:
+        if (
+            parsed_document.document_type == SupportedDocumentType.PDF
+            and len(parsed_document.pages) > self._max_pdf_pages
+        ):
+            raise ParseError("The PDF exceeds the configured page limit.")
+
+    async def _set_status(
+        self,
+        document: Document,
+        status: DocumentProcessingStatus,
+        failure_reason: str | None = None,
+    ) -> None:
+        await self._document_repository.update_processing_status(
+            document_id=document.id,
+            tenant_id=document.tenant_id,
+            status=status,
+            failure_reason=failure_reason,
+        )
+        document.status = status
+        document.failure_reason = failure_reason
+
+    @staticmethod
+    def _normalise_extension(extension: str) -> str:
+        value = extension.strip().lower()
+        if value and not value.startswith("."):
+            value = f".{value}"
+        return value
+
+    @staticmethod
+    def _normalise_mime(mime_type: str) -> str:
+        return mime_type.split(";", 1)[0].strip().lower()

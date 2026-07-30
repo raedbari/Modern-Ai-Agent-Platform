@@ -10,8 +10,8 @@ Retrieval flow
 2. **Resolve KBs** — load all KnowledgeBases assigned to the agent via
    ``KnowledgeBaseRepository.list_for_agent()``.  Filter to ACTIVE only.
 3. **Guard** — raise ``RetrievalValidationError`` when no active KB exists.
-4. **Embed** — convert the query string to a dense vector using
-   ``EmbeddingProvider.embed_text()``.  Raise ``EmbeddingError`` on failure.
+4. **Embed** — convert the tenant-scoped query to a dense vector using
+   ``EmbeddingProvider.embed()``.  Raise ``EmbeddingError`` on failure.
 5. **Search per KB** — call ``ChunkRepository.semantic_search()`` once per
    active KB.  Each call is already scoped by ``tenant_id``, ``agent_id``,
    and ``knowledge_base_id``.  Raise ``RetrievalError`` on repository failure.
@@ -47,13 +47,14 @@ Design constraints
 
 from __future__ import annotations
 
+from backend.app.ai.contracts import EmbeddingRequest, RuntimeContext
+from backend.app.ai.ports import EmbeddingProvider
 from backend.app.domain.exceptions import (
     EmbeddingError,
     RetrievalError,
     RetrievalValidationError,
 )
 from backend.app.domain.models.enums import KnowledgeBaseStatus
-from backend.app.domain.ports.embedding_provider import EmbeddingProvider
 from backend.app.domain.ports.repositories import (
     ChunkRepository,
     KnowledgeBaseRepository,
@@ -72,7 +73,7 @@ class RetrievalService(RetrievalPort):
     with any compliant implementations of the three injected interfaces.
 
     Args:
-        embedding_provider:    Provides ``embed_text()`` for query vectorisation.
+        embedding_provider:    Provides ``embed()`` for query vectorisation.
         chunk_repository:      Provides ``semantic_search()`` against the vector
                                store.
         kb_repository:         Provides ``list_for_agent()`` to resolve which
@@ -115,7 +116,7 @@ class RetrievalService(RetrievalPort):
 
         active_kb_ids = await self._resolve_active_kb_ids(query)
 
-        query_embedding = await self._embed_query(query.query)
+        query_embedding = await self._embed_query(query)
 
         raw_results = await self._search_all_kbs(
             query_embedding=query_embedding,
@@ -184,11 +185,34 @@ class RetrievalService(RetrievalPort):
             )
         return active_ids
 
-    async def _embed_query(self, text: str) -> list[float]:
-        """Embed the query string.  Propagates ``EmbeddingError`` unchanged."""
-        # EmbeddingError is a domain exception and must reach the caller
-        # per the RetrievalPort contract.
-        return await self._embedding_provider.embed_text(text)
+    async def _embed_query(self, query: RetrievalQuery) -> list[float]:
+        """Embed one tenant-scoped query through the shared AI provider port."""
+        request = EmbeddingRequest(
+            context=RuntimeContext(
+                tenant_id=query.tenant_id,
+                agent_id=query.agent_id,
+            ),
+            texts=[query.query],
+        )
+        try:
+            result = await self._embedding_provider.embed(request)
+        except EmbeddingError:
+            raise
+        except Exception as exc:
+            raise EmbeddingError(
+                "The query could not be embedded."
+            ) from exc
+
+        if len(result.embeddings) != 1:
+            raise EmbeddingError(
+                "The embedding provider returned an invalid query result."
+            )
+        vector = result.embeddings[0]
+        if len(vector) != result.dimension:
+            raise EmbeddingError(
+                "The embedding provider returned an invalid query dimension."
+            )
+        return vector
 
     async def _search_all_kbs(
         self,

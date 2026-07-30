@@ -10,17 +10,18 @@ Verifies:
 import pytest
 from abc import ABC
 
+from backend.app.ai.ports import EmbeddingProvider
 from backend.app.domain.models.chunk import Chunk
 from backend.app.domain.models.document import Document
 from backend.app.domain.models.enums import DocumentProcessingStatus
 from backend.app.domain.models.knowledge_base import KnowledgeBase
 
 from backend.app.domain.ports.repositories import (
+    ChunkWrite,
     ChunkRepository,
     DocumentRepository,
     KnowledgeBaseRepository,
 )
-from backend.app.domain.ports.embedding_provider import EmbeddingProvider
 from backend.app.domain.ports.retrieval import (
     RetrievalPort,
     RetrievalQuery,
@@ -97,15 +98,8 @@ class TestKnowledgeBaseRepository:
 
 
 class TestEmbeddingProvider:
-    def test_is_abstract(self) -> None:
-        with pytest.raises(TypeError):
-            EmbeddingProvider()  # type: ignore
-
-    def test_is_abc(self) -> None:
-        assert issubclass(EmbeddingProvider, ABC)
-
     def test_has_expected_methods(self) -> None:
-        methods = {"embed_text", "embed_batch"}
+        methods = {"embed"}
         assert methods <= set(dir(EmbeddingProvider))
 
 
@@ -206,8 +200,8 @@ class TestPortsPackageExports:
         """All port interfaces and DTOs are re-exported from __init__."""
         from backend.app.domain.ports import (
             ChunkRepository,
+            ChunkWrite,
             DocumentRepository,
-            EmbeddingProvider,
             KnowledgeBaseRepository,
             RetrievalPort,
             RetrievalQuery,
@@ -215,8 +209,8 @@ class TestPortsPackageExports:
         )
         # If the import succeeds, the exports are correct.
         assert ChunkRepository is not None
+        assert ChunkWrite is not None
         assert DocumentRepository is not None
-        assert EmbeddingProvider is not None
         assert KnowledgeBaseRepository is not None
         assert RetrievalPort is not None
         assert RetrievalQuery is not None

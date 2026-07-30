@@ -14,11 +14,20 @@ Rules enforced at this layer:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from backend.app.domain.models.chunk import Chunk
 from backend.app.domain.models.document import Document
 from backend.app.domain.models.enums import DocumentProcessingStatus
 from backend.app.domain.models.knowledge_base import KnowledgeBase
+
+
+@dataclass(frozen=True)
+class ChunkWrite:
+    """One chunk and its vector, persisted atomically by a repository."""
+
+    chunk: Chunk
+    embedding: tuple[float, ...]
 
 
 # ---------------------------------------------------------------------------
@@ -150,15 +159,15 @@ class ChunkRepository(ABC):
     """
 
     @abstractmethod
-    async def create_many(self, chunks: list[Chunk]) -> list[Chunk]:
-        """Persist a batch of Chunks in a single operation.
+    async def create_many(self, records: list[ChunkWrite]) -> list[Chunk]:
+        """Persist chunks and their embeddings in a single operation.
 
         Bulk insertion is preferred over individual ``create`` calls because
         a single document can produce hundreds of chunks.
 
         Args:
-            chunks: A list of fully constructed ``Chunk`` domain entities.
-                    All chunks must belong to the same tenant.
+            records: Fully constructed chunks paired with their vectors.
+                     All records must belong to the same tenant and agent.
 
         Returns:
             The list of persisted ``Chunk`` entities.

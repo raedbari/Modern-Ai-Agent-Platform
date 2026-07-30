@@ -49,7 +49,11 @@ class DefaultParserFactory(ParserFactory):
 
         for parser in self._parsers:
             for mime in parser.supported_mime_types:
-                self._by_mime[mime.lower()] = parser
+                # Some clients label Markdown as text/plain.  Keep the first
+                # registered parser as the unambiguous MIME-only default
+                # (TxtParser), while extension resolution still selects
+                # Markdown correctly.
+                self._by_mime.setdefault(mime.lower(), parser)
             for ext in parser.supported_extensions:
                 self._by_ext[ext.lower()] = parser
 
@@ -79,7 +83,26 @@ class DefaultParserFactory(ParserFactory):
                 "At least one of 'mime_type' or 'extension' must be provided."
             )
 
-        # Try MIME type first.
+        # When both hints are known, the extension identifies the concrete
+        # parser and the MIME type must be compatible with it.  This prevents
+        # a renamed executable or PDF from being accepted under a text suffix.
+        if extension is not None:
+            normalised = extension.lower()
+            if not normalised.startswith("."):
+                normalised = f".{normalised}"
+            extension_parser = self._by_ext.get(normalised)
+            if extension_parser is not None and mime_type is not None:
+                if mime_type.lower() not in {
+                    value.lower()
+                    for value in extension_parser.supported_mime_types
+                }:
+                    raise UnsupportedDocumentTypeError(
+                        mime_type=mime_type,
+                        extension=normalised,
+                    )
+                return extension_parser
+
+        # Try MIME type when there is no resolvable extension.
         if mime_type is not None:
             parser = self._by_mime.get(mime_type.lower())
             if parser is not None:
@@ -87,7 +110,6 @@ class DefaultParserFactory(ParserFactory):
 
         # Fall back to extension.
         if extension is not None:
-            # Normalise: ensure leading dot, force lowercase.
             normalised = extension.lower()
             if not normalised.startswith("."):
                 normalised = f".{normalised}"

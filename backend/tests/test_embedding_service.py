@@ -15,9 +15,13 @@ from __future__ import annotations
 
 import pytest
 
+from backend.app.ai.contracts import (
+    EmbeddingRequest,
+    EmbeddingResult as ProviderEmbeddingResult,
+)
+from backend.app.ai.ports import EmbeddingProvider
 from backend.app.domain.exceptions import EmbeddingError
 from backend.app.domain.models.chunk import Chunk
-from backend.app.domain.ports.embedding_provider import EmbeddingProvider
 from backend.app.services.knowledge.embedding_service import (
     EmbeddedChunk,
     EmbeddingResult,
@@ -73,34 +77,43 @@ class SuccessProvider(EmbeddingProvider):
         self.call_count = 0
         self.last_texts: list[list[str]] = []
 
-    async def embed_text(self, text: str) -> list[float]:
-        return _make_vector(self._dims)
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    async def embed(
+        self,
+        request: EmbeddingRequest,
+    ) -> ProviderEmbeddingResult:
         self.call_count += 1
-        self.last_texts.append(list(texts))
-        return [_make_vector(self._dims) for _ in texts]
+        self.last_texts.append(list(request.texts))
+        return ProviderEmbeddingResult(
+            embeddings=[
+                _make_vector(self._dims) for _ in request.texts
+            ],
+            model="test-embedding",
+            dimension=self._dims,
+        )
 
 
 class FailingProvider(EmbeddingProvider):
     """Always raises EmbeddingError."""
 
-    async def embed_text(self, text: str) -> list[float]:
-        raise EmbeddingError("Provider unavailable.")
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    async def embed(
+        self,
+        request: EmbeddingRequest,
+    ) -> ProviderEmbeddingResult:
         raise EmbeddingError("Provider unavailable.")
 
 
 class WrongCountProvider(EmbeddingProvider):
     """Returns one fewer vector than requested."""
 
-    async def embed_text(self, text: str) -> list[float]:
-        return _make_vector()
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        # Return one fewer than requested
-        return [_make_vector() for _ in texts[:-1]]
+    async def embed(
+        self,
+        request: EmbeddingRequest,
+    ) -> ProviderEmbeddingResult:
+        return ProviderEmbeddingResult(
+            embeddings=[_make_vector() for _ in request.texts[:-1]],
+            model="test-embedding",
+            dimension=_DIMS,
+        )
 
 
 class WrongDimProvider(EmbeddingProvider):
@@ -109,11 +122,17 @@ class WrongDimProvider(EmbeddingProvider):
     def __init__(self, bad_dims: int = 999) -> None:
         self._bad_dims = bad_dims
 
-    async def embed_text(self, text: str) -> list[float]:
-        return _make_vector(self._bad_dims)
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        return [_make_vector(self._bad_dims) for _ in texts]
+    async def embed(
+        self,
+        request: EmbeddingRequest,
+    ) -> ProviderEmbeddingResult:
+        return ProviderEmbeddingResult(
+            embeddings=[
+                _make_vector(self._bad_dims) for _ in request.texts
+            ],
+            model="test-embedding",
+            dimension=self._bad_dims,
+        )
 
 
 class PartialFailProvider(EmbeddingProvider):
@@ -123,14 +142,20 @@ class PartialFailProvider(EmbeddingProvider):
         self._dims = dims
         self._call = 0
 
-    async def embed_text(self, text: str) -> list[float]:
-        return _make_vector(self._dims)
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    async def embed(
+        self,
+        request: EmbeddingRequest,
+    ) -> ProviderEmbeddingResult:
         self._call += 1
         if self._call % 2 == 0:
             raise EmbeddingError("Intermittent failure.")
-        return [_make_vector(self._dims) for _ in texts]
+        return ProviderEmbeddingResult(
+            embeddings=[
+                _make_vector(self._dims) for _ in request.texts
+            ],
+            model="test-embedding",
+            dimension=self._dims,
+        )
 
 
 class MixedDimProvider(EmbeddingProvider):
@@ -140,15 +165,19 @@ class MixedDimProvider(EmbeddingProvider):
         self._good = good_dims
         self._bad = bad_dims
 
-    async def embed_text(self, text: str) -> list[float]:
-        return _make_vector(self._good)
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    async def embed(
+        self,
+        request: EmbeddingRequest,
+    ) -> ProviderEmbeddingResult:
         result = []
-        for i, _ in enumerate(texts):
+        for i, _ in enumerate(request.texts):
             dims = self._good if i % 2 == 0 else self._bad
             result.append(_make_vector(dims))
-        return result
+        return ProviderEmbeddingResult(
+            embeddings=result,
+            model="test-embedding",
+            dimension=self._good,
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -30,11 +30,17 @@ from __future__ import annotations
 
 import io
 import math
+from pathlib import Path
 import pytest
 
 # ---------------------------------------------------------------------------
 # Production components
 # ---------------------------------------------------------------------------
+from backend.app.ai.contracts import (
+    EmbeddingRequest,
+    EmbeddingResult as ProviderEmbeddingResult,
+)
+from backend.app.ai.ports import EmbeddingProvider
 from backend.app.infrastructure.parsers.factory import DefaultParserFactory
 from backend.app.services.knowledge.chunking_service import ChunkingService
 from backend.app.services.knowledge.embedding_service import (
@@ -55,9 +61,9 @@ from backend.app.domain.exceptions import (
 from backend.app.domain.models.chunk import Chunk
 from backend.app.domain.models.enums import KnowledgeBaseStatus
 from backend.app.domain.models.knowledge_base import KnowledgeBase
-from backend.app.domain.ports.embedding_provider import EmbeddingProvider
 from backend.app.domain.ports.repositories import (
     ChunkRepository,
+    ChunkWrite,
     KnowledgeBaseRepository,
 )
 from backend.app.domain.ports.retrieval import RetrievalQuery
@@ -68,9 +74,36 @@ from backend.app.domain.ports.retrieval import RetrievalQuery
 
 def _make_pdf_bytes(texts: list[str] | None = None) -> bytes:
     from pypdf import PdfWriter
+    from pypdf.generic import (
+        DecodedStreamObject,
+        DictionaryObject,
+        NameObject,
+    )
+
     writer = PdfWriter()
-    for _ in (texts or ["Integration test page."]):
-        writer.add_blank_page(width=612, height=792)
+    font = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }
+    )
+    font_reference = writer._add_object(font)
+    for text in (texts or ["Integration test page."]):
+        page = writer.add_blank_page(width=612, height=792)
+        page[NameObject("/Resources")] = DictionaryObject(
+            {
+                NameObject("/Font"): DictionaryObject(
+                    {NameObject("/F1"): font_reference}
+                )
+            }
+        )
+        stream = DecodedStreamObject()
+        safe_text = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        stream.set_data(
+            f"BT /F1 12 Tf 72 720 Td ({safe_text}) Tj ET".encode("latin-1")
+        )
+        page[NameObject("/Contents")] = writer._add_object(stream)
     buf = io.BytesIO()
     writer.write(buf)
     return buf.getvalue()
@@ -119,11 +152,18 @@ class VectorEmbeddingProvider(EmbeddingProvider):
     def __init__(self, dims: int = _DIMS) -> None:
         self._dims = dims
 
-    async def embed_text(self, text: str) -> list[float]:
-        return _text_to_vector(text, self._dims)
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        return [_text_to_vector(t, self._dims) for t in texts]
+    async def embed(
+        self,
+        request: EmbeddingRequest,
+    ) -> ProviderEmbeddingResult:
+        return ProviderEmbeddingResult(
+            embeddings=[
+                _text_to_vector(text, self._dims)
+                for text in request.texts
+            ],
+            model="test-embedding",
+            dimension=self._dims,
+        )
 
 
 class PartiallyFailingProvider(EmbeddingProvider):
@@ -133,14 +173,21 @@ class PartiallyFailingProvider(EmbeddingProvider):
         self._dims = dims
         self._call = 0
 
-    async def embed_text(self, text: str) -> list[float]:
-        return _text_to_vector(text, self._dims)
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    async def embed(
+        self,
+        request: EmbeddingRequest,
+    ) -> ProviderEmbeddingResult:
         self._call += 1
         if self._call % 2 == 0:
             raise EmbeddingError("Intermittent provider failure.")
-        return [_text_to_vector(t, self._dims) for t in texts]
+        return ProviderEmbeddingResult(
+            embeddings=[
+                _text_to_vector(text, self._dims)
+                for text in request.texts
+            ],
+            model="test-embedding",
+            dimension=self._dims,
+        )
 
 
 class InMemoryChunkRepository(ChunkRepository):
@@ -150,11 +197,13 @@ class InMemoryChunkRepository(ChunkRepository):
         # maps chunk.id → (Chunk, embedding)
         self._store: dict[str, tuple[Chunk, list[float]]] = {}
 
-    def store_embedded(self, chunk: Chunk, embedding: list[float]) -> None:
-        self._store[chunk.id] = (chunk, embedding)
-
-    async def create_many(self, chunks: list[Chunk]) -> list[Chunk]:
-        return chunks
+    async def create_many(self, records: list[ChunkWrite]) -> list[Chunk]:
+        for record in records:
+            self._store[record.chunk.id] = (
+                record.chunk,
+                list(record.embedding),
+            )
+        return [record.chunk for record in records]
 
     async def delete_by_document(self, document_id: str, tenant_id: str) -> int:
         before = len(self._store)
@@ -245,7 +294,10 @@ async def _run_ingestion(
         provider = VectorEmbeddingProvider()
 
     factory = DefaultParserFactory()
-    parser = factory.get_parser(mime_type=mime_type)
+    parser = factory.get_parser(
+        mime_type=mime_type,
+        extension=Path(filename).suffix,
+    )
     parsed = await parser.parse(raw_bytes, filename)
 
     chunker = ChunkingService(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
@@ -265,8 +317,15 @@ async def _run_ingestion(
     )
     result = await embed_svc.embed_chunks(chunks)
 
-    for ec in result.embedded:
-        chunk_repo.store_embedded(ec.chunk, ec.embedding)
+    await chunk_repo.create_many(
+        [
+            ChunkWrite(
+                chunk=embedded.chunk,
+                embedding=tuple(embedded.embedding),
+            )
+            for embedded in result.embedded
+        ]
+    )
 
     return chunks, result, chunk_repo
 
@@ -581,7 +640,7 @@ class TestEmbeddingBehaviour:
 
     @pytest.mark.asyncio
     async def test_embedding_batch_covers_all_chunks(self) -> None:
-        """More chunks than batch_size forces multiple embed_batch calls."""
+        """More chunks than batch_size forces multiple provider calls."""
         text = "batch test line. " * 200
         chunks, result, _ = await _run_ingestion(
             text.encode(), "doc.txt", "text/plain",
@@ -628,7 +687,7 @@ class TestRetrievalBehaviour:
             text.encode(), "doc.txt", "text/plain",
             tenant_id="t-1", agent_id="a-1", kb_id="kb-1",
         )
-        svc = _make_retrieval_service(chunk_repo)
+        svc = _make_retrieval_service(chunk_repo, tenant_id="t-1")
         results = await svc.retrieve(RetrievalQuery(
             tenant_id="t-1", agent_id="a-1",
             query="refund policy",

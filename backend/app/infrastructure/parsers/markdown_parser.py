@@ -40,7 +40,7 @@ class MarkdownParser(DocumentParser):
 
     @property
     def supported_extensions(self) -> frozenset[str]:
-        return frozenset({".md"})
+        return frozenset({".md", ".markdown"})
 
     @property
     def supported_mime_types(self) -> frozenset[str]:

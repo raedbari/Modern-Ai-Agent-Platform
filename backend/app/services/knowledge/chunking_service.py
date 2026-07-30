@@ -101,6 +101,8 @@ def _slide(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
         window = text[start : start + chunk_size].strip()
         if window:
             windows.append(window)
+        if start + chunk_size >= len(text):
+            break
         start += step
     return windows
 

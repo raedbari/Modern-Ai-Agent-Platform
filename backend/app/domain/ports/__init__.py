@@ -3,7 +3,6 @@
 Re-exports all port interfaces and associated data transfer objects.
 """
 
-from backend.app.domain.ports.embedding_provider import EmbeddingProvider
 from backend.app.domain.ports.parser import (
     DocumentParser,
     ParsedDocument,
@@ -12,6 +11,7 @@ from backend.app.domain.ports.parser import (
     SupportedDocumentType,
 )
 from backend.app.domain.ports.repositories import (
+    ChunkWrite,
     ChunkRepository,
     DocumentRepository,
     KnowledgeBaseRepository,
@@ -24,9 +24,9 @@ from backend.app.domain.ports.retrieval import (
 
 __all__ = [
     "ChunkRepository",
+    "ChunkWrite",
     "DocumentParser",
     "DocumentRepository",
-    "EmbeddingProvider",
     "KnowledgeBaseRepository",
     "ParsedDocument",
     "ParsedPage",

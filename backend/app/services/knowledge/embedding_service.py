@@ -1,31 +1,30 @@
 """Embedding service for the Knowledge RAG Pipeline.
 
 Accepts a list of ``Chunk`` domain objects, batches their text content,
-calls ``EmbeddingProvider.embed_batch()``, validates the returned vectors,
-and returns a structured ``EmbeddingResult`` that separates successfully
-embedded chunks from failed ones.
+calls the platform ``EmbeddingProvider.embed()`` contract, validates the
+returned vectors, and returns a structured ``EmbeddingResult`` that
+separates successfully embedded chunks from failed ones.
 
 Design
 ------
 The service is intentionally narrow:
-- It reads ``embedding_batch_size`` and ``embedding_dimensions`` from the
-  ``Settings`` injected at construction time.
-- It calls **only** ``EmbeddingProvider.embed_batch()``.  It never calls
-  ``embed_text``, never touches a repository, and never persists anything.
+- Batch size and expected dimensions are injected at construction time.
+- It calls only the shared ``EmbeddingProvider.embed()`` port.  It never
+  touches a repository and never persists anything.
 - Input ``Chunk`` objects are **never mutated**.  Embeddings are returned
   alongside their source chunk in ``EmbeddedChunk`` value objects.
 
 Batch strategy
 --------------
 Chunks are grouped into consecutive batches of at most
-``embedding_batch_size``.  Each batch is a single ``embed_batch()`` call.
+``embedding_batch_size``.  Each batch is a single ``embed()`` call.
 If a batch call raises ``EmbeddingError``, every chunk in that batch is
 recorded as a failure with the safe error message.  Chunks from other
 batches are not affected — the loop continues.
 
 Validation
 ----------
-After each successful ``embed_batch()`` call:
+After each successful ``embed()`` call:
 
 1. **Count check**: ``len(vectors) == len(batch)`` — the provider must
    return exactly one vector per input text.
@@ -60,9 +59,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from backend.app.ai.contracts import EmbeddingRequest, RuntimeContext
+from backend.app.ai.ports import EmbeddingProvider
 from backend.app.domain.exceptions import EmbeddingError
 from backend.app.domain.models.chunk import Chunk
-from backend.app.domain.ports.embedding_provider import EmbeddingProvider
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ class EmbeddedChunk:
     Attributes:
         chunk:     The original domain ``Chunk``.
         embedding: Dense float vector.  Length equals
-                   ``Settings.embedding_dimensions``.
+                   the configured embedding dimension.
     """
 
     chunk: Chunk
@@ -149,7 +149,7 @@ class EmbeddingService:
 
     Responsibilities:
     - Slice the input list into batches of ``embedding_batch_size``.
-    - Call ``EmbeddingProvider.embed_batch()`` for each batch.
+    - Call ``EmbeddingProvider.embed()`` for each batch.
     - Validate the provider response (count and dimension checks).
     - Accumulate results into an ``EmbeddingResult``.
     - Never mutate input ``Chunk`` objects.
@@ -171,7 +171,7 @@ class EmbeddingService:
 
         Args:
             provider:             An ``EmbeddingProvider`` implementation.
-            batch_size:           Maximum chunks per ``embed_batch()`` call.
+            batch_size:           Maximum chunks per ``embed()`` call.
                                   Must be a positive integer.
             embedding_dimensions: Expected vector length for every embedding.
                                   Must be a positive integer.
@@ -230,6 +230,13 @@ class EmbeddingService:
         if not chunks:
             return result
 
+        contexts = {(chunk.tenant_id, chunk.agent_id) for chunk in chunks}
+        if len(contexts) != 1:
+            raise ValueError(
+                "All chunks in one embedding operation must belong to the "
+                "same tenant and agent."
+            )
+
         for batch_start in range(0, len(chunks), self._batch_size):
             batch = chunks[batch_start : batch_start + self._batch_size]
             await self._process_batch(batch, result)
@@ -257,16 +264,34 @@ class EmbeddingService:
             result: The accumulator updated in place.
         """
         texts = [chunk.content for chunk in batch]
+        first = batch[0]
+        request = EmbeddingRequest(
+            context=RuntimeContext(
+                tenant_id=first.tenant_id,
+                agent_id=first.agent_id,
+            ),
+            texts=texts,
+        )
 
         try:
-            vectors = await self._provider.embed_batch(texts)
-        except EmbeddingError as exc:
-            reason = f"Embedding provider returned an error: {exc}"
+            provider_result = await self._provider.embed(request)
+            vectors = provider_result.embeddings
+        except EmbeddingError:
+            reason = "Embedding provider failed to process the batch."
             for chunk in batch:
                 result.failed_chunks.append(FailedChunk(chunk=chunk, reason=reason))
             return
-        except Exception as exc:  # pragma: no cover – catch-all safety net
+        except Exception:  # pragma: no cover – catch-all safety net
             reason = "An unexpected error occurred during embedding."
+            for chunk in batch:
+                result.failed_chunks.append(FailedChunk(chunk=chunk, reason=reason))
+            return
+
+        if provider_result.dimension != self._embedding_dimensions:
+            reason = (
+                f"Embedding provider declared {provider_result.dimension} "
+                f"dimension(s); expected {self._embedding_dimensions}."
+            )
             for chunk in batch:
                 result.failed_chunks.append(FailedChunk(chunk=chunk, reason=reason))
             return
