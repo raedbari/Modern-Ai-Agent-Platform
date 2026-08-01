@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     )
     debug: bool = False
 
+    admin_api_key: SecretStr | None = None
+
     deepseek_api_key: SecretStr | None = None
     deepseek_base_url: AnyHttpUrl = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"
@@ -34,6 +36,22 @@ class Settings(BaseSettings):
     ollama_embedding_model: str = "qwen3-embedding:0.6b"
     embedding_dimension: int = Field(default=1024, gt=0)
     ollama_timeout_seconds: float = Field(default=30.0, gt=0)
+    # Bound the runner allocations for embedding-sized inputs.  The Ollama
+    # defaults (4K context / a very large execution batch) can reserve more
+    # than 1 GiB of one contiguous GPU buffer even for a single short text.
+    ollama_embedding_num_ctx: int = Field(default=1024, ge=256, le=8192)
+    ollama_embedding_num_batch: int = Field(default=64, ge=32, le=512)
+    ollama_embedding_keep_alive: str = Field(
+        default="10m",
+        min_length=1,
+        max_length=32,
+    )
+    ollama_embedding_max_retries: int = Field(default=2, ge=0, le=5)
+    ollama_embedding_retry_base_seconds: float = Field(
+        default=0.5,
+        ge=0,
+        le=10,
+    )
     database_url: str = (
         "postgresql+asyncpg://postgres:postgres@localhost:5432/maap"
     )
@@ -47,6 +65,18 @@ class Settings(BaseSettings):
 
     # Maximum number of pages accepted from a PDF document.
     max_pdf_pages: int = Field(default=500, gt=0)
+
+    # Durable local object storage shared by API and ingestion workers.
+    upload_storage_root: Path = BACKEND_DIR / ".data" / "uploads"
+
+    # PostgreSQL-backed ingestion worker controls.
+    ingestion_worker_poll_seconds: float = Field(default=2.0, gt=0, le=60)
+    ingestion_job_lock_timeout_seconds: int = Field(
+        default=600,
+        ge=30,
+        le=86400,
+    )
+    ingestion_job_max_attempts: int = Field(default=3, ge=1, le=10)
 
     # File extensions accepted by the ingestion pipeline.
     allowed_extensions: frozenset[str] = frozenset(
@@ -78,7 +108,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
 
     # Maximum number of chunks sent to the embedding provider per call.
-    embedding_batch_size: int = Field(default=32, gt=0, le=64)
+    embedding_batch_size: int = Field(default=8, gt=0, le=64)
 
     # ------------------------------------------------------------------ #
     # Retrieval                                                            #
@@ -90,6 +120,9 @@ class Settings(BaseSettings):
     # Minimum cosine similarity score required for a chunk to be included
     # in retrieval results. Range: 0.0 (no filtering) – 1.0 (exact match).
     retrieval_min_similarity: float = Field(default=0.5, ge=0.0, le=1.0)
+
+    # Hard ceiling for retrieved text injected into one generation request.
+    rag_max_context_chars: int = Field(default=12000, ge=500, le=100000)
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
@@ -110,6 +143,15 @@ class Settings(BaseSettings):
         if requires_api_key and api_key_missing:
             raise ValueError(
                 "MAAP_DEEPSEEK_API_KEY is required in staging and production"
+            )
+
+        admin_key_missing = (
+            self.admin_api_key is None
+            or not self.admin_api_key.get_secret_value().strip()
+        )
+        if requires_api_key and admin_key_missing:
+            raise ValueError(
+                "MAAP_ADMIN_API_KEY is required in staging and production"
             )
 
         if self.chunk_overlap >= self.chunk_size:

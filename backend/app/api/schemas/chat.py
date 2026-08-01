@@ -1,6 +1,6 @@
 """HTTP schemas for the tenant-scoped chat endpoint."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -30,6 +30,16 @@ class TokenUsage(BaseModel):
     completion: int = Field(ge=0)
 
 
+class ChatSource(BaseModel):
+    """One verified source used to ground the assistant response."""
+
+    citation_id: str
+    source_name: str
+    document_id: str
+    page_number: int = Field(ge=1)
+    similarity_score: float = Field(ge=-1.0, le=1.0)
+
+
 class ChatResponse(BaseModel):
     """Persisted assistant response."""
 
@@ -39,3 +49,10 @@ class ChatResponse(BaseModel):
     model: str
     finish_reason: str | None = None
     usage: TokenUsage
+    answer_status: Literal[
+        "grounded",
+        "generated",
+        "insufficient_knowledge",
+        "temporarily_unavailable",
+    ] = "generated"
+    sources: list[ChatSource] = Field(default_factory=list)

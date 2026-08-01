@@ -72,6 +72,8 @@ async def _seed_tenant(
     tenant_id: str,
     agent_id: str,
     system_prompt: str | None = None,
+    knowledge_mode: str = "preferred",
+    contact_message: str | None = None,
     active_key: bool = True,
 ) -> IssuedApiKey:
     issued = issue_api_key()
@@ -84,6 +86,8 @@ async def _seed_tenant(
                     tenant_id=tenant_id,
                     name=agent_id,
                     system_prompt=system_prompt,
+                    knowledge_mode=knowledge_mode,
+                    contact_message=contact_message,
                 ),
                 ApiKey(
                     tenant_id=tenant_id,
@@ -194,6 +198,10 @@ async def test_chat_persists_messages_with_trusted_runtime_context(
         assert payload["reply"] == "Test assistant response"
         assert payload["model"] == "test-model"
         assert payload["usage"] == {"prompt": 7, "completion": 4}
+        assert payload["answer_status"] == "generated"
+        assert payload["sources"] == []
+        assert "handoff_required" not in payload
+        assert "handoff_id" not in payload
 
         request = runtime.generate.await_args.args[0]
         assert request.context.tenant_id == "tenant-a"
@@ -230,6 +238,51 @@ async def test_chat_persists_messages_with_trusted_runtime_context(
             ("user", "Hello"),
             ("assistant", "Test assistant response"),
         ]
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_required_chat_returns_configured_contact_message(
+    tmp_path: Path,
+) -> None:
+    app, engine, session_factory, runtime = await _open_test_app(
+        tmp_path / "contact-fallback.sqlite3"
+    )
+
+    try:
+        contact_message = (
+            "لا أملك معلومات مؤكدة. تواصل مع الشركة على 012345678."
+        )
+        issued = await _seed_tenant(
+            session_factory,
+            tenant_id="tenant-a",
+            agent_id="agent-a",
+            knowledge_mode="required",
+            contact_message=contact_message,
+        )
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/chat",
+                json={"message": "ما سعر الخدمة غير الموجود؟"},
+                headers=_headers(issued, "agent-a"),
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["reply"] == contact_message
+        assert payload["answer_status"] == "insufficient_knowledge"
+        assert payload["model"] == "platform-fallback"
+        assert payload["usage"] == {"prompt": 0, "completion": 0}
+        assert payload["sources"] == []
+        assert "handoff_required" not in payload
+        assert "handoff_id" not in payload
+        runtime.generate.assert_not_awaited()
+        runtime.embed.assert_not_awaited()
     finally:
         await engine.dispose()
 

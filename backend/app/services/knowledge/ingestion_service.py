@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from backend.app.domain.exceptions import (
     DomainError,
+    DocumentNotFoundError,
     EmbeddingError,
     KnowledgeBaseNotFoundError,
     ParseError,
     UnsupportedDocumentTypeError,
 )
+from backend.app.domain.models.chunk import Chunk
 from backend.app.domain.models.document import Document
 from backend.app.domain.models.enums import (
     DocumentProcessingStatus,
@@ -94,7 +97,43 @@ class IngestionService:
 
     async def ingest(self, request: IngestionRequest) -> IngestionResult:
         """Run the ingestion pipeline with tenant and agent authorization."""
+        prepared = await self.prepare(request)
+        if prepared.duplicate:
+            return prepared
+
         extension, mime_type = self._validate_upload(request)
+        document = prepared.document
+
+        try:
+            await self._set_status(
+                document,
+                DocumentProcessingStatus.PROCESSING,
+            )
+            records = await self._prepare_chunk_records(
+                document=document,
+                request=request,
+                extension=extension,
+                mime_type=mime_type,
+            )
+            persisted = await self._persist_all(records)
+
+            await self._set_status(document, DocumentProcessingStatus.READY)
+            return IngestionResult(
+                document=document,
+                chunks_persisted=len(persisted),
+            )
+        except Exception:
+            await self._set_status(
+                document,
+                DocumentProcessingStatus.FAILED,
+                failure_reason="Document processing failed.",
+            )
+            raise
+
+    async def prepare(self, request: IngestionRequest) -> IngestionResult:
+        """Validate and persist a pending document without processing it."""
+
+        _, mime_type = self._validate_upload(request)
         await self._require_authorized_knowledge_base(request)
 
         content_hash = hashlib.sha256(request.content).hexdigest()
@@ -122,46 +161,76 @@ class IngestionService:
             content_hash=content_hash,
         )
         document = await self._document_repository.create(document)
+        return IngestionResult(
+            document=document,
+            chunks_persisted=0,
+            duplicate=False,
+        )
+
+    async def reindex(
+        self,
+        *,
+        document_id: str,
+        request: IngestionRequest,
+    ) -> IngestionResult:
+        """Replace a document's chunks using newly supplied source bytes.
+
+        Raw uploads are not retained by the current storage layer, so callers
+        must provide the source file again. Existing chunks remain untouched
+        until parsing and embedding of the replacement succeeds.
+        """
+
+        extension, mime_type = self._validate_upload(request)
+        await self._require_authorized_knowledge_base(request)
+        document = await self._document_repository.get_by_id(
+            document_id=document_id,
+            tenant_id=request.tenant_id,
+        )
+        if (
+            document is None
+            or document.knowledge_base_id != request.knowledge_base_id
+            or document.agent_id != request.agent_id
+        ):
+            raise DocumentNotFoundError(
+                "The document is unavailable for this agent."
+            )
+
+        content_hash = hashlib.sha256(request.content).hexdigest()
+        duplicate = await self._document_repository.get_by_content_hash(
+            content_hash=content_hash,
+            tenant_id=request.tenant_id,
+            knowledge_base_id=request.knowledge_base_id,
+        )
+        if duplicate is not None and duplicate.id != document.id:
+            raise DomainError(
+                "An identical document already exists in this knowledge base."
+            )
 
         try:
             await self._set_status(
                 document,
                 DocumentProcessingStatus.PROCESSING,
             )
-            parser = self._parser_factory.get_parser(
-                mime_type=mime_type,
+            records = await self._prepare_chunk_records(
+                document=document,
+                request=request,
                 extension=extension,
+                mime_type=mime_type,
             )
-            parsed = await parser.parse(request.content, request.filename)
-            self._enforce_pdf_page_limit(parsed)
 
-            chunks = self._chunking_service.chunk_document(
-                parsed,
+            document.source_name = request.source_name
+            document.original_filename = request.filename
+            document.mime_type = mime_type
+            document.file_size_bytes = len(request.content)
+            document.content_hash = content_hash
+            document.updated_at = datetime.now(timezone.utc)
+
+            await self._chunk_repository.delete_by_document(
                 document_id=document.id,
-                tenant_id=request.tenant_id,
-                agent_id=request.agent_id,
-                knowledge_base_id=request.knowledge_base_id,
-                source_name=request.source_name,
+                tenant_id=document.tenant_id,
             )
-            embedding_result = await self._embedding_service.embed_chunks(chunks)
-            if embedding_result.has_failures:
-                raise EmbeddingError(
-                    "One or more chunks could not be embedded."
-                )
-
-            records = [
-                ChunkWrite(
-                    chunk=embedded.chunk,
-                    embedding=tuple(embedded.embedding),
-                )
-                for embedded in embedding_result.embedded
-            ]
-            persisted = await self._chunk_repository.create_many(records)
-            if len(persisted) != len(records):
-                raise DomainError(
-                    "The chunk repository did not persist every record."
-                )
-
+            await self._document_repository.update(document)
+            persisted = await self._persist_all(records)
             await self._set_status(document, DocumentProcessingStatus.READY)
             return IngestionResult(
                 document=document,
@@ -174,6 +243,53 @@ class IngestionService:
                 failure_reason="Document processing failed.",
             )
             raise
+
+    async def _prepare_chunk_records(
+        self,
+        *,
+        document: Document,
+        request: IngestionRequest,
+        extension: str,
+        mime_type: str,
+    ) -> list[ChunkWrite]:
+        parser = self._parser_factory.get_parser(
+            mime_type=mime_type,
+            extension=extension,
+        )
+        parsed = await parser.parse(request.content, request.filename)
+        self._enforce_pdf_page_limit(parsed)
+
+        chunks = self._chunking_service.chunk_document(
+            parsed,
+            document_id=document.id,
+            tenant_id=request.tenant_id,
+            agent_id=request.agent_id,
+            knowledge_base_id=request.knowledge_base_id,
+            source_name=request.source_name,
+        )
+        embedding_result = await self._embedding_service.embed_chunks(chunks)
+        if embedding_result.has_failures:
+            raise EmbeddingError(
+                "One or more chunks could not be embedded."
+            )
+        return [
+            ChunkWrite(
+                chunk=embedded.chunk,
+                embedding=tuple(embedded.embedding),
+            )
+            for embedded in embedding_result.embedded
+        ]
+
+    async def _persist_all(
+        self,
+        records: list[ChunkWrite],
+    ) -> list[Chunk]:
+        persisted = await self._chunk_repository.create_many(records)
+        if len(persisted) != len(records):
+            raise DomainError(
+                "The chunk repository did not persist every record."
+            )
+        return persisted
 
     def _validate_upload(
         self,

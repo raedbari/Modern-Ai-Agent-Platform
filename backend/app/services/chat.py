@@ -1,40 +1,31 @@
-"""Tenant-scoped chat orchestration and persistence."""
+"""Tenant-scoped, evidence-first chat orchestration and persistence."""
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Protocol
 from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.ai.chat_workflow import (
+    AnswerStatus,
+    ChatSource,
+    ChatWorkflow,
+    EmptyGenerationError,
+    GenerationRuntime,
+)
 from backend.app.ai.contracts import (
     ChatMessage,
-    GenerationRequest,
-    GenerationResult,
-    RuntimeContext,
 )
 from backend.app.auth.context import ChatExecutionContext
 from backend.app.db.models import Conversation, Message
-
-
-class GenerationRuntime(Protocol):
-    """The generation capability required by the chat service."""
-
-    async def generate(
-        self,
-        request: GenerationRequest,
-    ) -> GenerationResult:
-        """Generate an assistant response."""
-        ...
+from backend.app.domain.ports.retrieval import RetrievalPort
 
 
 class ConversationNotFoundError(Exception):
     """Raised without revealing whether another tenant owns the identifier."""
-
-
-class EmptyGenerationError(Exception):
-    """Raised when a provider returns no usable assistant text."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,13 +37,29 @@ class ChatResult:
     finish_reason: str | None
     prompt_tokens: int
     completion_tokens: int
+    answer_status: AnswerStatus
+    sources: tuple[ChatSource, ...]
 
 
 class ChatService:
-    """Load tenant history, call the runtime, and persist both messages."""
+    """Retrieve evidence, generate or fall back, and persist one chat turn."""
 
-    def __init__(self, runtime: GenerationRuntime) -> None:
-        self._runtime = runtime
+    def __init__(
+        self,
+        runtime: GenerationRuntime,
+        *,
+        retrieval: RetrievalPort | None = None,
+        retrieval_top_k: int = 5,
+        retrieval_min_similarity: float = 0.5,
+        max_context_chars: int = 12000,
+    ) -> None:
+        self._workflow = ChatWorkflow(
+            runtime,
+            retrieval=retrieval,
+            retrieval_top_k=retrieval_top_k,
+            retrieval_min_similarity=retrieval_min_similarity,
+            max_context_chars=max_context_chars,
+        )
 
     async def execute(
         self,
@@ -61,7 +68,7 @@ class ChatService:
         message: str,
         conversation_id: str | None,
     ) -> ChatResult:
-        """Execute one atomic, tenant-scoped chat turn."""
+        """Execute one atomic, tenant-scoped, evidence-first chat turn."""
 
         try:
             conversation, history = await self._load_or_create_conversation(
@@ -69,72 +76,46 @@ class ChatService:
                 context=context,
                 conversation_id=conversation_id,
             )
-
-            request_messages: list[ChatMessage] = []
-            if context.system_prompt and context.system_prompt.strip():
-                request_messages.append(
+            workflow_result = await self._workflow.execute(
+                context=context,
+                message=message,
+                history=tuple(
                     ChatMessage(
-                        role="system",
-                        content=context.system_prompt,
+                        role=stored.role,
+                        content=stored.content,
                     )
-                )
-
-            request_messages.extend(
-                ChatMessage(role=stored.role, content=stored.content)
-                for stored in history
-                if (
-                    stored.role in {"system", "user", "assistant"}
-                    and stored.content.strip()
-                )
-            )
-            request_messages.append(
-                ChatMessage(role="user", content=message)
-            )
-
-            user_created_at = datetime.now(timezone.utc)
-            if history:
-                latest_history_at = max(
-                    stored.created_at
-                    if stored.created_at.tzinfo is not None
-                    else stored.created_at.replace(tzinfo=timezone.utc)
                     for stored in history
-                )
-                user_created_at = max(
-                    user_created_at,
-                    latest_history_at + timedelta(microseconds=1),
-                )
+                    if (
+                        stored.role in {"system", "user", "assistant"}
+                        and stored.content.strip()
+                    )
+                ),
+            )
 
+            user_created_at = self._next_user_timestamp(history)
             user_message = Message(
                 id=str(uuid4()),
                 tenant_id=context.tenant_id,
                 conversation_id=conversation.id,
                 role="user",
                 content=message,
-                created_at=user_created_at,
             )
+            user_message.created_at = user_created_at
             session.add(user_message)
-
-            generation = await self._runtime.generate(
-                GenerationRequest(
-                    context=RuntimeContext(
-                        tenant_id=context.tenant_id,
-                        agent_id=context.agent_id,
-                    ),
-                    messages=request_messages,
-                )
-            )
-            assistant_content = generation.content.strip()
-            if not assistant_content:
-                raise EmptyGenerationError(
-                    "Generation provider returned empty text"
-                )
 
             assistant_message = Message(
                 id=str(uuid4()),
                 tenant_id=context.tenant_id,
                 conversation_id=conversation.id,
                 role="assistant",
-                content=assistant_content,
+                content=workflow_result.reply,
+                metadata_json={
+                    "answer_status": workflow_result.answer_status,
+                    "sources": [
+                        source.as_metadata()
+                        for source in workflow_result.sources
+                    ],
+                },
                 created_at=max(
                     datetime.now(timezone.utc),
                     user_created_at + timedelta(microseconds=1),
@@ -150,11 +131,30 @@ class ChatService:
         return ChatResult(
             conversation_id=conversation.id,
             message_id=assistant_message.id,
-            reply=assistant_content,
-            model=generation.model,
-            finish_reason=generation.finish_reason,
-            prompt_tokens=generation.prompt_tokens,
-            completion_tokens=generation.completion_tokens,
+            reply=workflow_result.reply,
+            model=workflow_result.model,
+            finish_reason=workflow_result.finish_reason,
+            prompt_tokens=workflow_result.prompt_tokens,
+            completion_tokens=workflow_result.completion_tokens,
+            answer_status=workflow_result.answer_status,
+            sources=workflow_result.sources,
+        )
+
+    @staticmethod
+    def _next_user_timestamp(history: list[Message]) -> datetime:
+        user_created_at = datetime.now(timezone.utc)
+        if not history:
+            return user_created_at
+
+        latest_history_at = max(
+            stored.created_at
+            if stored.created_at.tzinfo is not None
+            else stored.created_at.replace(tzinfo=timezone.utc)
+            for stored in history
+        )
+        return max(
+            user_created_at,
+            latest_history_at + timedelta(microseconds=1),
         )
 
     @staticmethod
