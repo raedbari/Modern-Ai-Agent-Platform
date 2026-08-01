@@ -12,7 +12,15 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from backend.app.db.base import Base
-from backend.app.db.models import Agent, Conversation, Message, Tenant
+from backend.app.db.models import (
+    AdminAuditLog,
+    AdminUser,
+    AdminRefreshSession,
+    Agent,
+    Conversation,
+    Message,
+    Tenant,
+)
 
 
 async def _open_test_database():
@@ -42,6 +50,7 @@ async def _dispose(engine: AsyncEngine) -> None:
 
 def test_metadata_defines_expected_tables() -> None:
     assert set(Base.metadata.tables) == {
+        # Existing tenant tables
         "tenants",
         "api_keys",
         "agents",
@@ -52,6 +61,10 @@ def test_metadata_defines_expected_tables() -> None:
         "agent_knowledge_bases",
         "documents",
         "chunks",
+        # Admin auth tables added in Wave 1
+        "admin_users",
+        "admin_refresh_sessions",
+        "admin_audit_log",
     }
 
 
@@ -180,3 +193,121 @@ def test_message_rejects_conversation_from_another_tenant() -> None:
             await _dispose(engine)
 
     asyncio.run(scenario())
+
+
+# ---------------------------------------------------------------------------
+# Admin auth model tests (T-04)
+# ---------------------------------------------------------------------------
+
+def test_admin_audit_log_has_no_delete_or_update_helper() -> None:
+    """AdminAuditLog must not expose an ORM-level delete or update method.
+
+    Rows are append-only by design.  The test verifies that no helper
+    on the model class would allow callers to bypass this contract.
+    """
+    model_attrs = dir(AdminAuditLog)
+
+    assert "delete" not in model_attrs, (
+        "AdminAuditLog must not expose a delete() helper"
+    )
+    assert "update" not in model_attrs, (
+        "AdminAuditLog must not expose an update() helper"
+    )
+
+
+def test_admin_user_role_check_constraint_values() -> None:
+    """AdminUser.role must only accept the three defined role strings."""
+    import asyncio
+    from sqlalchemy.exc import IntegrityError
+
+    async def scenario() -> None:
+        engine, session_factory = await _open_test_database()
+        try:
+            async with session_factory() as session:
+                session.add(
+                    AdminUser(
+                        id="admin-bad-role",
+                        username="bad-role-user",
+                        hashed_password="$argon2id$fake",
+                        role="god_mode",  # invalid value
+                    )
+                )
+                with pytest.raises((IntegrityError, Exception)):
+                    await session.flush()
+                await session.rollback()
+        finally:
+            await _dispose(engine)
+
+    asyncio.run(scenario())
+
+
+def test_admin_refresh_session_cascades_on_admin_delete() -> None:
+    """Deleting an AdminUser must cascade-delete its refresh sessions."""
+    import asyncio
+    from sqlalchemy import func, select
+
+    async def scenario() -> None:
+        engine, session_factory = await _open_test_database()
+        try:
+            async with session_factory() as session:
+                from datetime import datetime, timedelta, timezone
+                now = datetime.now(timezone.utc)
+
+                session.add(
+                    AdminUser(
+                        id="admin-cascade",
+                        username="cascade-user",
+                        hashed_password="$argon2id$fake",
+                        role="operator",
+                    )
+                )
+                await session.flush()
+
+                session.add(
+                    AdminRefreshSession(
+                        id="session-cascade",
+                        admin_id="admin-cascade",
+                        token_hash="a" * 64,
+                        family_id="family-001",
+                        expires_at=now + timedelta(days=7),
+                    )
+                )
+                await session.commit()
+
+            async with session_factory() as session:
+                admin = await session.get(AdminUser, "admin-cascade")
+                await session.delete(admin)
+                await session.commit()
+
+            async with session_factory() as session:
+                session_row = await session.get(AdminRefreshSession, "session-cascade")
+                assert session_row is None, (
+                    "RefreshSession must be cascade-deleted with its AdminUser"
+                )
+        finally:
+            await _dispose(engine)
+
+    asyncio.run(scenario())
+
+
+# ---------------------------------------------------------------------------
+# AdminContext dataclass tests (T-05 completion criteria)
+# ---------------------------------------------------------------------------
+
+def test_admin_context_is_frozen() -> None:
+    """AdminContext must be immutable — assigning a field must raise."""
+    from backend.app.auth.admin_context import AdminContext
+
+    ctx = AdminContext(admin_id="a1", username="alice", role="operator")
+
+    with pytest.raises((AttributeError, TypeError)):
+        ctx.admin_id = "modified"  # type: ignore[misc]
+
+
+def test_admin_context_role_values() -> None:
+    """AdminContext accepts all three valid role literals."""
+    from backend.app.auth.admin_context import AdminContext
+
+    for role in ("super_admin", "operator", "auditor"):
+        ctx = AdminContext(admin_id="x", username="u", role=role)  # type: ignore[arg-type]
+        assert ctx.role == role

@@ -15,7 +15,7 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.dependencies import require_admin_access
+from backend.app.api.dependencies import require_admin_access, require_permission
 from backend.app.api.schemas.admin import (
     AgentAdminResponse,
     ApiKeyAdminResponse,
@@ -114,7 +114,8 @@ async def _cleanup_storage(
             )
 
 
-@router.get("/tenants", response_model=list[TenantAdminResponse])
+@router.get("/tenants", response_model=list[TenantAdminResponse],
+            dependencies=[Depends(require_permission("tenants:read"))])
 async def get_tenants(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[TenantAdminResponse]:
@@ -124,6 +125,7 @@ async def get_tenants(
 @router.get(
     "/tenants/{tenant_id}",
     response_model=TenantAdminResponse,
+    dependencies=[Depends(require_permission("tenants:read"))],
 )
 async def get_tenant(
     tenant_id: str,
@@ -139,6 +141,7 @@ async def get_tenant(
 @router.patch(
     "/tenants/{tenant_id}/status",
     response_model=TenantAdminResponse,
+    dependencies=[Depends(require_permission("tenants:write"))],
 )
 async def update_tenant_status(
     tenant_id: str,
@@ -162,6 +165,7 @@ async def update_tenant_status(
 @router.delete(
     "/tenants/{tenant_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission("tenants:delete"))],
 )
 async def permanently_delete_tenant(
     tenant_id: str,
@@ -190,6 +194,7 @@ async def permanently_delete_tenant(
 @router.get(
     "/tenants/{tenant_id}/agents",
     response_model=list[AgentAdminResponse],
+    dependencies=[Depends(require_permission("agents:read"))],
 )
 async def get_agents(
     tenant_id: str,
@@ -205,6 +210,7 @@ async def get_agents(
 @router.patch(
     "/tenants/{tenant_id}/agents/{agent_id}/status",
     response_model=AgentAdminResponse,
+    dependencies=[Depends(require_permission("agents:write"))],
 )
 async def update_agent_status(
     tenant_id: str,
@@ -230,6 +236,7 @@ async def update_agent_status(
 @router.delete(
     "/tenants/{tenant_id}/agents/{agent_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission("agents:delete"))],
 )
 async def permanently_delete_agent(
     tenant_id: str,
@@ -263,6 +270,7 @@ async def permanently_delete_agent(
 @router.get(
     "/tenants/{tenant_id}/api-keys",
     response_model=list[ApiKeyAdminResponse],
+    dependencies=[Depends(require_permission("api_keys:read"))],
 )
 async def get_api_keys(
     tenant_id: str,
@@ -278,6 +286,7 @@ async def get_api_keys(
 @router.post(
     "/tenants/{tenant_id}/api-keys/{key_id}/revoke",
     response_model=ApiKeyAdminResponse,
+    dependencies=[Depends(require_permission("api_keys:revoke"))],
 )
 async def revoke_one_api_key(
     tenant_id: str,
@@ -301,6 +310,7 @@ async def revoke_one_api_key(
 @router.post(
     "/tenants/{tenant_id}/api-keys/revoke-all",
     response_model=RevokeAllApiKeysResponse,
+    dependencies=[Depends(require_permission("api_keys:revoke"))],
 )
 async def revoke_tenant_api_keys(
     tenant_id: str,
@@ -321,6 +331,7 @@ async def revoke_tenant_api_keys(
 @router.delete(
     "/tenants/{tenant_id}/conversations/{conversation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission("conversations:delete"))],
 )
 async def permanently_delete_conversation(
     tenant_id: str,

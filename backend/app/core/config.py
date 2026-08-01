@@ -124,6 +124,38 @@ class Settings(BaseSettings):
     # Hard ceiling for retrieved text injected into one generation request.
     rag_max_context_chars: int = Field(default=12000, ge=500, le=100000)
 
+    # ------------------------------------------------------------------ #
+    # Admin authentication                                                 #
+    # ------------------------------------------------------------------ #
+
+    # HS256 signing key for admin JWT access tokens.
+    # Must be at least 32 characters in staging and production.
+    # Leave unset in development to disable JWT-based admin auth.
+    jwt_secret_key: SecretStr | None = None
+
+    # Lifetime of a short-lived admin access token, in minutes.
+    jwt_access_token_expire_minutes: int = Field(default=15, gt=0, le=1440)
+
+    # Lifetime of a long-lived admin refresh token, in days.
+    jwt_refresh_token_expire_days: int = Field(default=7, gt=0, le=90)
+
+    # When True the legacy X-Admin-Key header is accepted alongside JWT
+    # Bearer tokens.  Set to False once all callers have migrated.
+    admin_legacy_key_enabled: bool = True
+
+    # ------------------------------------------------------------------ #
+    # Argon2id password hashing                                           #
+    # ------------------------------------------------------------------ #
+
+    # Number of iterations (time cost).  OWASP minimum: 2.
+    argon2_time_cost: int = Field(default=2, ge=1, le=16)
+
+    # Memory usage in KiB.  OWASP minimum: 19456 (19 MiB).
+    argon2_memory_cost: int = Field(default=19456, ge=8192)
+
+    # Degree of parallelism (number of threads).
+    argon2_parallelism: int = Field(default=1, ge=1, le=8)
+
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
