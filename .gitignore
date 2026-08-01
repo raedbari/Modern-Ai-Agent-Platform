@@ -1,4 +1,5 @@
-﻿# Python
+﻿
+# Python
 .venv/
 __pycache__/
 *.py[cod]
@@ -24,6 +25,11 @@ frontend_failed_20260728_193615/
 .idea/
 .DS_Store
 Thumbs.db
-
 # Kiro IDE configuration (local only)
+.kiro/
+
+# Personal analysis and scripts (not for team)
+/*.sh
+/*.md
+!README.md IDE configuration (local only)
 .kiro/
