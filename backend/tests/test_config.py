@@ -7,6 +7,7 @@ from backend.app.core.config import Settings, get_settings
 
 RUNTIME_ENVIRONMENT_VARIABLES = (
     "MAAP_ENVIRONMENT",
+    "MAAP_ADMIN_API_KEY",
     "MAAP_DEEPSEEK_API_KEY",
     "MAAP_DEEPSEEK_BASE_URL",
     "MAAP_DEEPSEEK_MODEL",
@@ -16,6 +17,11 @@ RUNTIME_ENVIRONMENT_VARIABLES = (
     "MAAP_OLLAMA_EMBEDDING_MODEL",
     "MAAP_EMBEDDING_DIMENSION",
     "MAAP_OLLAMA_TIMEOUT_SECONDS",
+    "MAAP_OLLAMA_EMBEDDING_NUM_CTX",
+    "MAAP_OLLAMA_EMBEDDING_NUM_BATCH",
+    "MAAP_OLLAMA_EMBEDDING_KEEP_ALIVE",
+    "MAAP_OLLAMA_EMBEDDING_MAX_RETRIES",
+    "MAAP_OLLAMA_EMBEDDING_RETRY_BASE_SECONDS",
     "MAAP_MAX_UPLOAD_SIZE_BYTES",
     "MAAP_MAX_PDF_PAGES",
     "MAAP_UPLOAD_STORAGE_ROOT",
@@ -49,7 +55,10 @@ def test_runtime_settings_have_expected_defaults():
     assert settings.deepseek_max_retries == 2
     assert settings.ollama_embedding_model == "qwen3-embedding:0.6b"
     assert settings.embedding_dimension == 1024
-    assert settings.embedding_batch_size == 32
+    assert settings.ollama_embedding_num_ctx == 1024
+    assert settings.ollama_embedding_num_batch == 64
+    assert settings.ollama_embedding_max_retries == 2
+    assert settings.embedding_batch_size == 8
     assert settings.rag_max_context_chars == 12000
     assert settings.ingestion_job_max_attempts == 3
     assert ".md" in settings.allowed_extensions
@@ -78,6 +87,33 @@ def test_production_requires_deepseek_api_key():
             deepseek_api_key=None,
             _env_file=None,
         )
+
+
+def test_production_requires_admin_api_key():
+    with pytest.raises(
+        ValidationError,
+        match="MAAP_ADMIN_API_KEY",
+    ):
+        Settings(
+            environment="production",
+            deepseek_api_key="test-deepseek-key",
+            admin_api_key=None,
+            _env_file=None,
+        )
+
+
+def test_admin_api_key_is_masked():
+    settings = Settings(
+        admin_api_key="test-admin-secret",
+        _env_file=None,
+    )
+
+    assert "test-admin-secret" not in repr(settings)
+    assert settings.admin_api_key is not None
+    assert (
+        settings.admin_api_key.get_secret_value()
+        == "test-admin-secret"
+    )
 
 
 def test_deepseek_api_key_is_masked():

@@ -120,14 +120,20 @@ class IngestionWorker:
             if job is None:
                 return
             document = await session.get(DocumentModel, job.document_id)
-            if document is not None and document.tenant_id == job.tenant_id:
-                document.status = DocumentProcessingStatus.FAILED.value
-                document.failure_reason = "Document processing failed."
             await IngestionJobService.mark_failed_or_retry(
                 session,
                 job,
                 safe_error="Document processing failed.",
             )
+            if document is not None and document.tenant_id == job.tenant_id:
+                if job.status == "failed":
+                    document.status = DocumentProcessingStatus.FAILED.value
+                    document.failure_reason = "Document processing failed."
+                else:
+                    # Do not expose a temporary Ollama failure as a terminal
+                    # document failure while the durable job will retry.
+                    document.status = DocumentProcessingStatus.PENDING.value
+                    document.failure_reason = None
             await session.commit()
 
     async def run_forever(self) -> None:

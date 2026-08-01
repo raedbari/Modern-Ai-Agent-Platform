@@ -90,6 +90,14 @@ Prerequisites:
 - Ollama is running on `127.0.0.1:11434`.
 - `qwen3-embedding:0.6b` is installed.
 
+Configure the local Ollama server once per Windows user. This limits Ollama to
+one loaded model and one parallel request, restarts the server, and verifies a
+GPU-safe embedding request using a 1K context and execution batch 64:
+
+```powershell
+.\scripts\configure-ollama.ps1
+```
+
 Start the stack from PowerShell:
 
 ```powershell
@@ -154,13 +162,16 @@ Available operations:
 
 Document upload and reindex requests use `multipart/form-data` with a required
 `file` field and an optional `source_name`. Reindexing requires the source file
-again for legacy synchronous uploads.
+again. The synchronous `documents` upload remains a legacy/admin endpoint and
+may return a safe provider error when Ollama is unavailable.
 
-For customer-facing operation, prefer `document-jobs`. It returns `202`, stores
+For customer-facing operation, use `document-jobs`. It returns `202`, stores
 the original source in the shared uploads volume, and lets the separate worker
 parse, chunk, embed, and index it. Poll the returned job URL until its status is
 `succeeded` or `failed`. Jobs use PostgreSQL row locking with `SKIP LOCKED`,
-bounded retries, and stale-lock recovery.
+bounded retries, and stale-lock recovery. Temporary provider failures keep the
+document pending while the job retries; only the final exhausted attempt marks
+the document as failed.
 
 ## Evidence-first chat and contact fallback
 

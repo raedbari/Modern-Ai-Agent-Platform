@@ -222,33 +222,41 @@ async def test_failed_job_retries_then_becomes_terminal(
                 storage_key="missing.source",
                 max_attempts=2,
             )
-            await IngestionJobService.claim_next(
-                session,
-                worker_id="worker-a",
-            )
-            await IngestionJobService.mark_failed_or_retry(
-                session,
-                job,
-                safe_error="Safe failure.",
-            )
-            assert job.status == "pending"
-            job.available_at = datetime.now(timezone.utc)
+            job_id = job.id
+            document_id = prepared.document.id
             await session.commit()
 
+        worker = IngestionWorker(
+            settings=settings,
+            worker_id="worker-a",
+            session_factory=sessions,
+            embedding_provider=FixedEmbeddingProvider(),
+        )
+        assert await worker.process_one() is True
+
         async with sessions() as session:
-            claimed = await IngestionJobService.claim_next(
-                session,
-                worker_id="worker-b",
-            )
-            assert claimed is not None
-            await IngestionJobService.mark_failed_or_retry(
-                session,
-                claimed,
-                safe_error="Safe failure.",
-            )
+            retrying = await session.get(IngestionJob, job_id)
+            document = await session.get(DocumentModel, document_id)
+            assert retrying is not None
+            assert retrying.status == "pending"
+            assert retrying.attempts == 1
+            assert document is not None
+            assert document.status == "pending"
+            assert document.failure_reason is None
+            retrying.available_at = datetime.now(timezone.utc)
             await session.commit()
-            assert claimed.status == "failed"
-            assert claimed.attempts == 2
-            assert claimed.completed_at is not None
+
+        assert await worker.process_one() is True
+
+        async with sessions() as session:
+            failed = await session.get(IngestionJob, job_id)
+            document = await session.get(DocumentModel, document_id)
+            assert failed is not None
+            assert failed.status == "failed"
+            assert failed.attempts == 2
+            assert failed.completed_at is not None
+            assert document is not None
+            assert document.status == "failed"
+            assert document.failure_reason == "Document processing failed."
     finally:
         await engine.dispose()

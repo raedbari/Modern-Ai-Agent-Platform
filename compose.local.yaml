@@ -7,6 +7,12 @@ x-api-environment: &api-environment
   MAAP_OLLAMA_BASE_URL: http://host.docker.internal:11434
   MAAP_OLLAMA_EMBEDDING_MODEL: qwen3-embedding:0.6b
   MAAP_EMBEDDING_DIMENSION: "1024"
+  MAAP_OLLAMA_EMBEDDING_NUM_CTX: "1024"
+  MAAP_OLLAMA_EMBEDDING_NUM_BATCH: "64"
+  MAAP_OLLAMA_EMBEDDING_KEEP_ALIVE: 10m
+  MAAP_OLLAMA_EMBEDDING_MAX_RETRIES: "2"
+  MAAP_OLLAMA_EMBEDDING_RETRY_BASE_SECONDS: "0.5"
+  MAAP_EMBEDDING_BATCH_SIZE: "8"
   MAAP_UPLOAD_STORAGE_ROOT: /var/lib/maap/uploads
 
 services:
@@ -90,7 +96,9 @@ services:
     env_file:
       - path: ./backend/.env
         required: false
-    environment: *api-environment
+    environment:
+      <<: *api-environment
+      MAAP_ADMIN_API_KEY: ${MAAP_ADMIN_API_KEY:?Set MAAP_ADMIN_API_KEY in .env.compose}
     ports:
       - "127.0.0.1:${MAAP_API_PORT:-8000}:8000"
     depends_on:

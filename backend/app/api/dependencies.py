@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from functools import lru_cache
+import secrets
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Security, status
@@ -12,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.auth.api_keys import parse_api_key, verify_api_key_secret
 from backend.app.ai.ports import EmbeddingProvider
 from backend.app.auth.context import ChatExecutionContext
-from backend.app.core.config import get_settings
+from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
 from backend.app.db.models import Agent, ApiKey, Tenant
 from backend.app.services.chat import GenerationRuntime
@@ -23,6 +24,46 @@ api_key_header = APIKeyHeader(
     description="Server-side tenant API key. Never expose it in a browser.",
     auto_error=False,
 )
+
+admin_api_key_header = APIKeyHeader(
+    name="X-Admin-Key",
+    scheme_name="InternalAdminKey",
+    description=(
+        "Temporary internal administrative credential. "
+        "It will be replaced by RBAC-backed admin sessions."
+    ),
+    auto_error=False,
+)
+
+
+def require_admin_access(
+    raw_admin_key: Annotated[
+        str | None,
+        Security(admin_api_key_header),
+    ],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    """Protect the temporary internal admin API with a configured secret."""
+
+    configured = (
+        settings.admin_api_key.get_secret_value().strip()
+        if settings.admin_api_key is not None
+        else ""
+    )
+    if not configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Administrative API is disabled",
+        )
+    if raw_admin_key is None or not secrets.compare_digest(
+        raw_admin_key,
+        configured,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid administrative credentials",
+        )
+
 
 
 def _unauthorized() -> HTTPException:

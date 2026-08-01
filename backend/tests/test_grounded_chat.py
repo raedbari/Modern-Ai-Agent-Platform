@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from backend.app.ai.chat_workflow import INSUFFICIENT_EVIDENCE_SENTINEL
 from backend.app.ai.contracts import GenerationResult
 from backend.app.auth.context import ChatExecutionContext
 from backend.app.db.base import Base
@@ -328,3 +329,50 @@ async def test_repeated_fallback_uses_contact_message_without_workflow_state(
         )
     finally:
         await engine.dispose()
+
+@pytest.mark.asyncio
+async def test_required_mode_converts_insufficient_evidence_signal_to_fallback(
+    tmp_path: Path,
+) -> None:
+    engine, sessions = await _database(
+        tmp_path / "insufficient-signal.sqlite3"
+    )
+    runtime = _runtime()
+    runtime.generate.return_value = GenerationResult(
+        content=INSUFFICIENT_EVIDENCE_SENTINEL,
+        model="test-model",
+        finish_reason="stop",
+        prompt_tokens=20,
+        completion_tokens=1,
+    )
+    retrieval = StubRetrieval(
+        [
+            _retrieved_chunk(
+                content=(
+                    "This verified document discusses another service but "
+                    "does not contain the answer requested by the user."
+                ),
+                score=0.72,
+            )
+        ]
+    )
+    try:
+        async with sessions() as session:
+            result = await ChatService(
+                runtime,
+                retrieval=retrieval,
+            ).execute(
+                session=session,
+                context=_context(),
+                message="Give me an unsupported code.",
+                conversation_id=None,
+            )
+
+        assert result.answer_status == "insufficient_knowledge"
+        assert result.sources == ()
+        assert result.model == "platform-fallback"
+        assert "enough verified information" in result.reply
+        runtime.generate.assert_awaited_once()
+    finally:
+        await engine.dispose()
+

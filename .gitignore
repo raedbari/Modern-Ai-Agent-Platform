@@ -28,3 +28,10 @@ Thumbs.db
 
 # Kiro IDE configuration (local only)
 .kiro/
+
+# Local MAAP test and diagnostic artifacts
+maap-backup-before-*/
+maap-e2e-knowledge-*/
+maap-rag-diagnostic-*.zip
+maap-retrieval-code.zip
+ollama-cpu.*.log

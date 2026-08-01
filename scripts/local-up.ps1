@@ -40,6 +40,43 @@ if ($embeddingModel -notin $availableModels) {
     throw "Ollama model '$embeddingModel' is not installed."
 }
 
+$embeddingProbe = [ordered]@{
+    model      = $embeddingModel
+    input      = @("MAAP startup embedding probe.")
+    dimensions = 1024
+    truncate   = $true
+    keep_alive = "10m"
+    options    = [ordered]@{
+        num_ctx   = 1024
+        num_batch = 64
+    }
+}
+
+try {
+    $probeJson = $embeddingProbe | ConvertTo-Json -Depth 6 -Compress
+    $probeResult = Invoke-RestMethod `
+        -Method POST `
+        -Uri "http://127.0.0.1:11434/api/embed" `
+        -ContentType "application/json; charset=utf-8" `
+        -Body ([Text.Encoding]::UTF8.GetBytes($probeJson)) `
+        -TimeoutSec 120
+}
+catch {
+    throw (
+        "The GPU-safe Ollama embedding probe failed. Run " +
+        ".\scripts\configure-ollama.ps1, then retry local-up.ps1."
+    )
+}
+
+$probeEmbeddings = @($probeResult.embeddings)
+$probeDimension = 0
+if ($probeEmbeddings.Count -eq 1) {
+    $probeDimension = @($probeEmbeddings[0]).Count
+}
+if ($probeEmbeddings.Count -ne 1 -or $probeDimension -ne 1024) {
+    throw "Ollama returned an invalid embedding probe result."
+}
+
 if (-not (Test-Path $composeEnv)) {
     $passwordBytes = New-Object byte[] 32
     $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
