@@ -1,20 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { WidgetRoot } from '../../../src/widget-root.js';
-import type { ResolvedConfig } from '../../../src/config/types.js';
+import { DARK_PRESET } from '../../../src/theme/presets.js';
+import { mockConfig } from '../../fixtures/config.js';
 
-const CONFIG: ResolvedConfig = {
-  agentId: 'test-agent',
-  theme: {},
-  position: 'right',
-  language: 'en',
-  direction: 'auto',
-  transport: 'mock',
-  transportUrl: '',
-  mockScenario: 'happy-path',
-  launcherLabel: 'Open chat',
-  welcomeMessage: 'Welcome to chat support!',
-  shadowMode: 'open',
-};
+const CONFIG = mockConfig({ welcomeMessage: 'Welcome to chat support!' });
 
 interface Violation {
   id: string;
@@ -140,13 +129,16 @@ describe('Accessibility Audit (axe-core standards)', () => {
   });
 
   it('7. Light appearance state has 0 violations', () => {
-    window.WidgetAPI?.setConfig({ theme: { primary: '#6366f1' } });
     const violations = auditAccessibility(rootEl);
     expect(violations).toEqual([]);
   });
 
   it('8. Dark appearance state has 0 violations', () => {
-    window.WidgetAPI?.setConfig({ theme: { primary: '#818cf8', text: '#f8fafc' } });
+    rootEl.remove();
+    rootEl = WidgetRoot.mount(mockConfig({
+      appearance: 'dark',
+      theme: DARK_PRESET,
+    }));
     const violations = auditAccessibility(rootEl);
     expect(violations).toEqual([]);
   });

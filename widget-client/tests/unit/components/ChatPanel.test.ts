@@ -1,21 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ChatPanel } from '../../../src/components/ChatPanel.js';
-import type { ResolvedConfig } from '../../../src/config/types.js';
 import type { WidgetState } from '../../../src/state/types.js';
+import { mockConfig } from '../../fixtures/config.js';
 
-const CONFIG: ResolvedConfig = {
-  agentId: 'test',
-  theme: {},
-  position: 'right',
-  language: 'en',
-  direction: 'auto',
-  transport: 'mock',
-  transportUrl: '',
-  mockScenario: 'happy-path',
-  launcherLabel: 'Open chat',
-  welcomeMessage: 'Hello!',
-  shadowMode: 'open',
-};
+const CONFIG = mockConfig({ welcomeMessage: 'Hello!' });
 
 const INITIAL_STATE: WidgetState = {
   isPanelOpen: true,
@@ -23,7 +11,6 @@ const INITIAL_STATE: WidgetState = {
   connectionStatus: 'connected',
   direction: 'auto',
   appearance: 'light',
-  configPatch: {},
 };
 
 describe('ChatPanel component', () => {

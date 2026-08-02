@@ -8,7 +8,6 @@ const INITIAL: WidgetState = {
   connectionStatus: 'disconnected',
   direction: 'auto',
   appearance: 'light',
-  configPatch: {},
 };
 
 describe('Reducers', () => {
@@ -123,28 +122,6 @@ describe('Reducers', () => {
     it('updates appearance', () => {
       const next = rootReducer(INITIAL, { type: 'SET_APPEARANCE', payload: 'dark' });
       expect(next.appearance).toBe('dark');
-    });
-  });
-
-  describe('PATCH_CONFIG', () => {
-    it('merges config patch', () => {
-      const next = rootReducer(INITIAL, {
-        type: 'PATCH_CONFIG',
-        payload: { launcherLabel: 'Chat' },
-      });
-      expect(next.configPatch).toEqual({ launcherLabel: 'Chat' });
-    });
-
-    it('subsequent patches are merged additively', () => {
-      let state = rootReducer(INITIAL, {
-        type: 'PATCH_CONFIG',
-        payload: { launcherLabel: 'Chat' },
-      });
-      state = rootReducer(state, {
-        type: 'PATCH_CONFIG',
-        payload: { position: 'left' },
-      });
-      expect(state.configPatch).toEqual({ launcherLabel: 'Chat', position: 'left' });
     });
   });
 

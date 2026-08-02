@@ -62,12 +62,13 @@ export class StatusBanner {
         text-align: center;
       }
       .status-banner--offline {
-        background: #fef9c3;
-        color: #92400e;
+        border-block: 1px solid var(--wc-border, #e2e8f0);
+        background: var(--wc-surface-muted, #f8fafc);
+        color: var(--wc-body-text, #0f172a);
       }
       .status-banner--error {
-        background: #fee2e2;
-        color: #dc2626;
+        background: var(--wc-error-surface, #fee2e2);
+        color: var(--wc-error-text, #b91c1c);
       }
     `;
   }

@@ -20,13 +20,17 @@ export function isOffline(state: WidgetState): boolean {
  * Currently: disabled while an assistant message is still streaming.
  */
 export function sendDisabled(state: WidgetState): boolean {
-  return state.messages.some((m) => m.role === 'assistant' && m.streaming);
+  return (
+    state.connectionStatus !== 'connected'
+    || state.messages.some((m) => m.role === 'assistant' && m.streaming)
+  );
 }
 
 /**
  * inputEditable — always true per spec.
  * The textarea is never disabled; only the send button reflects sendDisabled.
  */
-export function inputEditable(_state: WidgetState): boolean {
+export function inputEditable(state: WidgetState): boolean {
+  void state;
   return true;
 }

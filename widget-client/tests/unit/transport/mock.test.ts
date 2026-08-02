@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MockTransport } from '../../../src/transport/mock/MockTransport.js';
 import type { TransportError } from '../../../src/transport/types.js';
 
-const MSG = { text: 'Hello', agentId: 'agent-1' };
+const MSG = { text: 'Hello' };
 
 function makeCallbacks() {
   return {

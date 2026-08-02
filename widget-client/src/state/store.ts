@@ -6,7 +6,6 @@ const INITIAL_STATE: WidgetState = {
   connectionStatus: 'disconnected',
   direction: 'auto',
   appearance: 'light',
-  configPatch: {},
 };
 
 type Subscriber = (state: WidgetState) => void;

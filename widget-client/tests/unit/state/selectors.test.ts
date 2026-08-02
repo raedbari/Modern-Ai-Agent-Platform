@@ -14,7 +14,6 @@ function makeState(overrides: Partial<WidgetState> = {}): WidgetState {
     connectionStatus: 'connected',
     direction: 'auto',
     appearance: 'light',
-    configPatch: {},
     ...overrides,
   };
 }

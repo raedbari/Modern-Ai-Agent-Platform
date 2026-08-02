@@ -11,11 +11,14 @@
 
     <script>
       // Default dev configuration — override before the module loads if needed
-      window.WidgetConfig = {
-        agentId: 'dev-agent',
+      window.WidgetConfig ??= {
         transport: 'mock',
         mockScenario: 'happy-path',
         launcherLabel: 'Chat',
+        mock: {
+          displayName: 'MAAP Assistant',
+          welcomeMessage: 'Hello! This is the local Widget preview.',
+        },
       };
     </script>
     <script type="module" src="/src/index.ts"></script>

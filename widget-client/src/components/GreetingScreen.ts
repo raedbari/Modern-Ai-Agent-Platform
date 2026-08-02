@@ -1,9 +1,6 @@
-/**
- * GreetingScreen — shown when no messages have been exchanged.
- *
- * Renders a welcome message inside the shadow DOM hierarchy.
- * Uses only textContent to prevent XSS.
- */
+import { createIcon, ICON_PATHS } from '../utils/icons.js';
+
+/** Safe greeting populated from the public bootstrap response. */
 export class GreetingScreen {
   readonly #root: HTMLElement;
 
@@ -15,13 +12,11 @@ export class GreetingScreen {
 
     const icon = document.createElement('div');
     icon.className = 'greeting-icon';
-    icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = '💬';
+    icon.appendChild(createIcon('greeting-icon__svg', [...ICON_PATHS.chat]));
 
     const msg = document.createElement('p');
     msg.className = 'greeting-message';
-    msg.textContent = welcomeMessage; // textContent — safe from XSS
-
+    msg.textContent = welcomeMessage;
     this.#root.appendChild(icon);
     this.#root.appendChild(msg);
   }
@@ -30,33 +25,44 @@ export class GreetingScreen {
     return this.#root;
   }
 
-  /** Update the welcome message without re-creating the element. */
   setMessage(message: string): void {
-    const p = this.#root.querySelector('.greeting-message');
-    if (p) p.textContent = message;
+    const paragraph = this.#root.querySelector('.greeting-message');
+    if (paragraph) paragraph.textContent = message;
   }
 
   static styles(): string {
     return `
       .greeting-screen {
         display: flex;
+        flex: 1;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 0.75rem;
-        padding: 2rem;
-        flex: 1;
+        gap: 1rem;
+        padding: 2.25rem;
         text-align: center;
       }
       .greeting-icon {
-        font-size: 2.5rem;
-        line-height: 1;
+        inline-size: 4rem;
+        block-size: 4rem;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--wc-border, #e2e8f0);
+        border-radius: 1.4rem;
+        background: var(--wc-surface, #fff);
+        color: var(--wc-primary, #2563eb);
+      }
+      .greeting-icon__svg {
+        inline-size: 1.8rem;
+        block-size: 1.8rem;
       }
       .greeting-message {
+        max-inline-size: 17rem;
         margin: 0;
-        font-size: 0.95rem;
-        color: var(--wc-text, #1e1e2e);
-        opacity: 0.8;
+        color: var(--wc-body-text, #0f172a);
+        font-size: 0.96rem;
+        line-height: 1.65;
+        white-space: pre-wrap;
       }
     `;
   }

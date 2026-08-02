@@ -1,13 +1,15 @@
-import type { ThemeTokens } from '../config/types.js';
+import type {
+  ThemeTokens,
+  WidgetAppearance,
+} from '../config/types.js';
 import { TOKEN_TO_CSS_PROP, TOKEN_KEYS } from './tokens.js';
-import { LIGHT_PRESET, getPresetForMediaQuery } from './presets.js';
+import {
+  getAppearancePreset,
+  getBrandPreset,
+} from './presets.js';
 import { isValidCSSColor } from '../utils/color.js';
 
-/**
- * ThemeInjector manages CSS Custom Properties inside a Shadow Root via
- * `adoptedStyleSheets`. This approach avoids injecting <style> tags and
- * keeps tokens scoped to the widget's shadow tree.
- */
+/** Apply validated API theme values inside the Widget Shadow Root. */
 export class ThemeInjector {
   readonly #shadow: ShadowRoot;
   #sheet: CSSStyleSheet | null = null;
@@ -16,52 +18,46 @@ export class ThemeInjector {
     this.#shadow = shadow;
   }
 
-  /**
-   * Apply a set of theme tokens to the shadow root.
-   *
-   * Merge order:
-   *  1. Media-query preset (light or dark)
-   *  2. `tokens` argument overrides
-   *
-   * Invalid CSS colour values are rejected: the corresponding preset value
-   * is used instead, and a warning is logged.
-   */
-  apply(tokens: Partial<ThemeTokens>): void {
-    const preset = getPresetForMediaQuery();
-    const resolved: Partial<ThemeTokens> = {};
+  apply(
+    tokens: Partial<ThemeTokens>,
+    appearance: WidgetAppearance = 'light',
+  ): void {
+    const brandPreset = getBrandPreset(appearance);
+    const resolved = { ...brandPreset };
 
     for (const key of TOKEN_KEYS) {
-      const override = tokens[key as keyof ThemeTokens];
-      const fallback = preset[key as keyof ThemeTokens] ?? LIGHT_PRESET[key as keyof ThemeTokens];
-
+      const override = tokens[key];
       if (override !== undefined) {
         if (isValidCSSColor(override)) {
-          resolved[key as keyof ThemeTokens] = override;
+          resolved[key] = override;
         } else {
           console.warn(
-            `[ThemeInjector] "${override}" is not a valid CSS colour for token "${key}". Using preset value "${fallback}".`,
+            `[ThemeInjector] Invalid colour for "${key}"; using the safe preset.`,
           );
-          resolved[key as keyof ThemeTokens] = fallback;
         }
-      } else {
-        resolved[key as keyof ThemeTokens] = fallback;
       }
     }
 
-    this.#applyToSheet(resolved as ThemeTokens);
+    const appearanceTokens = getAppearancePreset(appearance);
+    const declarations = [
+      ...TOKEN_KEYS.map(
+        (key) => `  ${TOKEN_TO_CSS_PROP[key]}: ${resolved[key]};`,
+      ),
+      `  --wc-surface: ${appearanceTokens.surface};`,
+      `  --wc-surface-muted: ${appearanceTokens.surfaceMuted};`,
+      `  --wc-body-text: ${appearanceTokens.bodyText};`,
+      `  --wc-muted-text: ${appearanceTokens.mutedText};`,
+      `  --wc-border: ${appearanceTokens.border};`,
+      `  --wc-input-bg: ${appearanceTokens.input};`,
+      `  --wc-assistant-bubble-bg: ${appearanceTokens.assistantBubble};`,
+      `  --wc-error-surface: ${appearanceTokens.errorSurface};`,
+      `  --wc-error-text: ${appearanceTokens.errorText};`,
+    ].join('\n');
+
+    this.#applyToSheet(`:host {\n${declarations}\n}`);
   }
 
-  // ─── Private helpers ──────────────────────────────────────────────────────
-
-  #applyToSheet(tokens: ThemeTokens): void {
-    const declarations = TOKEN_KEYS.map((key) => {
-      const prop = TOKEN_TO_CSS_PROP[key];
-      const value = tokens[key as keyof ThemeTokens];
-      return `  ${prop}: ${value};`;
-    }).join('\n');
-
-    const css = `:host {\n${declarations}\n}`;
-
+  #applyToSheet(css: string): void {
     try {
       if (!this.#sheet) {
         this.#sheet = new CSSStyleSheet();
@@ -72,8 +68,9 @@ export class ThemeInjector {
       }
       this.#sheet.replaceSync(css);
     } catch {
-      // Fallback for environments without native adoptedStyleSheets support (e.g. basic jsdom)
-      let fallbackStyle = this.#shadow.querySelector<HTMLStyleElement>('#theme-injector-fallback');
+      let fallbackStyle = this.#shadow.querySelector<HTMLStyleElement>(
+        '#theme-injector-fallback',
+      );
       if (!fallbackStyle) {
         fallbackStyle = document.createElement('style');
         fallbackStyle.id = 'theme-injector-fallback';

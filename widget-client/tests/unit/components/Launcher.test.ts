@@ -23,6 +23,30 @@ describe('Launcher component', () => {
     expect(launcher.element.getAttribute('aria-expanded')).toBe('false');
   });
 
+  it('renders deterministic chat and close SVG icons', () => {
+    const launcher = new Launcher({ onClick: vi.fn() });
+    const closePaths = launcher.element.querySelectorAll(
+      '.launcher-icon--close path',
+    );
+
+    expect(launcher.element.querySelectorAll('svg')).toHaveLength(2);
+    expect(launcher.element.querySelector('.launcher-icon--chat')).not.toBeNull();
+    expect(launcher.element.querySelector('.launcher-icon--close')).not.toBeNull();
+    expect(Array.from(closePaths, (path) => path.getAttribute('d'))).toEqual([
+      'M18 6 6 18',
+      'M6 6 18 18',
+    ]);
+  });
+
+  it('reflects connection state without changing its accessible label', () => {
+    const launcher = new Launcher({ onClick: vi.fn() }, 'Open support');
+
+    launcher.setConnectionStatus('connected');
+
+    expect(launcher.element.dataset.status).toBe('connected');
+    expect(launcher.element.getAttribute('aria-label')).toBe('Open support');
+  });
+
   it('clicking button invokes onClick callback', () => {
     const onClick = vi.fn();
     const launcher = new Launcher({ onClick });
@@ -40,5 +64,13 @@ describe('Launcher component', () => {
     const styles = Launcher.styles();
     expect(styles).toContain('min-inline-size: 44px');
     expect(styles).toContain('min-block-size: 44px');
+  });
+
+  it('CSS defines a mirrored speech-bubble tail for left placement', () => {
+    const styles = Launcher.styles();
+
+    expect(styles).toContain('border-end-end-radius: 0.45rem');
+    expect(styles).toContain(":host([data-position='left']) .launcher-button");
+    expect(styles).toContain('border-end-start-radius: 0.45rem');
   });
 });

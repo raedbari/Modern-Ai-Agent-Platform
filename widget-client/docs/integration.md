@@ -1,115 +1,159 @@
-# Widget Client Integration Guide
+# MAAP Widget Client Integration
 
-The `@maap/widget-client` package provides an isolated, zero-dependency, Shadow DOM embeddable chat widget for the Modern AI Agent Platform.
+The Widget Client is a dependency-free, Shadow DOM chat launcher for the
+Modern AI Agent Platform. The production bundle uses the existing secure
+Widget bootstrap and chat endpoints; it does not expose a tenant API key.
 
----
+## Production embed
 
-## 🚀 Quick Start (Script Embed)
-
-Add the IIFE bundle to any HTML page before the closing `</body>` tag:
-
-```html
-<script>
-  window.WidgetConfig = {
-    agentId: "agent-sales-01",
-    launcherLabel: "Chat with Sales Support",
-    welcomeMessage: "Hello! How can we assist your business today?",
-    theme: {
-      primary: "#4f46e5",
-      headerBg: "#3730a3"
-    }
-  };
-</script>
-<script src="https://cdn.example.com/widget.iife.js" defer></script>
-```
-
-Alternatively, pass JSON configuration via `data-widget-config`:
+Place the public CDN script before the closing `</body>` tag:
 
 ```html
 <script
-  src="https://cdn.example.com/widget.iife.js"
-  data-widget-config='{"agentId":"agent-sales-01","position":"right"}'
+  src="https://cdn.travel-x.online/widget/v1.js"
+  data-widget-id="wgt_REPLACE_WITH_ADMIN_GENERATED_ID"
+  data-server-url="https://ai.travel-x.online"
   defer
 ></script>
 ```
 
----
+The two embed values are public:
 
-## ⚙️ Configuration Parameters (`WidgetConfig`)
+- `data-widget-id` is the opaque identifier generated for one Agent by the
+  Admin Widget API.
+- `data-server-url` is the API origin. Production requires HTTPS. Local
+  development may use `http://localhost` or `http://127.0.0.1`.
 
-| Field | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `agentId` | `string` | `""` | **Recommended**. Identifier of the agent to connect to. |
-| `theme` | `Partial<ThemeTokens>` | `{}` | Theme colour token overrides (hex, rgb, hsl). |
-| `position` | `"left"` \| `"right"` | `"right"` | Corner placement on screen. |
-| `language` | `string` | `"en"` | BCP-47 language code. |
-| `direction` | `"ltr"` \| `"rtl"` \| `"auto"` | `"auto"` | Text direction mode (auto-detects page dir). |
-| `transport` | `"mock"` \| `"websocket"` \| `"sse"` | `"mock"` | Transport strategy. Wave 1 supports `"mock"`. |
-| `transportUrl` | `string` | `""` | Target backend URL for real transports. |
-| `mockScenario` | `"happy-path"` \| `"slow-response"` \| `"error-response"` \| `"stream-error-midway"` | `"happy-path"` | Active mock scenario. |
-| `launcherLabel` | `string` | `"Open chat"` | Accessible ARIA label for floating launcher button. |
-| `welcomeMessage` | `string` | `"Hello! How can I help you today?"` | Message displayed on greeting screen. |
-| `shadowMode` | `"open"` \| `"closed"` | `"open"` | Shadow DOM encapsulation mode. |
+Do not put an API key, admin token, tenant ID, internal Agent ID or Widget JWT
+in the HTML snippet.
 
----
+Optional host settings are limited to UI chrome:
 
-## 🎨 Theme Tokens
+```html
+<script
+  src="https://cdn.travel-x.online/widget/v1.js"
+  data-widget-id="wgt_REPLACE_WITH_ADMIN_GENERATED_ID"
+  data-server-url="https://ai.travel-x.online"
+  data-language="ar"
+  data-direction="rtl"
+  data-launcher-label="افتح المحادثة"
+  defer
+></script>
+```
 
-The widget uses scoped CSS Custom Properties (`--wc-*`):
+## Runtime flow
 
-```typescript
-interface ThemeTokens {
-  primary: string;        // Primary brand colour (--wc-primary)
-  text: string;           // Base text colour (--wc-text)
-  launcherBg: string;     // Launcher button background (--wc-launcher-bg)
-  headerBg: string;       // Chat panel header background (--wc-header-bg)
-  userBubbleBg: string;   // User message bubble background (--wc-user-bubble-bg)
+1. The Widget sends `{ "widget_id": "wgt_..." }` to
+   `POST /api/widget/bootstrap`.
+2. The Backend verifies the exact browser `Origin`, Widget status, Agent,
+   tenant and rate limits.
+3. Bootstrap returns a short-lived, origin-bound bearer token and safe public
+   presentation data.
+4. The Widget applies the trusted Agent name, greeting, colours, position and
+   light/dark appearance.
+5. Messages are sent to `POST /api/chat` with the in-memory bearer token.
+   Agent and tenant IDs are derived from that token, not from browser input.
+
+The token and conversation ID are kept in memory only. The Widget does not
+write them to cookies, `localStorage` or `sessionStorage`.
+
+## Per-Agent settings from the Admin UI
+
+The Admin dashboard must load and save settings through the RBAC-protected
+endpoint:
+
+```http
+GET /api/admin/tenants/{tenant_id}/agents/{agent_id}/widget
+PUT /api/admin/tenants/{tenant_id}/agents/{agent_id}/widget
+Authorization: Bearer <admin-access-token>
+```
+
+Example update body:
+
+```json
+{
+  "is_enabled": true,
+  "display_name": "Customer Support",
+  "greeting": "How can we help?",
+  "theme": {
+    "primaryColor": "#123456",
+    "textColor": "#FFFFFF",
+    "launcherColor": "#234567",
+    "headerColor": "#345678",
+    "userMessageColor": "#456789",
+    "position": "right",
+    "appearance": "light"
+  },
+  "allowed_origins": ["https://customer.example"]
 }
 ```
 
----
+`textColor` is applied to text and icons on branded backgrounds. The Backend
+rejects invalid colours and combinations that do not meet its WCAG contrast
+rule. Customer websites cannot override these trusted per-Agent values through
+the production embed.
 
-## 💻 Public JavaScript API (`window.WidgetAPI`)
+After an Admin save, a dashboard preview already mounted on an allowed origin
+can request the latest configuration with:
 
-Once mounted, `window.WidgetAPI` exposes 4 control methods:
+```js
+await window.WidgetAPI.refresh();
+```
 
-```typescript
-// Open the chat panel
+## Public JavaScript API
+
+```js
 window.WidgetAPI.open();
-
-// Close the chat panel
 window.WidgetAPI.close();
-
-// Update configuration at runtime
-window.WidgetAPI.setConfig({
-  launcherLabel: "Help Center",
-  theme: { primary: "#059669" }
-});
-
-// Tear down widget and remove element from DOM
+await window.WidgetAPI.refresh();
 window.WidgetAPI.destroy();
 ```
 
----
+There is intentionally no public `setConfig()` colour API. Production colours
+and Agent identity come from the authenticated Admin configuration and public
+bootstrap response.
 
-## 🛠️ Production Build Command
+## Local UI preview
 
-To compile the production IIFE and ESM bundles with sourcemaps:
+Mock mode must be selected explicitly and must never be used in a production
+embed:
 
-```bash
-npm run build
+```html
+<script>
+  window.WidgetConfig = {
+    transport: "mock",
+    mockScenario: "happy-path",
+    mock: {
+      displayName: "Preview Assistant",
+      welcomeMessage: "This is a local preview.",
+      position: "right",
+      appearance: "light"
+    }
+  };
+</script>
+<script type="module" src="/src/index.ts"></script>
 ```
 
-Outputs created in `dist/`:
-- `dist/widget.iife.js`
-- `dist/widget.esm.js`
-- `dist/index.d.ts`
+## Build and verification
 
----
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run test:coverage
+npm run test:visual
+npm run build
+npm audit --audit-level=high
+```
 
-## ♿ Manual WCAG Testing Note
+Production output:
 
-The widget complies with **WCAG 2.1 Level AA**:
-- Keyboard navigation (Tab/Shift+Tab focus wrapping in modal, Escape key close).
-- All interactive elements have minimum **44px × 44px** touch target bounds.
-- Accessible ARIA live regions for assistant streaming text updates.
+- `dist/widget.iife.js` for the CDN script.
+- `dist/widget.esm.js` for module consumers.
+- `dist/index.d.ts` and declarations for TypeScript consumers.
+
+The static Widget bundle should be served from
+`https://cdn.travel-x.online/widget/v1.js`; API traffic remains on
+`https://ai.travel-x.online`. Cloudflare must not serve an interactive
+challenge on the Widget bootstrap or chat browser endpoints.

@@ -1,20 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WidgetRoot } from '../../src/widget-root.js';
-import type { ResolvedConfig } from '../../src/config/types.js';
+import { mockConfig } from '../fixtures/config.js';
 
-const CONFIG: ResolvedConfig = {
-  agentId: 'integration-agent',
-  theme: {},
-  position: 'right',
-  language: 'en',
-  direction: 'auto',
-  transport: 'mock',
-  transportUrl: '',
-  mockScenario: 'happy-path',
-  launcherLabel: 'Open chat',
-  welcomeMessage: 'Welcome!',
-  shadowMode: 'open',
-};
+const CONFIG = mockConfig();
 
 describe('Widget Lifecycle Integration', () => {
   beforeEach(() => {

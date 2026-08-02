@@ -33,11 +33,12 @@ export class MockTransport implements ITransport {
     return this.#status;
   }
 
-  async connect(): Promise<void> {
+  async connect(): Promise<undefined> {
     this.#setStatus('connecting');
     // Simulate a brief async handshake
     await new Promise<void>((resolve) => setTimeout(resolve, 10));
     this.#setStatus('connected');
+    return undefined;
   }
 
   send(_message: OutgoingMessage, callbacks: MessageCallbacks): () => void {

@@ -44,8 +44,8 @@
   </style>
 </head>
 <body>
-  <h1>💬 Modern AI Agent Platform — Widget Client Demo</h1>
-  <p>Interactive demonstration host page testing the embeddable chat widget IIFE/ESM bundle.</p>
+  <h1>Modern AI Agent Platform — Widget Preview</h1>
+  <p>This page previews the isolated Widget UI with the explicit local mock transport.</p>
 
   <div class="card">
     <h2>WidgetAPI Controls</h2>
@@ -53,8 +53,7 @@
     <div class="btn-group">
       <button onclick="window.WidgetAPI?.open()">Open Widget</button>
       <button onclick="window.WidgetAPI?.close()" class="secondary">Close Widget</button>
-      <button onclick="window.WidgetAPI?.setConfig({ theme: { primary: '#ec4899', launcherBg: '#ec4899', headerBg: '#be185d' } })">Pink Theme</button>
-      <button onclick="window.WidgetAPI?.setConfig({ theme: { primary: '#6366f1', launcherBg: '#6366f1', headerBg: '#6366f1' } })" class="secondary">Reset Theme</button>
+      <button onclick="window.WidgetAPI?.refresh()">Refresh Preview</button>
       <button onclick="window.WidgetAPI?.destroy()" class="secondary">Destroy Widget</button>
     </div>
   </div>
@@ -62,11 +61,14 @@
   <!-- Configure widget via window.WidgetConfig before script load -->
   <script>
     window.WidgetConfig = {
-      agentId: 'demo-agent-001',
+      transport: 'mock',
       launcherLabel: 'Chat with AI Support',
-      welcomeMessage: 'Welcome to the MAAP AI Assistant demo! How can I help you today?',
       mockScenario: 'happy-path',
-      position: 'right'
+      mock: {
+        displayName: 'MAAP Assistant',
+        welcomeMessage: 'Welcome to the MAAP AI Assistant demo! How can I help you today?',
+        position: 'right'
+      }
     };
   </script>
 

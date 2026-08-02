@@ -50,7 +50,7 @@ export class LoadingIndicator {
         inline-size: 0.45rem;
         block-size: 0.45rem;
         border-radius: 50%;
-        background: var(--wc-primary, #6366f1);
+        background: var(--wc-primary, #2563eb);
         opacity: 0.6;
         animation: bounce 1.2s ease-in-out infinite;
       }
@@ -63,6 +63,9 @@ export class LoadingIndicator {
       @keyframes bounce {
         0%, 80%, 100% { transform: translateY(0); }
         40%            { transform: translateY(-0.4rem); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .loading-indicator__dot { animation: none; }
       }
     `;
   }

@@ -1,84 +1,141 @@
-import type { WidgetConfig, ResolvedConfig } from './types.js';
+import type {
+  MockScenario,
+  ResolvedConfig,
+  ThemeTokens,
+  WidgetAppearance,
+  WidgetConfig,
+  WidgetPosition,
+} from './types.js';
 import { DEFAULTS } from './defaults.js';
+import { isValidCSSColor } from '../utils/color.js';
 
-const VALID_POSITIONS = new Set<string>(['left', 'right']);
-const VALID_TRANSPORTS = new Set<string>(['mock', 'websocket', 'sse']);
-const VALID_MOCK_SCENARIOS = new Set<string>([
+const PUBLIC_WIDGET_ID = /^wgt_[A-Za-z0-9_-]{20,60}$/;
+const VALID_MOCK_SCENARIOS = new Set<MockScenario>([
   'happy-path',
   'slow-response',
   'error-response',
   'stream-error-midway',
 ]);
-const VALID_SHADOW_MODES = new Set<string>(['open', 'closed']);
-const VALID_DIRECTIONS = new Set<string>(['ltr', 'rtl', 'auto']);
+const VALID_SHADOW_MODES = new Set(['open', 'closed']);
+const VALID_DIRECTIONS = new Set(['ltr', 'rtl', 'auto']);
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-/**
- * Validates and resolves raw WidgetConfig into ResolvedConfig.
- *
- * - Warns (but does not throw) on missing agentId.
- * - Falls back to "mock" transport when transportUrl is invalid for websocket/sse.
- * - Unknown or unrecognised fields are silently ignored.
- */
+/** Validate untrusted embed configuration without silently enabling demo mode. */
 export function validateConfig(raw: WidgetConfig): ResolvedConfig {
-  if (!raw.agentId) {
+  const transport = raw.transport === 'mock' ? 'mock' : 'http';
+  const widgetId = normalizeWidgetId(raw.widgetId);
+  const serverUrl = normalizeServerUrl(raw.serverUrl);
+
+  if (transport === 'http' && !widgetId) {
     console.warn(
-      '[WidgetClient] agentId is not set. The widget will run in demo mode.',
+      '[WidgetClient] A valid data-widget-id is required for live chat.',
+    );
+  }
+  if (transport === 'http' && !serverUrl) {
+    console.warn(
+      '[WidgetClient] A valid HTTPS data-server-url is required for live chat.',
     );
   }
 
-  // Resolve transport — fall back to mock if real transport lacks a valid URL
-  let transport = VALID_TRANSPORTS.has(raw.transport ?? '')
-    ? (raw.transport as ResolvedConfig['transport'])
-    : DEFAULTS.transport;
-
-  let transportUrl = DEFAULTS.transportUrl;
-  if (transport === 'websocket' || transport === 'sse') {
-    if (raw.transportUrl && isValidUrl(raw.transportUrl)) {
-      transportUrl = raw.transportUrl;
-    } else {
-      console.warn(
-        `[WidgetClient] Invalid or missing transportUrl for transport "${transport}". Falling back to mock.`,
-      );
-      transport = 'mock';
-    }
-  }
-
-  const position = VALID_POSITIONS.has(raw.position ?? '')
-    ? (raw.position as ResolvedConfig['position'])
-    : DEFAULTS.position;
+  const mockScenario = VALID_MOCK_SCENARIOS.has(
+    raw.mockScenario as MockScenario,
+  )
+    ? (raw.mockScenario as MockScenario)
+    : DEFAULTS.mockScenario;
 
   const direction = VALID_DIRECTIONS.has(raw.direction ?? '')
     ? (raw.direction as ResolvedConfig['direction'])
     : DEFAULTS.direction;
 
-  const mockScenario = VALID_MOCK_SCENARIOS.has(raw.mockScenario ?? '')
-    ? (raw.mockScenario as ResolvedConfig['mockScenario'])
-    : DEFAULTS.mockScenario;
-
   const shadowMode = VALID_SHADOW_MODES.has(raw.shadowMode ?? '')
     ? (raw.shadowMode as ResolvedConfig['shadowMode'])
     : DEFAULTS.shadowMode;
 
+  const mock = transport === 'mock' ? raw.mock : undefined;
+
   return {
-    agentId: raw.agentId ?? '',
-    theme: raw.theme ?? {},
-    position,
-    language: raw.language ?? DEFAULTS.language,
-    direction,
+    ...DEFAULTS,
+    widgetId,
+    serverUrl,
     transport,
-    transportUrl,
     mockScenario,
-    launcherLabel: raw.launcherLabel ?? DEFAULTS.launcherLabel,
-    welcomeMessage: raw.welcomeMessage ?? DEFAULTS.welcomeMessage,
+    language: normalizeShortText(raw.language, DEFAULTS.language, 35),
+    direction,
+    launcherLabel: normalizeShortText(
+      raw.launcherLabel,
+      DEFAULTS.launcherLabel,
+      100,
+    ),
     shadowMode,
+    displayName: normalizeShortText(
+      mock?.displayName,
+      DEFAULTS.displayName,
+      255,
+    ),
+    welcomeMessage: normalizeShortText(
+      mock?.welcomeMessage,
+      DEFAULTS.welcomeMessage,
+      500,
+    ),
+    theme: resolveMockTheme(mock?.theme),
+    position: resolvePosition(mock?.position),
+    appearance: resolveAppearance(mock?.appearance),
   };
 }
 
-function isValidUrl(value: string): boolean {
+function normalizeWidgetId(value: string | undefined): string {
+  const normalized = value?.trim() ?? '';
+  return PUBLIC_WIDGET_ID.test(normalized) ? normalized : '';
+}
+
+function normalizeServerUrl(value: string | undefined): string {
+  if (!value) return '';
   try {
-    new URL(value);
-    return true;
+    const url = new URL(value);
+    const localHttp = url.protocol === 'http:' && LOCAL_HOSTS.has(url.hostname);
+    if (
+      (url.protocol !== 'https:' && !localHttp)
+      || url.username
+      || url.password
+    ) {
+      return '';
+    }
+    return url.origin;
   } catch {
-    return false;
+    return '';
   }
+}
+
+function normalizeShortText(
+  value: string | undefined,
+  fallback: string,
+  maxLength: number,
+): string {
+  const normalized = value?.trim();
+  if (!normalized || normalized.length > maxLength) return fallback;
+  return normalized;
+}
+
+function resolvePosition(value: WidgetPosition | undefined): WidgetPosition {
+  return value === 'left' || value === 'right' ? value : DEFAULTS.position;
+}
+
+function resolveAppearance(
+  value: WidgetAppearance | undefined,
+): WidgetAppearance {
+  return value === 'dark' || value === 'light'
+    ? value
+    : DEFAULTS.appearance;
+}
+
+function resolveMockTheme(value: Partial<ThemeTokens> | undefined): ThemeTokens {
+  const resolved = { ...DEFAULTS.theme };
+  if (!value) return resolved;
+  for (const key of Object.keys(resolved) as Array<keyof ThemeTokens>) {
+    const candidate = value[key];
+    if (candidate && isValidCSSColor(candidate)) {
+      resolved[key] = candidate;
+    }
+  }
+  return resolved;
 }

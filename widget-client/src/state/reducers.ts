@@ -79,9 +79,6 @@ export function rootReducer(state: WidgetState, action: Action): WidgetState {
       if (state.appearance === action.payload) return state;
       return { ...state, appearance: action.payload };
 
-    case 'PATCH_CONFIG':
-      return { ...state, configPatch: { ...state.configPatch, ...action.payload } };
-
     default: {
       // Exhaustiveness guard
       const _exhaustive: never = action;

@@ -26,8 +26,6 @@ export interface WidgetState {
   connectionStatus: ConnectionStatus;
   direction: Direction;
   appearance: Appearance;
-  /** Partial config patches applied at runtime via setConfig(). */
-  configPatch: Record<string, unknown>;
 }
 
 // ─── Action union ─────────────────────────────────────────────────────────────
@@ -42,5 +40,4 @@ export type Action =
   | { type: 'ERROR_ASSISTANT_MESSAGE'; payload: { id: string; text: string } }
   | { type: 'SET_CONNECTION_STATUS'; payload: ConnectionStatus }
   | { type: 'SET_DIRECTION'; payload: Direction }
-  | { type: 'SET_APPEARANCE'; payload: Appearance }
-  | { type: 'PATCH_CONFIG'; payload: Record<string, unknown> };
+  | { type: 'SET_APPEARANCE'; payload: Appearance };

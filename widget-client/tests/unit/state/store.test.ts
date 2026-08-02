@@ -9,7 +9,6 @@ const INITIAL: WidgetState = {
   connectionStatus: 'disconnected',
   direction: 'auto',
   appearance: 'light',
-  configPatch: {},
 };
 
 function makeStore(): WidgetStore {

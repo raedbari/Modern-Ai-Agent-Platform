@@ -69,16 +69,17 @@ export class MessageList {
       .message-list {
         flex: 1;
         overflow-y: auto;
-        padding: 1rem;
+        padding: 1rem 0.9rem 0.75rem;
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 0.65rem;
+        scrollbar-color: var(--wc-border, #cbd5e1) transparent;
         scroll-behavior: smooth;
       }
       .message-list-inner {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 0.65rem;
       }
     `;
   }

@@ -6,7 +6,7 @@ import { GreetingScreen } from './GreetingScreen.js';
 import { MessageList } from './MessageList.js';
 import { LoadingIndicator } from './LoadingIndicator.js';
 import { InputBar } from './InputBar.js';
-import { showGreeting, isOffline, sendDisabled } from '../state/selectors.js';
+import { showGreeting, sendDisabled } from '../state/selectors.js';
 
 export interface ChatPanelCallbacks {
   onClose(): void;
@@ -44,7 +44,10 @@ export class ChatPanel {
     this.#root.hidden = true;
 
     // Sub-components
-    this.#header = new PanelHeader({ onClose: () => this.#callbacks.onClose() });
+    this.#header = new PanelHeader(
+      { onClose: () => this.#callbacks.onClose() },
+      config.displayName,
+    );
     this.#statusBanner = new StatusBanner();
     this.#greetingScreen = new GreetingScreen(config.welcomeMessage);
     this.#messageList = new MessageList();
@@ -96,9 +99,16 @@ export class ChatPanel {
     return this.#inputBar;
   }
 
+  /** Apply presentation received from the trusted bootstrap endpoint. */
+  setRuntimePresentation(displayName: string, welcomeMessage: string): void {
+    this.#header.setTitle(displayName);
+    this.#greetingScreen.setMessage(welcomeMessage);
+  }
+
   /** Sync ChatPanel rendering to state */
   update(state: WidgetState): void {
     this.#root.hidden = !state.isPanelOpen;
+    this.#header.setConnectionStatus(state.connectionStatus);
 
     // Greeting screen vs Message list
     const greeting = showGreeting(state);
@@ -110,7 +120,9 @@ export class ChatPanel {
     }
 
     // Connection / Error banner
-    if (isOffline(state)) {
+    if (state.connectionStatus === 'error') {
+      this.#statusBanner.show('error');
+    } else if (state.connectionStatus === 'disconnected') {
       this.#statusBanner.show('offline');
     } else {
       this.#statusBanner.hide();
@@ -133,13 +145,14 @@ export class ChatPanel {
       .chat-panel {
         display: flex;
         flex-direction: column;
-        inline-size: 24rem;
-        max-inline-size: calc(100vw - 2rem);
-        block-size: 34rem;
-        max-block-size: calc(100vh - 5rem);
-        background: #ffffff;
-        border-radius: 1rem;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        inline-size: min(24rem, calc(100vw - 2rem));
+        block-size: min(36rem, calc(100vh - 6rem));
+        border: 1px solid var(--wc-border, #e2e8f0);
+        border-radius: 1.5rem;
+        background: var(--wc-surface, #fff);
+        color: var(--wc-body-text, #0f172a);
+        box-shadow: 0 24px 65px rgba(15, 23, 42, 0.2),
+          0 8px 24px rgba(15, 23, 42, 0.12);
         overflow: hidden;
       }
       .chat-panel[hidden] {
@@ -151,6 +164,14 @@ export class ChatPanel {
         flex-direction: column;
         overflow: hidden;
         position: relative;
+        background: var(--wc-surface-muted, #f8fafc);
+      }
+      @media (max-width: 30rem) {
+        .chat-panel {
+          inline-size: calc(100vw - 1rem);
+          block-size: min(39rem, calc(100vh - 5.5rem));
+          border-radius: 1.25rem;
+        }
       }
     `;
   }

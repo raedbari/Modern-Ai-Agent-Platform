@@ -104,7 +104,7 @@ describe('ThemeInjector', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     // 'not-a-colour' won't match our CSS.supports regex
     injector.apply({ primary: 'not-a-colour' });
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('not a valid CSS colour'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid colour'));
     warnSpy.mockRestore();
 
     // Should still produce a valid stylesheet using the preset colour
@@ -123,26 +123,11 @@ describe('ThemeInjector', () => {
     expect(cssText).not.toContain('--wc-primary: ' + LIGHT_PRESET.primary);
   });
 
-  it('dark preset auto-activates from media query', async () => {
-    // Mock matchMedia to return dark preference
-    Object.defineProperty(window, 'matchMedia', {
-      writable: true,
-      value: vi.fn((query: string) => ({
-        matches: query === '(prefers-color-scheme: dark)',
-        media: query,
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })),
-    });
-
+  it('dark appearance explicitly activates the dark preset', async () => {
     const darkShadow = makeMockShadow();
     const { ThemeInjector } = await import('../../../src/theme/injector.js');
     const darkInjector = new ThemeInjector(darkShadow);
-    darkInjector.apply({});
+    darkInjector.apply({}, 'dark');
 
     const cssText = darkShadow.adoptedStyleSheets[0]?.cssRules[0]?.cssText ?? '';
     expect(cssText).toContain(DARK_PRESET.primary);

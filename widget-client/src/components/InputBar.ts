@@ -1,3 +1,5 @@
+import { createIcon, ICON_PATHS } from '../utils/icons.js';
+
 const MAX_CHARS = 4_000;
 const WARN_CHARS = 3_200;
 
@@ -54,7 +56,9 @@ export class InputBar {
     this.#sendBtn.className = 'input-bar__send';
     this.#sendBtn.type = 'button';
     this.#sendBtn.setAttribute('aria-label', 'Send message');
-    this.#sendBtn.textContent = '➤';
+    this.#sendBtn.appendChild(
+      createIcon('input-bar__send-icon', [...ICON_PATHS.send]),
+    );
     this.#sendBtn.disabled = true; // Enabled only when there's text and send is allowed
 
     this.#sendBtn.addEventListener('click', () => this.#submit());
@@ -131,9 +135,9 @@ export class InputBar {
   static styles(): string {
     return `
       .input-bar {
-        border-block-start: 1px solid #e2e8f0;
+        border-block-start: 1px solid var(--wc-border, #e2e8f0);
         padding: 0.75rem;
-        background: #fff;
+        background: var(--wc-surface, #fff);
         display: flex;
         flex-direction: column;
         gap: 0.25rem;
@@ -141,33 +145,46 @@ export class InputBar {
       .input-bar__row {
         display: flex;
         align-items: flex-end;
-        gap: 0.5rem;
+        gap: 0.6rem;
+        padding: 0.32rem 0.35rem 0.32rem 0.75rem;
+        border: 1px solid var(--wc-border, #cbd5e1);
+        border-radius: 1rem;
+        background: var(--wc-input-bg, #fff);
+        transition: border-color 150ms ease, box-shadow 150ms ease;
+      }
+      .input-bar__row:focus-within {
+        border-color: var(--wc-primary, #2563eb);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
       }
       .input-bar__textarea {
         flex: 1;
         resize: none;
-        border: 1px solid #cbd5e1;
-        border-radius: 0.5rem;
-        padding: 0.5rem 0.75rem;
+        border: none;
+        border-radius: 0;
+        padding: 0.45rem 0;
+        background: transparent;
+        color: var(--wc-body-text, #0f172a);
         font-size: 0.9rem;
         font-family: inherit;
         line-height: 1.5;
         max-block-size: 8rem;
         overflow-y: auto;
         outline: none;
-        transition: border-color 0.15s;
+      }
+      .input-bar__textarea::placeholder {
+        color: var(--wc-muted-text, #64748b);
       }
       .input-bar__textarea:focus {
-        border-color: var(--wc-primary, #6366f1);
+        outline: none;
       }
       .input-bar__send {
         flex-shrink: 0;
         inline-size: 2.5rem;
         block-size: 2.5rem;
         border: none;
-        border-radius: 50%;
-        background: var(--wc-primary, #6366f1);
-        color: #fff;
+        border-radius: 0.78rem;
+        background: var(--wc-primary, #2563eb);
+        color: var(--wc-on-primary, #fff);
         cursor: pointer;
         font-size: 1rem;
         display: flex;
@@ -181,6 +198,14 @@ export class InputBar {
       }
       .input-bar__send:not(:disabled):hover {
         transform: scale(1.05);
+      }
+      .input-bar__send:focus-visible {
+        outline: 2px solid var(--wc-primary, #2563eb);
+        outline-offset: 2px;
+      }
+      .input-bar__send-icon {
+        inline-size: 1.05rem;
+        block-size: 1.05rem;
       }
       .input-bar__counter {
         font-size: 0.75rem;

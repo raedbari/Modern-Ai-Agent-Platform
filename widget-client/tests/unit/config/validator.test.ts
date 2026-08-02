@@ -1,53 +1,75 @@
 import { describe, it, expect, vi } from 'vitest';
 import { validateConfig } from '../../../src/config/validator.js';
 
+const WIDGET_ID = `wgt_${'a'.repeat(20)}`;
+
 describe('validateConfig', () => {
-  it('warns on missing agentId', () => {
+  it('does not silently switch incomplete live configuration to mock', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    validateConfig({});
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('agentId is not set'));
+    const resolved = validateConfig({});
+    expect(resolved.transport).toBe('http');
+    expect(resolved.widgetId).toBe('');
+    expect(resolved.serverUrl).toBe('');
+    expect(warnSpy).toHaveBeenCalledTimes(2);
     warnSpy.mockRestore();
   });
 
-  it('ignores unknown or extra fields', () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw: any = { agentId: 'a1', unknownProp: 123, fooBar: 'baz' };
-    const resolved = validateConfig(raw);
-    expect(resolved.agentId).toBe('a1');
-    expect('unknownProp' in resolved).toBe(false);
+  it('accepts and normalizes the production embed contract', () => {
+    const resolved = validateConfig({
+      widgetId: `  ${WIDGET_ID}  `,
+      serverUrl: 'https://ai.travel-x.online/some/ignored/path',
+    });
+    expect(resolved.widgetId).toBe(WIDGET_ID);
+    expect(resolved.serverUrl).toBe('https://ai.travel-x.online');
+    expect(resolved.transport).toBe('http');
   });
 
-  it('falls back to mock transport when transportUrl is invalid for websocket', () => {
+  it('rejects insecure non-local HTTP and URL credentials', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(
+      validateConfig({ widgetId: WIDGET_ID, serverUrl: 'http://example.com' })
+        .serverUrl,
+    ).toBe('');
+    expect(
+      validateConfig({
+        widgetId: WIDGET_ID,
+        serverUrl: 'https://u:p@example.com',
+      }).serverUrl,
+    ).toBe('');
+    warnSpy.mockRestore();
+  });
+
+  it('allows HTTP only for supported local development hosts', () => {
     const resolved = validateConfig({
-      agentId: 'a1',
-      transport: 'websocket',
-      transportUrl: 'invalid-url',
+      widgetId: WIDGET_ID,
+      serverUrl: 'http://127.0.0.1:8000',
+    });
+    expect(resolved.serverUrl).toBe('http://127.0.0.1:8000');
+  });
+
+  it('requires mock mode explicitly and applies mock presentation only there', () => {
+    const resolved = validateConfig({
+      transport: 'mock',
+      mock: {
+        displayName: 'Preview agent',
+        position: 'left',
+        theme: { primary: '#112233' },
+      },
     });
     expect(resolved.transport).toBe('mock');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid or missing transportUrl'));
-    warnSpy.mockRestore();
+    expect(resolved.displayName).toBe('Preview agent');
+    expect(resolved.position).toBe('left');
+    expect(resolved.theme.primary).toBe('#112233');
   });
 
-  it('accepts valid transportUrl for websocket', () => {
-    const resolved = validateConfig({
-      agentId: 'a1',
-      transport: 'websocket',
-      transportUrl: 'ws://localhost:8000/ws',
-    });
-    expect(resolved.transport).toBe('websocket');
-    expect(resolved.transportUrl).toBe('ws://localhost:8000/ws');
-  });
-
-  it('falls back to default position if invalid position provided', () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const resolved = validateConfig({ agentId: 'a1', position: 'top' as any });
-    expect(resolved.position).toBe('right');
-  });
-
-  it('falls back to default mockScenario if invalid scenario provided', () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const resolved = validateConfig({ agentId: 'a1', mockScenario: 'invalid' as any });
+  it('ignores unknown fields and invalid mock scenarios', () => {
+    const raw = {
+      transport: 'mock',
+      mockScenario: 'invalid',
+      unknownProp: 123,
+    } as unknown as Parameters<typeof validateConfig>[0];
+    const resolved = validateConfig(raw);
     expect(resolved.mockScenario).toBe('happy-path');
+    expect('unknownProp' in resolved).toBe(false);
   });
 });
