@@ -659,3 +659,77 @@ class ChunkModel(Base):
         VECTOR(EMBEDDING_DIMENSION).with_variant(JSON, "sqlite"),
         nullable=False,
     )
+
+
+class AdminAuditEvent(Base):
+    """Append-only audit log for administrative actions.
+    
+    This table records all administrative operations for security and compliance.
+    Events are immutable once created - no updates or deletes are allowed.
+    
+    Access control:
+    - super_admin: can read all events
+    - auditor: can read all events
+    - operator: forbidden (403)
+    """
+
+    __tablename__ = "admin_audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "actor_role IN ('super_admin', 'auditor', 'operator')",
+            name="ck_admin_audit_events_actor_role",
+        ),
+        Index(
+            "ix_admin_audit_events_actor_admin_id",
+            "actor_admin_id",
+        ),
+        Index(
+            "ix_admin_audit_events_action",
+            "action",
+        ),
+        Index(
+            "ix_admin_audit_events_tenant_id",
+            "tenant_id",
+        ),
+        Index(
+            "ix_admin_audit_events_resource_type_id",
+            "resource_type",
+            "resource_id",
+        ),
+        Index(
+            "ix_admin_audit_events_created_at",
+            "created_at",
+        ),
+        Index(
+            "ix_admin_audit_events_actor_action_created",
+            "actor_admin_id",
+            "action",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    actor_admin_id: Mapped[str | None] = mapped_column(String(128))
+    actor_username: Mapped[str] = mapped_column(String(255), nullable=False)
+    actor_role: Mapped[str] = mapped_column(String(50), nullable=False)
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(128),
+        ForeignKey("tenants.id", ondelete="SET NULL"),
+    )
+    resource_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    resource_id: Mapped[str | None] = mapped_column(String(128))
+    changed_fields: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(
+        "metadata",
+        JSON,
+    )
+    ip_address: Mapped[str | None] = mapped_column(String(45))
+    request_id: Mapped[str | None] = mapped_column(String(128))
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )

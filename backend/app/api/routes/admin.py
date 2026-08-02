@@ -15,7 +15,7 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.dependencies import require_admin_access
+from backend.app.api.dependencies import require_admin_access, AdminRole
 from backend.app.api.schemas.admin import (
     AgentAdminResponse,
     ApiKeyAdminResponse,
@@ -25,6 +25,7 @@ from backend.app.api.schemas.admin import (
 )
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
+from backend.app.db.models import Agent
 from backend.app.infrastructure.storage import LocalUploadStorage
 from backend.app.operations.admin_lifecycle import (
     AdminLifecycleConflictError,
@@ -41,6 +42,7 @@ from backend.app.operations.admin_lifecycle import (
     set_agent_active,
     set_tenant_active,
 )
+from backend.app.services import audit_log as audit_service
 
 router = APIRouter(
     prefix="/api/admin",
@@ -48,6 +50,53 @@ router = APIRouter(
     dependencies=[Depends(require_admin_access)],
 )
 LOGGER = logging.getLogger(__name__)
+
+
+async def _log_audit_event(
+    session: AsyncSession,
+    auth_result: tuple[str, AdminRole],
+    action: str,
+    resource_type: str,
+    resource_id: str | None = None,
+    tenant_id: str | None = None,
+    changed_fields: dict | None = None,
+    success: bool = True,
+    error_message: str | None = None,
+) -> None:
+    """Helper to log audit events for admin operations.
+    
+    Args:
+        session: Database session
+        auth_result: Tuple of (admin_key, admin_role) from auth
+        action: Action performed
+        resource_type: Type of resource
+        resource_id: ID of resource
+        tenant_id: Tenant ID if applicable
+        changed_fields: Fields that were changed
+        success: Whether operation succeeded
+        error_message: Error message if failed
+    """
+    _, admin_role = auth_result
+    
+    try:
+        await audit_service.log_event(
+            session,
+            actor_admin_id=None,  # TODO: Extract from admin session when auth is implemented
+            actor_username="admin",  # TODO: Extract from admin session
+            actor_role=admin_role.value,
+            action=action,
+            tenant_id=tenant_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            changed_fields=changed_fields,
+            ip_address=None,  # TODO: Extract from Request object
+            request_id=None,  # TODO: Extract from Request object or generate
+            success=success,
+            error_message=error_message,
+        )
+    except Exception:
+        # Don't fail the main operation if audit logging fails
+        LOGGER.exception("Failed to create audit log for action: %s", action)
 
 
 def _tenant_response(item) -> TenantAdminResponse:
@@ -144,8 +193,12 @@ async def update_tenant_status(
     tenant_id: str,
     payload: LifecycleStatusUpdate,
     session: Annotated[AsyncSession, Depends(get_db)],
+    auth_result: Annotated[tuple[str, AdminRole], Depends(require_admin_access)],
 ) -> TenantAdminResponse:
     try:
+        old_item = await require_tenant(session, tenant_id)
+        old_status = old_item.is_active
+        
         item = await set_tenant_active(
             session,
             tenant_id=tenant_id,
@@ -153,9 +206,40 @@ async def update_tenant_status(
         )
         await session.commit()
         await session.refresh(item)
+        
+        # Log audit event
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="tenant.status_changed",
+            resource_type="tenant",
+            resource_id=tenant_id,
+            tenant_id=tenant_id,
+            changed_fields={
+                "is_active": {
+                    "old": old_status,
+                    "new": payload.is_active,
+                }
+            },
+            success=True,
+        )
+        await session.commit()
     except AdminResourceNotFoundError as exc:
         await session.rollback()
         raise _not_found(exc) from exc
+    except Exception as exc:
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="tenant.status_changed",
+            resource_type="tenant",
+            resource_id=tenant_id,
+            tenant_id=tenant_id,
+            success=False,
+            error_message=str(exc),
+        )
+        await session.rollback()
+        raise
     return _tenant_response(item)
 
 
@@ -168,6 +252,7 @@ async def permanently_delete_tenant(
     confirm: Annotated[str, Query(min_length=1, max_length=128)],
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    auth_result: Annotated[tuple[str, AdminRole], Depends(require_admin_access)],
 ) -> Response:
     if confirm != tenant_id:
         raise HTTPException(
@@ -177,12 +262,37 @@ async def permanently_delete_tenant(
     try:
         result = await delete_tenant(session, tenant_id=tenant_id)
         await session.commit()
+        
+        # Log audit event
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="tenant.deleted",
+            resource_type="tenant",
+            resource_id=tenant_id,
+            tenant_id=tenant_id,
+            success=True,
+        )
+        await session.commit()
     except AdminResourceNotFoundError as exc:
         await session.rollback()
         raise _not_found(exc) from exc
     except AdminLifecycleConflictError as exc:
         await session.rollback()
         raise _conflict(exc) from exc
+    except Exception as exc:
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="tenant.deleted",
+            resource_type="tenant",
+            resource_id=tenant_id,
+            tenant_id=tenant_id,
+            success=False,
+            error_message=str(exc),
+        )
+        await session.rollback()
+        raise
     await _cleanup_storage(settings, result.storage_keys)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -211,8 +321,13 @@ async def update_agent_status(
     agent_id: str,
     payload: LifecycleStatusUpdate,
     session: Annotated[AsyncSession, Depends(get_db)],
+    auth_result: Annotated[tuple[str, AdminRole], Depends(require_admin_access)],
 ) -> AgentAdminResponse:
     try:
+        # Get old status before update
+        old_item = await session.get(Agent, agent_id)
+        old_status = old_item.is_active if old_item else None
+        
         item = await set_agent_active(
             session,
             tenant_id=tenant_id,
@@ -221,9 +336,40 @@ async def update_agent_status(
         )
         await session.commit()
         await session.refresh(item)
+        
+        # Log audit event
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="agent.status_changed",
+            resource_type="agent",
+            resource_id=agent_id,
+            tenant_id=tenant_id,
+            changed_fields={
+                "is_active": {
+                    "old": old_status,
+                    "new": payload.is_active,
+                }
+            },
+            success=True,
+        )
+        await session.commit()
     except AdminResourceNotFoundError as exc:
         await session.rollback()
         raise _not_found(exc) from exc
+    except Exception as exc:
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="agent.status_changed",
+            resource_type="agent",
+            resource_id=agent_id,
+            tenant_id=tenant_id,
+            success=False,
+            error_message=str(exc),
+        )
+        await session.rollback()
+        raise
     return _agent_response(item)
 
 
@@ -237,6 +383,7 @@ async def permanently_delete_agent(
     confirm: Annotated[str, Query(min_length=1, max_length=128)],
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    auth_result: Annotated[tuple[str, AdminRole], Depends(require_admin_access)],
 ) -> Response:
     if confirm != agent_id:
         raise HTTPException(
@@ -250,12 +397,37 @@ async def permanently_delete_agent(
             agent_id=agent_id,
         )
         await session.commit()
+        
+        # Log audit event
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="agent.deleted",
+            resource_type="agent",
+            resource_id=agent_id,
+            tenant_id=tenant_id,
+            success=True,
+        )
+        await session.commit()
     except AdminResourceNotFoundError as exc:
         await session.rollback()
         raise _not_found(exc) from exc
     except AdminLifecycleConflictError as exc:
         await session.rollback()
         raise _conflict(exc) from exc
+    except Exception as exc:
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="agent.deleted",
+            resource_type="agent",
+            resource_id=agent_id,
+            tenant_id=tenant_id,
+            success=False,
+            error_message=str(exc),
+        )
+        await session.rollback()
+        raise
     await _cleanup_storage(settings, result.storage_keys)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -283,6 +455,7 @@ async def revoke_one_api_key(
     tenant_id: str,
     key_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
+    auth_result: Annotated[tuple[str, AdminRole], Depends(require_admin_access)],
 ) -> ApiKeyAdminResponse:
     try:
         item = await revoke_api_key(
@@ -292,9 +465,34 @@ async def revoke_one_api_key(
         )
         await session.commit()
         await session.refresh(item)
+        
+        # Log audit event
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="api_key.revoked",
+            resource_type="api_key",
+            resource_id=key_id,
+            tenant_id=tenant_id,
+            success=True,
+        )
+        await session.commit()
     except AdminResourceNotFoundError as exc:
         await session.rollback()
         raise _not_found(exc) from exc
+    except Exception as exc:
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="api_key.revoked",
+            resource_type="api_key",
+            resource_id=key_id,
+            tenant_id=tenant_id,
+            success=False,
+            error_message=str(exc),
+        )
+        await session.rollback()
+        raise
     return _api_key_response(item)
 
 
@@ -305,6 +503,7 @@ async def revoke_one_api_key(
 async def revoke_tenant_api_keys(
     tenant_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
+    auth_result: Annotated[tuple[str, AdminRole], Depends(require_admin_access)],
 ) -> RevokeAllApiKeysResponse:
     try:
         revoked_count = await revoke_all_api_keys(
@@ -312,9 +511,33 @@ async def revoke_tenant_api_keys(
             tenant_id=tenant_id,
         )
         await session.commit()
+        
+        # Log audit event
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="api_keys.bulk_revoked",
+            resource_type="api_key",
+            tenant_id=tenant_id,
+            metadata={"revoked_count": revoked_count},
+            success=True,
+        )
+        await session.commit()
     except AdminResourceNotFoundError as exc:
         await session.rollback()
         raise _not_found(exc) from exc
+    except Exception as exc:
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="api_keys.bulk_revoked",
+            resource_type="api_key",
+            tenant_id=tenant_id,
+            success=False,
+            error_message=str(exc),
+        )
+        await session.rollback()
+        raise
     return RevokeAllApiKeysResponse(revoked_count=revoked_count)
 
 
@@ -326,6 +549,7 @@ async def permanently_delete_conversation(
     tenant_id: str,
     conversation_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
+    auth_result: Annotated[tuple[str, AdminRole], Depends(require_admin_access)],
 ) -> Response:
     try:
         await delete_conversation(
@@ -334,7 +558,32 @@ async def permanently_delete_conversation(
             conversation_id=conversation_id,
         )
         await session.commit()
+        
+        # Log audit event
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="conversation.deleted",
+            resource_type="conversation",
+            resource_id=conversation_id,
+            tenant_id=tenant_id,
+            success=True,
+        )
+        await session.commit()
     except AdminResourceNotFoundError as exc:
         await session.rollback()
         raise _not_found(exc) from exc
+    except Exception as exc:
+        await _log_audit_event(
+            session,
+            auth_result,
+            action="conversation.deleted",
+            resource_type="conversation",
+            resource_id=conversation_id,
+            tenant_id=tenant_id,
+            success=False,
+            error_message=str(exc),
+        )
+        await session.rollback()
+        raise
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -1,6 +1,7 @@
 """FastAPI dependencies for authentication and AI runtime construction."""
 
 from datetime import datetime, timezone
+from enum import Enum
 from functools import lru_cache
 import secrets
 from typing import Annotated
@@ -17,6 +18,14 @@ from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
 from backend.app.db.models import Agent, ApiKey, Tenant
 from backend.app.services.chat import GenerationRuntime
+
+
+class AdminRole(str, Enum):
+    """Administrative roles for access control."""
+
+    SUPER_ADMIN = "super_admin"
+    AUDITOR = "auditor"
+    OPERATOR = "operator"
 
 api_key_header = APIKeyHeader(
     name="X-API-Key",
@@ -42,8 +51,19 @@ def require_admin_access(
         Security(admin_api_key_header),
     ],
     settings: Annotated[Settings, Depends(get_settings)],
-) -> None:
-    """Protect the temporary internal admin API with a configured secret."""
+    x_admin_role: Annotated[
+        str | None,
+        Header(
+            alias="X-Admin-Role",
+            description="Admin role (super_admin, auditor, operator)",
+        ),
+    ] = None,
+) -> tuple[str, AdminRole]:
+    """Protect the temporary internal admin API with a configured secret.
+    
+    Returns:
+        Tuple of (admin_key, admin_role)
+    """
 
     configured = (
         settings.admin_api_key.get_secret_value().strip()
@@ -63,6 +83,46 @@ def require_admin_access(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid administrative credentials",
         )
+    
+    # Parse role from header (default to super_admin for backward compatibility)
+    role_str = (x_admin_role or "super_admin").strip().lower()
+    try:
+        admin_role = AdminRole(role_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid admin role: {role_str}",
+        )
+    
+    return raw_admin_key, admin_role
+
+
+def require_audit_read_access(
+    auth_result: Annotated[
+        tuple[str, AdminRole],
+        Depends(require_admin_access),
+    ],
+) -> AdminRole:
+    """Verify that the admin has permission to read audit logs.
+    
+    Only super_admin and auditor roles can read audit logs.
+    The operator role is forbidden from accessing audit logs.
+    
+    Returns:
+        The admin role
+    
+    Raises:
+        HTTPException: 403 if the role is not authorized
+    """
+    _, admin_role = auth_result
+    
+    if admin_role == AdminRole.OPERATOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operators are not permitted to access audit logs",
+        )
+    
+    return admin_role
 
 
 
