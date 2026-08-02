@@ -13,7 +13,7 @@ describe('Transport contract', () => {
     const config = mockConfig({
       transport: 'http',
       widgetId: `wgt_${'a'.repeat(20)}`,
-      serverUrl: 'https://ai.travel-x.online',
+      apiBaseUrl: 'https://ai.travel-x.online',
     });
     const transport = createTransport(config);
     expect(transport).toBeInstanceOf(HttpTransport);

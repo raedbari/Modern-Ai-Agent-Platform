@@ -1,6 +1,7 @@
 import type {
   ResolvedConfig,
   RuntimeWidgetConfig,
+  WidgetConfig,
 } from './config/types.js';
 import { validateConfig } from './config/validator.js';
 import { WidgetStore } from './state/store.js';
@@ -14,17 +15,12 @@ import { FocusTrap } from './a11y/focus-trap.js';
 import { LiveRegion } from './a11y/live-region.js';
 import { Launcher } from './components/Launcher.js';
 import { ChatPanel } from './components/ChatPanel.js';
-import { GreetingScreen } from './components/GreetingScreen.js';
-import { MessageList } from './components/MessageList.js';
-import { MessageBubble } from './components/MessageBubble.js';
-import { LoadingIndicator } from './components/LoadingIndicator.js';
-import { StatusBanner } from './components/StatusBanner.js';
-import { InputBar } from './components/InputBar.js';
-import { PanelHeader } from './components/PanelHeader.js';
+import widgetStyles from './styles/widget.css?inline';
 
 export interface WidgetAPI {
   open(): void;
   close(): void;
+  setConfig(config: Partial<WidgetConfig>): Promise<void>;
   refresh(): Promise<void>;
   destroy(): void;
 }
@@ -75,17 +71,11 @@ export class WidgetRoot extends HTMLElement {
     this.#themeInjector = new ThemeInjector(this.#shadow);
     this.#transport = createTransport(this.#config);
 
-    this.#directionCtrl = new DirectionController({
-      mode: this.#config.direction,
-      onChange: (direction) => {
-        this.#store.dispatch({ type: 'SET_DIRECTION', payload: direction });
-      },
-    });
+    this.#directionCtrl = this.#createDirectionController(
+      this.#config.direction,
+    );
 
-    this.#transport.onStatusChange((status) => {
-      this.#store.dispatch({ type: 'SET_CONNECTION_STATUS', payload: status });
-      if (status === 'connected') this.#backoff.reset();
-    });
+    this.#listenToTransport(this.#transport);
 
     this.#render();
     this.#registerAPI();
@@ -130,6 +120,95 @@ export class WidgetRoot extends HTMLElement {
     await this.#connectTransport();
   }
 
+  /** Apply safe embed settings without allowing production theme spoofing. */
+  async setConfig(patch: Partial<WidgetConfig>): Promise<void> {
+    const current = this.#config;
+    const currentMock = current.transport === 'mock'
+      ? {
+          displayName: current.displayName,
+          welcomeMessage: current.welcomeMessage,
+          theme: current.theme,
+          position: current.position,
+          appearance: current.appearance,
+        }
+      : undefined;
+    const mergedMock = patch.mock
+      ? {
+          ...currentMock,
+          ...patch.mock,
+          theme: {
+            ...currentMock?.theme,
+            ...patch.mock.theme,
+          },
+        }
+      : currentMock;
+    const next = validateConfig({
+      widgetId: current.widgetId,
+      apiBaseUrl: current.apiBaseUrl,
+      transport: current.transport,
+      mockScenario: current.mockScenario,
+      language: current.language,
+      direction: current.direction,
+      position: current.positionOverride,
+      launcherLabel: current.launcherLabel,
+      shadowMode: current.shadowMode,
+      ...patch,
+      mock: mergedMock,
+    });
+
+    if (next.shadowMode !== current.shadowMode) {
+      console.warn(
+        '[WidgetClient] shadowMode cannot change after mount; keeping the active mode.',
+      );
+      next.shadowMode = current.shadowMode;
+    }
+
+    const transportChanged = next.transport !== current.transport
+      || next.widgetId !== current.widgetId
+      || next.apiBaseUrl !== current.apiBaseUrl
+      || next.mockScenario !== current.mockScenario;
+    const directionChanged = next.direction !== current.direction;
+    const identityChanged = next.widgetId !== current.widgetId
+      || next.apiBaseUrl !== current.apiBaseUrl
+      || next.transport !== current.transport;
+
+    if (next.transport === 'http' && !identityChanged) {
+      next.displayName = current.displayName;
+      next.welcomeMessage = current.welcomeMessage;
+      next.theme = current.theme;
+      next.appearance = current.appearance;
+      next.position = next.positionOverride ?? current.position;
+    }
+
+    this.#config = next;
+    this.lang = next.language;
+    this.setAttribute('data-position', next.position);
+    this.setAttribute('data-appearance', next.appearance);
+    this.#launcher.setLabel(next.launcherLabel);
+    this.#themeInjector.apply(next.theme, next.appearance);
+    this.#chatPanel.setRuntimePresentation(
+      next.displayName,
+      next.welcomeMessage,
+    );
+    this.#store.dispatch({ type: 'SET_APPEARANCE', payload: next.appearance });
+
+    if (directionChanged) {
+      this.#directionCtrl.disconnect();
+      this.#directionCtrl = this.#createDirectionController(next.direction);
+      this.#store.dispatch({
+        type: 'SET_DIRECTION',
+        payload: this.#directionCtrl.direction,
+      });
+    }
+
+    if (transportChanged) {
+      this.#transport.disconnect();
+      this.#transport = createTransport(next);
+      this.#listenToTransport(this.#transport);
+      await this.#connectTransport();
+    }
+  }
+
   destroy(): void {
     this.remove();
   }
@@ -140,58 +219,7 @@ export class WidgetRoot extends HTMLElement {
     this.lang = this.#config.language;
 
     const styleElement = document.createElement('style');
-    styleElement.textContent = `
-      :host {
-        all: initial;
-        position: fixed;
-        inset-inline-end: 1.25rem;
-        inset-block-end: max(1.25rem, env(safe-area-inset-bottom));
-        display: block;
-        z-index: 2147483647;
-        direction: ltr;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system,
-          BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        font-synthesis: none;
-        text-rendering: optimizeLegibility;
-      }
-      :host([dir='rtl']) { direction: rtl; }
-      :host([data-position='left']) {
-        inset-inline-start: 1.25rem;
-        inset-inline-end: auto;
-      }
-      *, *::before, *::after {
-        box-sizing: border-box;
-      }
-      [hidden] {
-        display: none !important;
-      }
-      .widget-container {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 0.8rem;
-      }
-      :host([data-position='left']) .widget-container { align-items: flex-start; }
-      @media (max-width: 30rem) {
-        :host {
-          inset-inline-end: 0.5rem;
-          inset-block-end: max(0.5rem, env(safe-area-inset-bottom));
-        }
-        :host([data-position='left']) {
-          inset-inline-start: 0.5rem;
-          inset-inline-end: auto;
-        }
-      }
-      ${Launcher.styles()}
-      ${PanelHeader.styles()}
-      ${StatusBanner.styles()}
-      ${GreetingScreen.styles()}
-      ${MessageList.styles()}
-      ${MessageBubble.styles()}
-      ${LoadingIndicator.styles()}
-      ${InputBar.styles()}
-      ${ChatPanel.styles()}
-    `;
+    styleElement.textContent = widgetStyles;
     this.#shadow.appendChild(styleElement);
     this.#themeInjector.apply(this.#config.theme, this.#config.appearance);
 
@@ -226,8 +254,9 @@ export class WidgetRoot extends HTMLElement {
   }
 
   #applyRuntimeConfig(runtimeConfig: RuntimeWidgetConfig): void {
-    this.#config = { ...this.#config, ...runtimeConfig };
-    this.setAttribute('data-position', runtimeConfig.position);
+    const position = this.#config.positionOverride ?? runtimeConfig.position;
+    this.#config = { ...this.#config, ...runtimeConfig, position };
+    this.setAttribute('data-position', position);
     this.setAttribute('data-appearance', runtimeConfig.appearance);
     this.#themeInjector.apply(runtimeConfig.theme, runtimeConfig.appearance);
     this.#chatPanel.setRuntimePresentation(
@@ -296,6 +325,7 @@ export class WidgetRoot extends HTMLElement {
       this.#focusTrap.activate(this.#chatPanel.element, () => this.close());
     } else if (!state.isPanelOpen && this.#wasPanelOpen) {
       this.#focusTrap.deactivate();
+      this.#launcher.element.focus();
     }
     this.#wasPanelOpen = state.isPanelOpen;
   }
@@ -314,10 +344,30 @@ export class WidgetRoot extends HTMLElement {
     this.#publicAPI = {
       open: () => this.open(),
       close: () => this.close(),
+      setConfig: (config) => this.setConfig(config),
       refresh: () => this.refresh(),
       destroy: () => this.destroy(),
     };
     window.WidgetAPI = this.#publicAPI;
+  }
+
+  #listenToTransport(transport: ITransport): void {
+    transport.onStatusChange((status) => {
+      if (transport !== this.#transport) return;
+      this.#store.dispatch({ type: 'SET_CONNECTION_STATUS', payload: status });
+      if (status === 'connected') this.#backoff.reset();
+    });
+  }
+
+  #createDirectionController(
+    mode: ResolvedConfig['direction'],
+  ): DirectionController {
+    return new DirectionController({
+      mode,
+      onChange: (direction) => {
+        this.#store.dispatch({ type: 'SET_DIRECTION', payload: direction });
+      },
+    });
   }
 }
 

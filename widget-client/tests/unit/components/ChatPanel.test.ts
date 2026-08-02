@@ -89,4 +89,14 @@ describe('ChatPanel component', () => {
 
     expect(panel.loadingIndicator.element.hidden).toBe(false);
   });
+
+  it('derives avatar initials from the trusted Agent name', () => {
+    const panel = new ChatPanel({ onClose: vi.fn(), onSend: vi.fn() }, CONFIG);
+
+    panel.setRuntimePresentation('Kiwi Support', 'Welcome');
+
+    expect(
+      panel.element.querySelector('.panel-header__avatar')?.textContent,
+    ).toBe('KS');
+  });
 });

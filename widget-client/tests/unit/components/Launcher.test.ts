@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Launcher } from '../../../src/components/Launcher.js';
+import widgetStyles from '../../../src/styles/widget.css?raw';
 
 describe('Launcher component', () => {
   it('has part="launcher-button" attribute', () => {
@@ -61,16 +62,13 @@ describe('Launcher component', () => {
   });
 
   it('CSS styles guarantee minimum 44px touch target', () => {
-    const styles = Launcher.styles();
-    expect(styles).toContain('min-inline-size: 44px');
-    expect(styles).toContain('min-block-size: 44px');
+    expect(widgetStyles).toContain('min-inline-size: 44px');
+    expect(widgetStyles).toContain('min-block-size: 44px');
   });
 
-  it('CSS defines a mirrored speech-bubble tail for left placement', () => {
-    const styles = Launcher.styles();
-
-    expect(styles).toContain('border-end-end-radius: 0.45rem');
-    expect(styles).toContain(":host([data-position='left']) .launcher-button");
-    expect(styles).toContain('border-end-start-radius: 0.45rem');
+  it('CSS keeps the 60px launcher circular', () => {
+    expect(widgetStyles).toContain('inline-size: 3.75rem');
+    expect(widgetStyles).toContain('block-size: 3.75rem');
+    expect(widgetStyles).toContain('border-radius: 50%');
   });
 });

@@ -24,16 +24,22 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 export function validateConfig(raw: WidgetConfig): ResolvedConfig {
   const transport = raw.transport === 'mock' ? 'mock' : 'http';
   const widgetId = normalizeWidgetId(raw.widgetId);
-  const serverUrl = normalizeServerUrl(raw.serverUrl);
+  const legacyServerUrl = raw.serverUrl?.trim();
+  if (legacyServerUrl && !raw.apiBaseUrl) {
+    console.warn(
+      '[WidgetClient] serverUrl is deprecated; use apiBaseUrl instead.',
+    );
+  }
+  const apiBaseUrl = normalizeApiBaseUrl(raw.apiBaseUrl ?? legacyServerUrl);
 
   if (transport === 'http' && !widgetId) {
     console.warn(
       '[WidgetClient] A valid data-widget-id is required for live chat.',
     );
   }
-  if (transport === 'http' && !serverUrl) {
+  if (transport === 'http' && !apiBaseUrl) {
     console.warn(
-      '[WidgetClient] A valid HTTPS data-server-url is required for live chat.',
+      '[WidgetClient] A valid HTTPS apiBaseUrl is required for live chat.',
     );
   }
 
@@ -53,10 +59,12 @@ export function validateConfig(raw: WidgetConfig): ResolvedConfig {
 
   const mock = transport === 'mock' ? raw.mock : undefined;
 
+  const positionOverride = resolveOptionalPosition(raw.position);
+
   return {
     ...DEFAULTS,
     widgetId,
-    serverUrl,
+    apiBaseUrl,
     transport,
     mockScenario,
     language: normalizeShortText(raw.language, DEFAULTS.language, 35),
@@ -78,7 +86,8 @@ export function validateConfig(raw: WidgetConfig): ResolvedConfig {
       500,
     ),
     theme: resolveMockTheme(mock?.theme),
-    position: resolvePosition(mock?.position),
+    position: positionOverride ?? resolvePosition(mock?.position),
+    positionOverride,
     appearance: resolveAppearance(mock?.appearance),
   };
 }
@@ -88,7 +97,7 @@ function normalizeWidgetId(value: string | undefined): string {
   return PUBLIC_WIDGET_ID.test(normalized) ? normalized : '';
 }
 
-function normalizeServerUrl(value: string | undefined): string {
+function normalizeApiBaseUrl(value: string | undefined): string {
   if (!value) return '';
   try {
     const url = new URL(value);
@@ -104,6 +113,12 @@ function normalizeServerUrl(value: string | undefined): string {
   } catch {
     return '';
   }
+}
+
+function resolveOptionalPosition(
+  value: WidgetPosition | undefined,
+): WidgetPosition | undefined {
+  return value === 'left' || value === 'right' ? value : undefined;
 }
 
 function normalizeShortText(

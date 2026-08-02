@@ -12,7 +12,7 @@ import type {
   TransportError,
 } from '../../../src/transport/types.js';
 
-const SERVER_URL = 'https://ai.travel-x.online';
+const API_BASE_URL = 'https://ai.travel-x.online';
 const WIDGET_ID = `wgt_${'a'.repeat(20)}`;
 
 function bootstrapResponse(token = 'signed-widget-token'): Response {
@@ -90,7 +90,7 @@ describe('HttpTransport', () => {
     fetchMock.mockResolvedValueOnce(bootstrapResponse());
     const statuses: string[] = [];
     const transport = new HttpTransport({
-      serverUrl: SERVER_URL,
+      apiBaseUrl: API_BASE_URL,
       widgetId: WIDGET_ID,
     });
     transport.onStatusChange((status) => statuses.push(status));
@@ -99,7 +99,7 @@ describe('HttpTransport', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(`${SERVER_URL}/api/widget/bootstrap`);
+    expect(url).toBe(`${API_BASE_URL}/api/widget/bootstrap`);
     expect(init?.credentials).toBe('omit');
     expect(JSON.parse(String(init?.body))).toEqual({ widget_id: WIDGET_ID });
     expect(runtime).toEqual({
@@ -125,7 +125,7 @@ describe('HttpTransport', () => {
       .mockResolvedValueOnce(chatResponse())
       .mockResolvedValueOnce(chatResponse('conversation-1', 'Second reply'));
     const transport = new HttpTransport({
-      serverUrl: SERVER_URL,
+      apiBaseUrl: API_BASE_URL,
       widgetId: WIDGET_ID,
     });
     await transport.connect();
@@ -145,6 +145,7 @@ describe('HttpTransport', () => {
     });
     expect(JSON.parse(String(firstChat?.body))).toEqual({
       message: 'First question',
+      conversation_id: null,
     });
     expect(JSON.parse(String(secondChat?.body))).toEqual({
       message: 'Second question',
@@ -161,7 +162,7 @@ describe('HttpTransport', () => {
       .mockResolvedValueOnce(bootstrapResponse('token-2'))
       .mockResolvedValueOnce(chatResponse());
     const transport = new HttpTransport({
-      serverUrl: SERVER_URL,
+      apiBaseUrl: API_BASE_URL,
       widgetId: WIDGET_ID,
     });
     await transport.connect();
@@ -176,6 +177,25 @@ describe('HttpTransport', () => {
     });
   });
 
+  it('never loops when the retried request also returns 401', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(bootstrapResponse('token-1'))
+      .mockResolvedValueOnce(jsonResponse({ detail: 'expired' }, 401))
+      .mockResolvedValueOnce(bootstrapResponse('token-2'))
+      .mockResolvedValueOnce(jsonResponse({ detail: 'still expired' }, 401));
+    const transport = new HttpTransport({
+      apiBaseUrl: API_BASE_URL,
+      widgetId: WIDGET_ID,
+    });
+    await transport.connect();
+
+    const result = await send(transport, 'Retry only once');
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(result.error?.code).toBe('session_expired');
+  });
+
   it('returns a safe rate-limit message without exposing API details', async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
@@ -184,7 +204,7 @@ describe('HttpTransport', () => {
         jsonResponse({ detail: 'internal limiter bucket name' }, 429),
       );
     const transport = new HttpTransport({
-      serverUrl: SERVER_URL,
+      apiBaseUrl: API_BASE_URL,
       widgetId: WIDGET_ID,
     });
     const statuses: string[] = [];
@@ -202,11 +222,37 @@ describe('HttpTransport', () => {
     expect(statuses[statuses.length - 1]).toBe('connected');
   });
 
+  it.each([
+    [403, 'widget_unavailable', false],
+    [404, 'widget_unavailable', false],
+    [503, 'chat_failed', true],
+  ] as const)(
+    'maps HTTP %s to a safe public error',
+    async (status, code, retryable) => {
+      const fetchMock = vi.mocked(fetch);
+      fetchMock
+        .mockResolvedValueOnce(bootstrapResponse())
+        .mockResolvedValueOnce(
+          jsonResponse({ detail: 'private backend diagnostics' }, status),
+        );
+      const transport = new HttpTransport({
+        apiBaseUrl: API_BASE_URL,
+        widgetId: WIDGET_ID,
+      });
+      await transport.connect();
+
+      const result = await send(transport, 'Safe error please');
+
+      expect(result.error).toMatchObject({ code, retryable });
+      expect(result.error?.message).not.toContain('diagnostics');
+    },
+  );
+
   it('rejects malformed bootstrap data instead of trusting remote HTML values', async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValueOnce(jsonResponse({ session_token: '<script>' }));
     const transport = new HttpTransport({
-      serverUrl: SERVER_URL,
+      apiBaseUrl: API_BASE_URL,
       widgetId: WIDGET_ID,
     });
 

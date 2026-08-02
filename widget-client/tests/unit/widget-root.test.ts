@@ -31,12 +31,37 @@ describe('WidgetRoot custom element', () => {
     expect(document.querySelector('maap-widget')).not.toBeNull();
   });
 
-  it('exposes window.WidgetAPI with all 4 methods', () => {
+  it('exposes the required WidgetAPI lifecycle methods', () => {
     WidgetRoot.mount(makeConfig());
     expect(typeof window.WidgetAPI?.open).toBe('function');
     expect(typeof window.WidgetAPI?.close).toBe('function');
+    expect(typeof window.WidgetAPI?.setConfig).toBe('function');
     expect(typeof window.WidgetAPI?.refresh).toBe('function');
     expect(typeof window.WidgetAPI?.destroy).toBe('function');
+  });
+
+  it('setConfig updates safe presentation settings without remounting', async () => {
+    const widget = WidgetRoot.mount(makeConfig());
+
+    await window.WidgetAPI?.setConfig({
+      language: 'ar',
+      direction: 'rtl',
+      position: 'left',
+      launcherLabel: 'افتح المحادثة',
+      mock: { displayName: 'مساعد الدعم' },
+    });
+
+    expect(widget.lang).toBe('ar');
+    expect(widget.dir).toBe('rtl');
+    expect(widget.dataset.position).toBe('left');
+    expect(
+      widget.shadowRoot?.querySelector('.launcher-button')?.getAttribute(
+        'aria-label',
+      ),
+    ).toBe('افتح المحادثة');
+    expect(
+      widget.shadowRoot?.querySelector('.panel-header__title')?.textContent,
+    ).toBe('مساعد الدعم');
   });
 
   it('destroy() removes the element from DOM and deletes window.WidgetAPI', () => {
@@ -75,5 +100,34 @@ describe('WidgetRoot custom element', () => {
     WidgetRoot.mount(makeConfig());
     WidgetRoot.mount(makeConfig());
     expect(document.querySelectorAll('maap-widget')).toHaveLength(1);
+  });
+
+  it('returns focus to the launcher after the panel closes', () => {
+    const widget = WidgetRoot.mount(makeConfig());
+    const launcher = widget.shadowRoot?.querySelector(
+      '.launcher-button',
+    ) as HTMLButtonElement;
+
+    launcher.click();
+    window.WidgetAPI?.close();
+
+    expect(widget.shadowRoot?.activeElement).toBe(launcher);
+  });
+
+  it('does not steal textarea focus while messages update', async () => {
+    const widget = WidgetRoot.mount(makeConfig());
+    await new Promise((resolve) => window.setTimeout(resolve, 15));
+    window.WidgetAPI?.open();
+    const textarea = widget.shadowRoot?.querySelector(
+      '.input-bar__textarea',
+    ) as HTMLTextAreaElement;
+    textarea.focus();
+    textarea.value = 'Keep my focus';
+    textarea.dispatchEvent(new Event('input'));
+    textarea.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+
+    expect(widget.shadowRoot?.activeElement).toBe(textarea);
   });
 });

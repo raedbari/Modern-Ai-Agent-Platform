@@ -4,7 +4,7 @@ import { LIGHT_PRESET } from '../theme/presets.js';
 /** Safe fallbacks used until the trusted bootstrap response arrives. */
 export const DEFAULTS: ResolvedConfig = {
   widgetId: '',
-  serverUrl: '',
+  apiBaseUrl: '',
   transport: 'http',
   mockScenario: 'happy-path',
   language: 'en',

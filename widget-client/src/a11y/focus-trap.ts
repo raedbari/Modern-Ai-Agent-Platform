@@ -79,8 +79,12 @@ export class FocusTrap {
 
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
-      const active = (this.#container.shadowRoot?.activeElement ||
-        document.activeElement) as HTMLElement;
+      const rootNode = this.#container.getRootNode();
+      const active = (
+        rootNode instanceof ShadowRoot
+          ? rootNode.activeElement
+          : document.activeElement
+      ) as HTMLElement | null;
 
       if (e.shiftKey) {
         // Shift + Tab: if on first element, wrap to last

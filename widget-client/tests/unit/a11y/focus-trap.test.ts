@@ -71,4 +71,30 @@ describe('FocusTrap', () => {
 
     expect(document.activeElement?.id).toBe('b2');
   });
+
+  it('reads the active element from the containing ShadowRoot', () => {
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const shadowContainer = document.createElement('div');
+    shadowContainer.innerHTML = `
+      <button id="shadow-first">First</button>
+      <button id="shadow-last">Last</button>
+    `;
+    shadow.appendChild(shadowContainer);
+    document.body.appendChild(host);
+
+    trap.activate(shadowContainer);
+    const first = shadowContainer.querySelector('#shadow-first') as HTMLElement;
+    const last = shadowContainer.querySelector('#shadow-last') as HTMLElement;
+    last.focus();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Tab',
+      bubbles: true,
+    }));
+
+    expect(shadow.activeElement).toBe(first);
+    trap.deactivate();
+    host.remove();
+  });
 });

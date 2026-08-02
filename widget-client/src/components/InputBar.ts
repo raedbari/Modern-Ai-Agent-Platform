@@ -47,8 +47,6 @@ export class InputBar {
     // ── Character counter ─────────────────────────────────────────────────
     this.#counter = document.createElement('span');
     this.#counter.className = 'input-bar__counter';
-    this.#counter.setAttribute('aria-live', 'polite');
-    this.#counter.setAttribute('aria-atomic', 'true');
     this.#counter.hidden = true;
 
     // ── Send button ───────────────────────────────────────────────────────
@@ -130,92 +128,5 @@ export class InputBar {
   #updateSendButton(): void {
     const hasText = this.#textarea.value.trim().length > 0;
     this.#sendBtn.disabled = this.#sendDisabled || !hasText;
-  }
-
-  static styles(): string {
-    return `
-      .input-bar {
-        border-block-start: 1px solid var(--wc-border, #e2e8f0);
-        padding: 0.75rem;
-        background: var(--wc-surface, #fff);
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
-      }
-      .input-bar__row {
-        display: flex;
-        align-items: flex-end;
-        gap: 0.6rem;
-        padding: 0.32rem 0.35rem 0.32rem 0.75rem;
-        border: 1px solid var(--wc-border, #cbd5e1);
-        border-radius: 1rem;
-        background: var(--wc-input-bg, #fff);
-        transition: border-color 150ms ease, box-shadow 150ms ease;
-      }
-      .input-bar__row:focus-within {
-        border-color: var(--wc-primary, #2563eb);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-      }
-      .input-bar__textarea {
-        flex: 1;
-        resize: none;
-        border: none;
-        border-radius: 0;
-        padding: 0.45rem 0;
-        background: transparent;
-        color: var(--wc-body-text, #0f172a);
-        font-size: 0.9rem;
-        font-family: inherit;
-        line-height: 1.5;
-        max-block-size: 8rem;
-        overflow-y: auto;
-        outline: none;
-      }
-      .input-bar__textarea::placeholder {
-        color: var(--wc-muted-text, #64748b);
-      }
-      .input-bar__textarea:focus {
-        outline: none;
-      }
-      .input-bar__send {
-        flex-shrink: 0;
-        inline-size: 2.5rem;
-        block-size: 2.5rem;
-        border: none;
-        border-radius: 0.78rem;
-        background: var(--wc-primary, #2563eb);
-        color: var(--wc-on-primary, #fff);
-        cursor: pointer;
-        font-size: 1rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: opacity 0.15s, transform 0.1s;
-      }
-      .input-bar__send:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-      }
-      .input-bar__send:not(:disabled):hover {
-        transform: scale(1.05);
-      }
-      .input-bar__send:focus-visible {
-        outline: 2px solid var(--wc-primary, #2563eb);
-        outline-offset: 2px;
-      }
-      .input-bar__send-icon {
-        inline-size: 1.05rem;
-        block-size: 1.05rem;
-      }
-      .input-bar__counter {
-        font-size: 0.75rem;
-        color: #f59e0b;
-        text-align: end;
-      }
-      .input-bar__counter--critical {
-        color: #dc2626;
-        font-weight: 600;
-      }
-    `;
   }
 }

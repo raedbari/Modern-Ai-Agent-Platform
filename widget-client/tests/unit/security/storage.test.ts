@@ -18,4 +18,19 @@ describe('Security Verification: Storage Isolation', () => {
     expect(setLocalSpy).not.toHaveBeenCalled();
     setLocalSpy.mockRestore();
   });
+
+  it('widget does not persist sessions in cookies or IndexedDB', () => {
+    const cookieSpy = vi.spyOn(document, 'cookie', 'set');
+    const indexedDbOpen = vi.fn();
+    vi.stubGlobal('indexedDB', { open: indexedDbOpen });
+
+    const widget = WidgetRoot.mount(mockConfig());
+    window.WidgetAPI?.open();
+    widget.remove();
+
+    expect(cookieSpy).not.toHaveBeenCalled();
+    expect(indexedDbOpen).not.toHaveBeenCalled();
+    cookieSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
 });

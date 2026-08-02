@@ -139,40 +139,4 @@ export class ChatPanel {
     // Input bar send button
     this.#inputBar.setSendDisabled(sendDisabled(state));
   }
-
-  static styles(): string {
-    return `
-      .chat-panel {
-        display: flex;
-        flex-direction: column;
-        inline-size: min(24rem, calc(100vw - 2rem));
-        block-size: min(36rem, calc(100vh - 6rem));
-        border: 1px solid var(--wc-border, #e2e8f0);
-        border-radius: 1.5rem;
-        background: var(--wc-surface, #fff);
-        color: var(--wc-body-text, #0f172a);
-        box-shadow: 0 24px 65px rgba(15, 23, 42, 0.2),
-          0 8px 24px rgba(15, 23, 42, 0.12);
-        overflow: hidden;
-      }
-      .chat-panel[hidden] {
-        display: none !important;
-      }
-      .chat-panel__body {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        position: relative;
-        background: var(--wc-surface-muted, #f8fafc);
-      }
-      @media (max-width: 30rem) {
-        .chat-panel {
-          inline-size: calc(100vw - 1rem);
-          block-size: min(39rem, calc(100vh - 5.5rem));
-          border-radius: 1.25rem;
-        }
-      }
-    `;
-  }
 }

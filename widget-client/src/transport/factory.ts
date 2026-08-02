@@ -9,7 +9,7 @@ export function createTransport(config: ResolvedConfig): ITransport {
     return new MockTransport(config.mockScenario);
   }
   return new HttpTransport({
-    serverUrl: config.serverUrl,
+    apiBaseUrl: config.apiBaseUrl,
     widgetId: config.widgetId,
   });
 }

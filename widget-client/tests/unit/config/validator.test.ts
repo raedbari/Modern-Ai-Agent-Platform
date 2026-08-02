@@ -9,7 +9,7 @@ describe('validateConfig', () => {
     const resolved = validateConfig({});
     expect(resolved.transport).toBe('http');
     expect(resolved.widgetId).toBe('');
-    expect(resolved.serverUrl).toBe('');
+    expect(resolved.apiBaseUrl).toBe('');
     expect(warnSpy).toHaveBeenCalledTimes(2);
     warnSpy.mockRestore();
   });
@@ -17,24 +17,44 @@ describe('validateConfig', () => {
   it('accepts and normalizes the production embed contract', () => {
     const resolved = validateConfig({
       widgetId: `  ${WIDGET_ID}  `,
-      serverUrl: 'https://ai.travel-x.online/some/ignored/path',
+      apiBaseUrl: 'https://ai.travel-x.online/some/ignored/path',
     });
     expect(resolved.widgetId).toBe(WIDGET_ID);
-    expect(resolved.serverUrl).toBe('https://ai.travel-x.online');
+    expect(resolved.apiBaseUrl).toBe('https://ai.travel-x.online');
     expect(resolved.transport).toBe('http');
+  });
+
+  it('supports serverUrl only as a deprecated compatibility alias', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const resolved = validateConfig({
+      widgetId: WIDGET_ID,
+      serverUrl: 'https://legacy.example/path',
+    });
+
+    expect(resolved.apiBaseUrl).toBe('https://legacy.example');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('serverUrl is deprecated'),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('accepts the public position option', () => {
+    const resolved = validateConfig({ transport: 'mock', position: 'left' });
+    expect(resolved.position).toBe('left');
+    expect(resolved.positionOverride).toBe('left');
   });
 
   it('rejects insecure non-local HTTP and URL credentials', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(
-      validateConfig({ widgetId: WIDGET_ID, serverUrl: 'http://example.com' })
-        .serverUrl,
+      validateConfig({ widgetId: WIDGET_ID, apiBaseUrl: 'http://example.com' })
+        .apiBaseUrl,
     ).toBe('');
     expect(
       validateConfig({
         widgetId: WIDGET_ID,
-        serverUrl: 'https://u:p@example.com',
-      }).serverUrl,
+        apiBaseUrl: 'https://u:p@example.com',
+      }).apiBaseUrl,
     ).toBe('');
     warnSpy.mockRestore();
   });
@@ -42,9 +62,9 @@ describe('validateConfig', () => {
   it('allows HTTP only for supported local development hosts', () => {
     const resolved = validateConfig({
       widgetId: WIDGET_ID,
-      serverUrl: 'http://127.0.0.1:8000',
+      apiBaseUrl: 'http://127.0.0.1:8000',
     });
-    expect(resolved.serverUrl).toBe('http://127.0.0.1:8000');
+    expect(resolved.apiBaseUrl).toBe('http://127.0.0.1:8000');
   });
 
   it('requires mock mode explicitly and applies mock presentation only there', () => {

@@ -52,24 +52,4 @@ export class StatusBanner {
       ? 'You are offline. Messages will be sent when you reconnect.'
       : 'An error occurred. Please try again.';
   }
-
-  static styles(): string {
-    return `
-      .status-banner {
-        padding: 0.4rem 1rem;
-        font-size: 0.8rem;
-        font-weight: 500;
-        text-align: center;
-      }
-      .status-banner--offline {
-        border-block: 1px solid var(--wc-border, #e2e8f0);
-        background: var(--wc-surface-muted, #f8fafc);
-        color: var(--wc-body-text, #0f172a);
-      }
-      .status-banner--error {
-        background: var(--wc-error-surface, #fee2e2);
-        color: var(--wc-error-text, #b91c1c);
-      }
-    `;
-  }
 }

@@ -6,40 +6,48 @@ Widget bootstrap and chat endpoints; it does not expose a tenant API key.
 
 ## Production embed
 
-Place the public CDN script before the closing `</body>` tag:
+Set the public configuration before loading the IIFE bundle:
 
 ```html
-<script
-  src="https://cdn.travel-x.online/widget/v1.js"
-  data-widget-id="wgt_REPLACE_WITH_ADMIN_GENERATED_ID"
-  data-server-url="https://ai.travel-x.online"
-  defer
-></script>
+<script>
+  window.WidgetConfig = {
+    widgetId: "wgt_REPLACE_WITH_ADMIN_GENERATED_ID",
+    apiBaseUrl: "https://ai.travel-x.online",
+    language: "ar",
+    direction: "rtl"
+  };
+</script>
+<script src="https://cdn.travel-x.online/widget/widget.iife.js" defer></script>
 ```
 
 The two embed values are public:
 
-- `data-widget-id` is the opaque identifier generated for one Agent by the
+- `widgetId` is the opaque identifier generated for one Agent by the
   Admin Widget API.
-- `data-server-url` is the API origin. Production requires HTTPS. Local
+- `apiBaseUrl` is the API origin. Production requires HTTPS. Local
   development may use `http://localhost` or `http://127.0.0.1`.
 
 Do not put an API key, admin token, tenant ID, internal Agent ID or Widget JWT
 in the HTML snippet.
 
-Optional host settings are limited to UI chrome:
+Data attributes are also supported when an embed system cannot emit a config
+object:
 
 ```html
 <script
-  src="https://cdn.travel-x.online/widget/v1.js"
+  src="https://cdn.travel-x.online/widget/widget.iife.js"
   data-widget-id="wgt_REPLACE_WITH_ADMIN_GENERATED_ID"
-  data-server-url="https://ai.travel-x.online"
+  data-api-base-url="https://ai.travel-x.online"
   data-language="ar"
   data-direction="rtl"
+  data-position="right"
   data-launcher-label="افتح المحادثة"
   defer
 ></script>
 ```
+
+`serverUrl` and `data-server-url` are deprecated compatibility aliases. New
+embeds must use `apiBaseUrl` or `data-api-base-url`.
 
 ## Runtime flow
 
@@ -105,13 +113,15 @@ await window.WidgetAPI.refresh();
 ```js
 window.WidgetAPI.open();
 window.WidgetAPI.close();
+await window.WidgetAPI.setConfig({ language: "ar", direction: "rtl" });
 await window.WidgetAPI.refresh();
 window.WidgetAPI.destroy();
 ```
 
-There is intentionally no public `setConfig()` colour API. Production colours
-and Agent identity come from the authenticated Admin configuration and public
-bootstrap response.
+`setConfig()` can update safe embed settings such as language, direction,
+position, Widget ID and API origin. In production, values inside `mock` are
+ignored: colours and Agent identity always come from the trusted bootstrap
+response. Changing Widget identity starts a new in-memory session.
 
 ## Local UI preview
 
@@ -138,12 +148,13 @@ embed:
 
 ```bash
 npm ci
-npm run lint
 npm run typecheck
-npm test
-npm run test:coverage
-npm run test:visual
+npm run lint
+npm run lint:css
+npm test -- --pool=threads --maxWorkers=1 --minWorkers=1
+npm run test:coverage -- --pool=threads --maxWorkers=1 --minWorkers=1
 npm run build
+npx playwright test
 npm audit --audit-level=high
 ```
 

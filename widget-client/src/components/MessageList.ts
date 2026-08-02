@@ -6,8 +6,8 @@ import { MessageBubble } from './MessageBubble.js';
  *
  * Accessibility:
  *  - role="log" semantics (an ordered list of messages)
- *  - aria-live="polite" for assistant streaming updates
- *  - Auto-scrolls to the bottom when new messages arrive
+ *  - Completion is announced by the dedicated live region, not per character
+ *  - Follows new messages only while the reader is already near the bottom
  */
 export class MessageList {
   readonly #root: HTMLElement;
@@ -18,7 +18,6 @@ export class MessageList {
     this.#root = document.createElement('div');
     this.#root.className = 'message-list';
     this.#root.setAttribute('role', 'log');
-    this.#root.setAttribute('aria-live', 'polite');
     this.#root.setAttribute('aria-label', 'Conversation');
 
     this.#inner = document.createElement('div');
@@ -32,6 +31,7 @@ export class MessageList {
 
   /** Sync the rendered messages to match the provided array. */
   update(messages: Message[]): void {
+    const shouldFollow = this.#isNearBottom();
     const existingIds = new Set(this.#bubbles.keys());
     const newIds = new Set(messages.map((m) => m.id));
 
@@ -54,7 +54,14 @@ export class MessageList {
       }
     }
 
-    this.#scrollToBottom();
+    if (shouldFollow) this.#scrollToBottom();
+  }
+
+  #isNearBottom(): boolean {
+    const distance = this.#root.scrollHeight
+      - this.#root.scrollTop
+      - this.#root.clientHeight;
+    return distance <= 48;
   }
 
   #scrollToBottom(): void {
@@ -62,25 +69,5 @@ export class MessageList {
     requestAnimationFrame(() => {
       this.#root.scrollTop = this.#root.scrollHeight;
     });
-  }
-
-  static styles(): string {
-    return `
-      .message-list {
-        flex: 1;
-        overflow-y: auto;
-        padding: 1rem 0.9rem 0.75rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.65rem;
-        scrollbar-color: var(--wc-border, #cbd5e1) transparent;
-        scroll-behavior: smooth;
-      }
-      .message-list-inner {
-        display: flex;
-        flex-direction: column;
-        gap: 0.65rem;
-      }
-    `;
   }
 }

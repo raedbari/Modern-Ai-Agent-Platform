@@ -13,7 +13,7 @@ import type {
 } from '../../config/types.js';
 
 interface HttpTransportOptions {
-  serverUrl: string;
+  apiBaseUrl: string;
   widgetId: string;
 }
 
@@ -55,7 +55,7 @@ const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
  * Agent and tenant identity are derived exclusively from the signed token.
  */
 export class HttpTransport implements ITransport {
-  readonly #serverUrl: string;
+  readonly #apiBaseUrl: string;
   readonly #widgetId: string;
   #status: ConnectionStatus = 'disconnected';
   #statusListeners: StatusListener[] = [];
@@ -67,7 +67,7 @@ export class HttpTransport implements ITransport {
   #activeController: AbortController | null = null;
 
   constructor(options: HttpTransportOptions) {
-    this.#serverUrl = options.serverUrl;
+    this.#apiBaseUrl = options.apiBaseUrl;
     this.#widgetId = options.widgetId;
   }
 
@@ -112,7 +112,7 @@ export class HttpTransport implements ITransport {
 
   async #bootstrap(): Promise<RuntimeWidgetConfig> {
     this.#setStatus('connecting');
-    if (!this.#serverUrl || !this.#widgetId) {
+    if (!this.#apiBaseUrl || !this.#widgetId) {
       this.#setStatus('error');
       throw {
         code: 'invalid_config',
@@ -125,7 +125,7 @@ export class HttpTransport implements ITransport {
     this.#bootstrapController?.abort();
     this.#bootstrapController = controller;
     try {
-      const response = await fetch(`${this.#serverUrl}/api/widget/bootstrap`, {
+      const response = await fetch(`${this.#apiBaseUrl}/api/widget/bootstrap`, {
         method: 'POST',
         mode: 'cors',
         credentials: 'omit',
@@ -172,12 +172,12 @@ export class HttpTransport implements ITransport {
         await this.connect();
       }
 
-      const body: { message: string; conversation_id?: string } = {
+      const body: { message: string; conversation_id: string | null } = {
         message: message.text,
+        conversation_id: this.#conversationId ?? null,
       };
-      if (this.#conversationId) body.conversation_id = this.#conversationId;
 
-      const response = await fetch(`${this.#serverUrl}/api/chat`, {
+      const response = await fetch(`${this.#apiBaseUrl}/api/chat`, {
         method: 'POST',
         mode: 'cors',
         credentials: 'omit',

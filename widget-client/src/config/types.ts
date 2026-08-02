@@ -41,6 +41,9 @@ export interface WidgetConfig {
   widgetId?: string;
 
   /** API origin, for example https://ai.travel-x.online. */
+  apiBaseUrl?: string;
+
+  /** @deprecated Use apiBaseUrl. Retained temporarily for existing embeds. */
   serverUrl?: string;
 
   /** Live HTTP is the default. Mock must be selected explicitly. */
@@ -57,6 +60,9 @@ export interface WidgetConfig {
 
   /** Explicit text direction, or automatic detection from the host page. */
   direction?: 'ltr' | 'rtl' | 'auto';
+
+  /** Optional host-side launcher placement. */
+  position?: WidgetPosition;
 
   /** Accessible label on the launcher button. */
   launcherLabel?: string;
@@ -77,11 +83,13 @@ export interface RuntimeWidgetConfig {
 /** Fully validated configuration consumed by the widget runtime. */
 export interface ResolvedConfig extends RuntimeWidgetConfig {
   widgetId: string;
-  serverUrl: string;
+  apiBaseUrl: string;
   transport: 'http' | 'mock';
   mockScenario: MockScenario;
   language: string;
   direction: 'ltr' | 'rtl' | 'auto';
   launcherLabel: string;
   shadowMode: 'open' | 'closed';
+  /** Present only when the host explicitly chooses a placement. */
+  positionOverride?: WidgetPosition;
 }

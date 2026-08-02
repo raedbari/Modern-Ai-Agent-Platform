@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { GreetingScreen } from '../../../src/components/GreetingScreen.js';
+import widgetStyles from '../../../src/styles/widget.css?raw';
 
 describe('GreetingScreen', () => {
   it('renders with the provided welcome message', () => {
@@ -28,8 +29,7 @@ describe('GreetingScreen', () => {
     );
   });
 
-  it('returns static CSS styles as a string', () => {
-    expect(typeof GreetingScreen.styles()).toBe('string');
-    expect(GreetingScreen.styles()).toContain('.greeting-screen');
+  it('is covered by the shared Shadow DOM stylesheet', () => {
+    expect(widgetStyles).toContain('.greeting-screen');
   });
 });

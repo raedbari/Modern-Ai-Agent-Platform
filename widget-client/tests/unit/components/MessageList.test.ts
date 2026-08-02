@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MessageList } from '../../../src/components/MessageList.js';
 import type { Message } from '../../../src/state/types.js';
 
@@ -20,9 +20,9 @@ describe('MessageList', () => {
     expect(list.element.getAttribute('role')).toBe('log');
   });
 
-  it('has aria-live="polite"', () => {
+  it('does not announce every incremental text update', () => {
     const list = new MessageList();
-    expect(list.element.getAttribute('aria-live')).toBe('polite');
+    expect(list.element.getAttribute('aria-live')).toBeNull();
   });
 
   it('renders messages after update()', () => {
@@ -54,5 +54,23 @@ describe('MessageList', () => {
     list.update([makeMsg({ id: 'm1', text: 'Updated' })]);
     const span = list.element.querySelector('.message-bubble__text');
     expect(span?.textContent).toBe('Updated');
+  });
+
+  it('does not steal scroll position while the reader is viewing history', () => {
+    const list = new MessageList();
+    const animationSpy = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation(() => 1);
+    Object.defineProperties(list.element, {
+      scrollHeight: { configurable: true, value: 1_000 },
+      clientHeight: { configurable: true, value: 300 },
+    });
+    list.element.scrollTop = 100;
+
+    list.update([makeMsg({ id: 'm1', text: 'New message' })]);
+
+    expect(animationSpy).not.toHaveBeenCalled();
+    expect(list.element.scrollTop).toBe(100);
+    animationSpy.mockRestore();
   });
 });

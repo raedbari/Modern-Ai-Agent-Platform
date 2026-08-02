@@ -2,6 +2,13 @@ import type { WidgetConfig } from './config/types.js';
 import { validateConfig } from './config/validator.js';
 import { WidgetRoot } from './widget-root.js';
 
+export type {
+  WidgetAppearance,
+  WidgetConfig,
+  WidgetPosition,
+} from './config/types.js';
+export type { WidgetAPI } from './widget-root.js';
+
 declare global {
   interface Window {
     WidgetConfig?: WidgetConfig;
@@ -35,15 +42,23 @@ function readEmbedConfig(): WidgetConfig {
   return {
     ...jsonConfig,
     widgetId: script.dataset.widgetId ?? jsonConfig.widgetId,
-    serverUrl: script.dataset.serverUrl ?? jsonConfig.serverUrl,
+    apiBaseUrl: script.dataset.apiBaseUrl
+      ?? script.dataset.serverUrl
+      ?? jsonConfig.apiBaseUrl
+      ?? jsonConfig.serverUrl,
     transport: asTransport(script.dataset.transport) ?? jsonConfig.transport,
     mockScenario: asMockScenario(script.dataset.mockScenario)
       ?? jsonConfig.mockScenario,
     language: script.dataset.language ?? jsonConfig.language,
     direction: asDirection(script.dataset.direction) ?? jsonConfig.direction,
+    position: asPosition(script.dataset.position) ?? jsonConfig.position,
     launcherLabel: script.dataset.launcherLabel ?? jsonConfig.launcherLabel,
     shadowMode: asShadowMode(script.dataset.shadowMode) ?? jsonConfig.shadowMode,
   };
+}
+
+function asPosition(value: string | undefined): WidgetConfig['position'] {
+  return value === 'left' || value === 'right' ? value : undefined;
 }
 
 function findEmbedScript(): HTMLScriptElement | null {
