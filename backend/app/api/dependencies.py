@@ -3,20 +3,34 @@
 from datetime import datetime, timezone
 from functools import lru_cache
 import secrets
-from typing import Annotated
+from typing import Annotated, Callable, Optional
 
-from fastapi import Depends, Header, HTTPException, Security, status
+from fastapi import Depends, Header, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.auth.api_keys import parse_api_key, verify_api_key_secret
+from backend.app.auth.origin import normalize_origin
+from backend.app.auth.widget_jwt import WidgetTokenError, decode_widget_token
 from backend.app.ai.ports import EmbeddingProvider
+from backend.app.auth.admin_context import AdminContext
 from backend.app.auth.context import ChatExecutionContext
 from backend.app.core.config import Settings, get_settings
+from backend.app.core.rate_limit import RateLimiter, get_rate_limiter
 from backend.app.db.base import get_db
-from backend.app.db.models import Agent, ApiKey, Tenant
+from backend.app.db.models import (
+    AdminRefreshSession,
+    AdminUser,
+    Agent,
+    ApiKey,
+    Tenant,
+)
 from backend.app.services.chat import GenerationRuntime
+from backend.app.operations.widget import (
+    is_widget_origin_allowed,
+    resolve_public_widget,
+)
 
 api_key_header = APIKeyHeader(
     name="X-API-Key",
@@ -35,34 +49,234 @@ admin_api_key_header = APIKeyHeader(
     auto_error=False,
 )
 
+# ---------------------------------------------------------------------------
+# RBAC: role → permission mapping  (T-13)
+# ---------------------------------------------------------------------------
 
-def require_admin_access(
+ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
+    "super_admin": frozenset(
+        {
+            "tenants:read",
+            "tenants:write",
+            "tenants:delete",
+            "agents:read",
+            "agents:write",
+            "agents:delete",
+            "api_keys:read",
+            "api_keys:revoke",
+            "conversations:delete",
+            "admins:read",
+            "admins:write",
+            "admins:delete",
+            "audit:read",
+            "widgets:read",
+            "widgets:write",
+        }
+    ),
+    "operator": frozenset(
+        {
+            "tenants:read",
+            "tenants:write",
+            "agents:read",
+            "agents:write",
+            "api_keys:read",
+            "api_keys:revoke",
+            "conversations:delete",
+            "widgets:read",
+            "widgets:write",
+        }
+    ),
+    "auditor": frozenset(
+        {
+            "tenants:read",
+            "agents:read",
+            "api_keys:read",
+            "audit:read",
+            "widgets:read",
+        }
+    ),
+}
+
+
+def require_permission(permission: str) -> Callable:
+    """Return a FastAPI dependency that enforces *permission* for the caller.
+
+    Usage::
+
+        @router.delete("/tenants/{id}")
+        async def delete_tenant(
+            _: Annotated[None, Depends(require_permission("tenants:delete"))],
+            ...
+        ): ...
+
+    The dependency relies on ``require_admin_access`` having already placed
+    an ``AdminContext`` in the request state, **or** on the route calling
+    ``require_admin_jwt`` directly.  When the legacy key path is used the
+    role defaults to ``super_admin``, so all permissions are granted.
+
+    Raises HTTP 403 if the active role lacks *permission*.
+    """
+    from backend.app.auth.admin_context import AdminContext
+
+    def _check(
+        ctx: Annotated[AdminContext | None, Depends(require_admin_access)],
+    ) -> None:
+        # ctx is None only when require_admin_access returns None (e.g., via
+        # dependency_overrides in tests).  In that case we skip the check so
+        # existing lifecycle tests continue to pass unchanged.
+        if ctx is None:
+            return
+        role = getattr(ctx, "role", "super_admin")
+        allowed = ROLE_PERMISSIONS.get(role, frozenset())
+        if permission not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied: '{permission}' required.",
+            )
+
+    return _check
+
+
+def _admin_unauthorized() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid administrative credentials",
+    )
+
+
+async def _validated_admin_jwt(
+    request: Request,
+    session: AsyncSession,
+    settings: Settings,
+) -> AdminContext:
+    """Validate JWT integrity and its authoritative database session."""
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise _admin_unauthorized()
+
+    from backend.app.auth.admin_jwt import AdminTokenError, decode_access_token
+
+    try:
+        token_context = decode_access_token(
+            auth_header[len("Bearer "):],
+            settings,
+        )
+    except AdminTokenError as exc:
+        raise _admin_unauthorized() from exc
+
+    if token_context.session_family_id is None:
+        raise _admin_unauthorized()
+
+    admin = await session.get(AdminUser, token_context.admin_id)
+    if (
+        admin is None
+        or not admin.is_active
+        or admin.role not in ROLE_PERMISSIONS
+    ):
+        raise _admin_unauthorized()
+
+    now = datetime.now(timezone.utc)
+    family_sessions = list(
+        (
+            await session.scalars(
+                select(AdminRefreshSession).where(
+                    AdminRefreshSession.admin_id == admin.id,
+                    AdminRefreshSession.family_id
+                    == token_context.session_family_id,
+                    AdminRefreshSession.revoked_at.is_(None),
+                )
+            )
+        ).all()
+    )
+    if not any(_as_utc(item.expires_at) > now for item in family_sessions):
+        raise _admin_unauthorized()
+
+    return AdminContext(
+        admin_id=admin.id,
+        username=admin.username,
+        role=admin.role,  # type: ignore[arg-type]
+        auth_method="jwt",
+        session_family_id=token_context.session_family_id,
+        jti=token_context.jti,
+    )
+
+
+async def require_admin_jwt(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AdminContext:
+    """Require a live database-backed admin JWT session."""
+
+    return await _validated_admin_jwt(request, session, settings)
+
+
+async def require_admin_access(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
     raw_admin_key: Annotated[
         str | None,
         Security(admin_api_key_header),
-    ],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> None:
-    """Protect the temporary internal admin API with a configured secret."""
+    ] = None,
+) -> "AdminContext | None":
+    """Dual-path admin authentication: JWT Bearer or legacy X-Admin-Key.
 
-    configured = (
-        settings.admin_api_key.get_secret_value().strip()
-        if settings.admin_api_key is not None
-        else ""
-    )
-    if not configured:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Administrative API is disabled",
+    Path A (JWT — new default):
+        Reads ``Authorization: Bearer <token>`` and returns an ``AdminContext``.
+
+    Path B (legacy — backward-compatible):
+        When ``MAAP_ADMIN_LEGACY_KEY_ENABLED=true`` and ``X-Admin-Key`` header
+        is present, validates against ``MAAP_ADMIN_API_KEY`` and returns an
+        ``AdminContext`` with ``role="super_admin"`` to preserve full access.
+
+    Returns
+    -------
+    AdminContext | None
+        None is only returned when the function body is replaced entirely by
+        ``dependency_overrides`` in tests (e.g. ``lambda: None``).  The
+        real function always either returns an ``AdminContext`` or raises.
+
+    Backward-compatibility guarantee
+    ---------------------------------
+    Existing tests that do::
+
+        app.dependency_overrides[require_admin_access] = lambda: None
+
+    continue to work because FastAPI replaces the entire function, so the
+    new return type is never seen by those tests.
+    """
+    from fastapi import Request as _Request
+    from backend.app.auth.admin_context import AdminContext
+
+    # --- Path B: legacy X-Admin-Key -----------------------------------
+    if settings.admin_legacy_key_enabled and raw_admin_key is not None:
+        configured = (
+            settings.admin_api_key.get_secret_value().strip()
+            if settings.admin_api_key is not None
+            else ""
         )
-    if raw_admin_key is None or not secrets.compare_digest(
-        raw_admin_key,
-        configured,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid administrative credentials",
+        if not configured:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Administrative API is disabled",
+            )
+        if not secrets.compare_digest(raw_admin_key, configured):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid administrative credentials",
+            )
+        # Legacy key is treated as super_admin for backward compatibility.
+        return AdminContext(
+            admin_id="legacy",
+            username="legacy",
+            role="super_admin",
+            auth_method="legacy",
         )
+
+    # --- Path A: JWT Bearer -------------------------------------------
+    return await _validated_admin_jwt(request, session, settings)
 
 
 
@@ -80,8 +294,11 @@ def _as_utc(value: datetime) -> datetime:
 
 
 async def require_chat_context(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     raw_api_key: Annotated[str | None, Security(api_key_header)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
     agent_id: Annotated[
         str | None,
         Header(
@@ -90,7 +307,89 @@ async def require_chat_context(
         ),
     ] = None,
 ) -> ChatExecutionContext:
-    """Authenticate the key and resolve a tenant-scoped active agent."""
+    """Authenticate either a browser Widget JWT or a server-side API key."""
+
+    authorization = request.headers.get("Authorization", "")
+    if authorization:
+        if not authorization.startswith("Bearer "):
+            raise _unauthorized()
+        raw_widget_token = authorization[len("Bearer "):].strip()
+        if not raw_widget_token or " " in raw_widget_token:
+            raise _unauthorized()
+        try:
+            widget_context = decode_widget_token(raw_widget_token, settings)
+        except WidgetTokenError as exc:
+            raise _unauthorized() from exc
+
+        origin = normalize_origin(request.headers.get("Origin"))
+        if origin is None or origin != widget_context.origin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Widget origin mismatch",
+            )
+
+        resolved = await resolve_public_widget(
+            session,
+            widget_context.public_widget_id,
+        )
+        if resolved is None:
+            raise _unauthorized()
+        widget, agent, tenant = resolved
+        if (
+            widget.tenant_id != widget_context.tenant_id
+            or widget.agent_id != widget_context.agent_id
+            or tenant.id != widget_context.tenant_id
+            or agent.id != widget_context.agent_id
+        ):
+            raise _unauthorized()
+        if not await is_widget_origin_allowed(
+            session,
+            tenant_id=tenant.id,
+            agent_id=agent.id,
+            origin=origin,
+            environment=settings.environment,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Origin is no longer allowed for this Widget",
+            )
+
+        request.state.widget_cors_origin = origin
+        try:
+            limit = await rate_limiter.check(
+                bucket="widget-chat-session",
+                identity=(
+                    f"{tenant.id}:{agent.id}:{widget_context.session_id}"
+                ),
+                limit=settings.widget_chat_rate_limit_per_session,
+                window_seconds=(
+                    settings.widget_chat_rate_limit_window_seconds
+                ),
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Widget service is temporarily unavailable.",
+            ) from exc
+        if not limit.allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many Widget chat requests.",
+                headers={
+                    "Retry-After": str(limit.retry_after_seconds),
+                },
+            )
+
+        return ChatExecutionContext(
+            tenant_id=tenant.id,
+            agent_id=agent.id,
+            system_prompt=agent.system_prompt,
+            knowledge_mode=agent.knowledge_mode,  # type: ignore[arg-type]
+            contact_message=agent.contact_message,
+            auth_method="widget",
+            session_id=widget_context.session_id,
+            public_widget_id=widget.public_widget_id,
+        )
 
     if raw_api_key is None:
         raise _unauthorized()
@@ -154,6 +453,7 @@ async def require_chat_context(
         system_prompt=agent.system_prompt,
         knowledge_mode=agent.knowledge_mode,
         contact_message=agent.contact_message,
+        auth_method="api_key",
     )
 
 

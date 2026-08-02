@@ -28,6 +28,160 @@ from backend.app.db.base import Base
 EMBEDDING_DIMENSION = 1024
 
 
+# ---------------------------------------------------------------------------
+# Admin identity models
+# ---------------------------------------------------------------------------
+
+
+class AdminUser(Base):
+    """A human operator account with access to the administrative API."""
+
+    __tablename__ = "admin_users"
+    __table_args__ = (
+        UniqueConstraint("username", name="uq_admin_users_username"),
+        CheckConstraint(
+            "role IN ('super_admin', 'operator', 'auditor')",
+            name="ck_admin_users_role",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(512), nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="operator",
+        server_default="operator",
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    # NULL when created by the CLI bootstrap tool.
+    created_by: Mapped[str | None] = mapped_column(
+        String(128),
+        ForeignKey("admin_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    refresh_sessions: Mapped[list[AdminRefreshSession]] = relationship(
+        back_populates="admin",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class AdminRefreshSession(Base):
+    """One active refresh-token session for an admin user."""
+
+    __tablename__ = "admin_refresh_sessions"
+    __table_args__ = (
+        Index(
+            "ix_admin_refresh_sessions_admin_id",
+            "admin_id",
+        ),
+        Index(
+            "ix_admin_refresh_sessions_family_id",
+            "family_id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    admin_id: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("admin_users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # SHA-256 hex digest of the raw opaque token value.
+    token_hash: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    # UUID shared by every token produced from the same login event.
+    # Used to revoke an entire token lineage on replay detection.
+    family_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    # IPv4 (max 15 chars) or IPv6 (max 45 chars).
+    client_ip: Mapped[str | None] = mapped_column(String(45))
+    user_agent: Mapped[str | None] = mapped_column(String(512))
+
+    admin: Mapped[AdminUser] = relationship(back_populates="refresh_sessions")
+
+
+class AdminAuditLog(Base):
+    """Immutable audit record for every state-changing administrative action."""
+
+    __tablename__ = "admin_audit_log"
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ('success', 'failure')",
+            name="ck_admin_audit_log_outcome",
+        ),
+        Index(
+            "ix_admin_audit_log_admin_id",
+            "admin_id",
+        ),
+        Index(
+            "ix_admin_audit_log_event_type",
+            "event_type",
+        ),
+        Index(
+            "ix_admin_audit_log_created_at",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+    # NULL for unauthenticated events such as login_failure before identity
+    # is known.
+    admin_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)
+    client_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    detail: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+
 class Tenant(Base):
     """A tenant using the platform."""
 
@@ -178,6 +332,147 @@ class Agent(Base):
         back_populates="agent",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+
+
+class AgentWidgetSettings(Base):
+    """Public, browser-safe Widget configuration for one tenant agent."""
+
+    __tablename__ = "agent_widget_settings"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "tenant_id",
+            "agent_id",
+            name="pk_agent_widget_settings",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "agent_id"],
+            ["agents.tenant_id", "agents.id"],
+            ondelete="CASCADE",
+            name="fk_agent_widget_settings_tenant_agent",
+        ),
+        UniqueConstraint(
+            "public_widget_id",
+            name="uq_agent_widget_settings_public_widget_id",
+        ),
+        CheckConstraint(
+            "position IN ('left', 'right')",
+            name="ck_agent_widget_settings_position",
+        ),
+        CheckConstraint(
+            "appearance IN ('light', 'dark')",
+            name="ck_agent_widget_settings_appearance",
+        ),
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    public_widget_id: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+    is_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    display_name: Mapped[str | None] = mapped_column(String(255))
+    greeting: Mapped[str | None] = mapped_column(String(500))
+    primary_color: Mapped[str] = mapped_column(
+        String(7),
+        nullable=False,
+        default="#2563EB",
+        server_default="#2563EB",
+    )
+    text_color: Mapped[str] = mapped_column(
+        String(7),
+        nullable=False,
+        default="#FFFFFF",
+        server_default="#FFFFFF",
+    )
+    launcher_color: Mapped[str] = mapped_column(
+        String(7),
+        nullable=False,
+        default="#2563EB",
+        server_default="#2563EB",
+    )
+    header_color: Mapped[str] = mapped_column(
+        String(7),
+        nullable=False,
+        default="#2563EB",
+        server_default="#2563EB",
+    )
+    user_message_color: Mapped[str] = mapped_column(
+        String(7),
+        nullable=False,
+        default="#2563EB",
+        server_default="#2563EB",
+    )
+    position: Mapped[str] = mapped_column(
+        String(5),
+        nullable=False,
+        default="right",
+        server_default="right",
+    )
+    appearance: Mapped[str] = mapped_column(
+        String(5),
+        nullable=False,
+        default="light",
+        server_default="light",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class WidgetAllowedOrigin(Base):
+    """One exact normalized browser origin allowed for a Widget."""
+
+    __tablename__ = "widget_allowed_origins"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "agent_id"],
+            [
+                "agent_widget_settings.tenant_id",
+                "agent_widget_settings.agent_id",
+            ],
+            ondelete="CASCADE",
+            name="fk_widget_allowed_origins_widget",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "agent_id",
+            "origin",
+            name="uq_widget_allowed_origins_tenant_agent_origin",
+        ),
+        Index(
+            "ix_widget_allowed_origins_tenant_agent",
+            "tenant_id",
+            "agent_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    origin: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
 
 

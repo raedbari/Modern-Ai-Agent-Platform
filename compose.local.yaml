@@ -14,8 +14,25 @@ x-api-environment: &api-environment
   MAAP_OLLAMA_EMBEDDING_RETRY_BASE_SECONDS: "0.5"
   MAAP_EMBEDDING_BATCH_SIZE: "8"
   MAAP_UPLOAD_STORAGE_ROOT: /var/lib/maap/uploads
+  MAAP_REDIS_URL: redis://redis:6379/0
 
 services:
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+
   postgres:
     image: pgvector/pgvector:0.8.6-pg16
     restart: unless-stopped
@@ -99,6 +116,8 @@ services:
     environment:
       <<: *api-environment
       MAAP_ADMIN_API_KEY: ${MAAP_ADMIN_API_KEY:?Set MAAP_ADMIN_API_KEY in .env.compose}
+      MAAP_JWT_SECRET_KEY: ${MAAP_JWT_SECRET_KEY:?Set MAAP_JWT_SECRET_KEY in .env.compose}
+      MAAP_WIDGET_JWT_SECRET_KEY: ${MAAP_WIDGET_JWT_SECRET_KEY:?Set MAAP_WIDGET_JWT_SECRET_KEY in .env.compose}
     ports:
       - "127.0.0.1:${MAAP_API_PORT:-8000}:8000"
     depends_on:
@@ -106,6 +125,8 @@ services:
         condition: service_completed_successfully
       storage-init:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -167,6 +188,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   uploads:
 
 networks:

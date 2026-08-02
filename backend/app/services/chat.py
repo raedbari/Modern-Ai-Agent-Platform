@@ -164,10 +164,20 @@ class ChatService:
         conversation_id: str | None,
     ) -> tuple[Conversation, list[Message]]:
         if conversation_id is None:
+            metadata_json = None
+            if context.auth_method == "widget":
+                if context.session_id is None:
+                    raise ConversationNotFoundError
+                metadata_json = {
+                    "auth_source": "widget",
+                    "widget_session_id": context.session_id,
+                    "public_widget_id": context.public_widget_id,
+                }
             conversation = Conversation(
                 id=str(uuid4()),
                 tenant_id=context.tenant_id,
                 agent_id=context.agent_id,
+                metadata_json=metadata_json,
             )
             session.add(conversation)
             return conversation, []
@@ -181,6 +191,17 @@ class ChatService:
         )
         if conversation is None:
             raise ConversationNotFoundError
+
+        if context.auth_method == "widget":
+            metadata = conversation.metadata_json or {}
+            if (
+                context.session_id is None
+                or metadata.get("auth_source") != "widget"
+                or metadata.get("widget_session_id") != context.session_id
+                or metadata.get("public_widget_id")
+                != context.public_widget_id
+            ):
+                raise ConversationNotFoundError
 
         history = list(
             (

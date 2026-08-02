@@ -10,12 +10,13 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
     Response,
     status,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.dependencies import require_admin_access
+from backend.app.api.dependencies import require_admin_access, require_permission
 from backend.app.api.schemas.admin import (
     AgentAdminResponse,
     ApiKeyAdminResponse,
@@ -23,6 +24,8 @@ from backend.app.api.schemas.admin import (
     RevokeAllApiKeysResponse,
     TenantAdminResponse,
 )
+from backend.app.auth.admin_context import AdminContext
+from backend.app.core.client_ip import get_client_ip
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
 from backend.app.infrastructure.storage import LocalUploadStorage
@@ -41,6 +44,7 @@ from backend.app.operations.admin_lifecycle import (
     set_agent_active,
     set_tenant_active,
 )
+from backend.app.services.audit import AuditService
 
 router = APIRouter(
     prefix="/api/admin",
@@ -114,7 +118,31 @@ async def _cleanup_storage(
             )
 
 
-@router.get("/tenants", response_model=list[TenantAdminResponse])
+async def _audit_mutation(
+    session: AsyncSession,
+    *,
+    context: AdminContext | None,
+    request: Request,
+    settings: Settings,
+    event_type: str,
+    target_type: str,
+    target_id: str,
+    detail: dict | None = None,
+) -> None:
+    await AuditService.write(
+        session,
+        event_type=event_type,
+        outcome="success",
+        admin_id=context.admin_id if context is not None else None,
+        target_type=target_type,
+        target_id=target_id,
+        client_ip=get_client_ip(request, settings),
+        detail=detail,
+    )
+
+
+@router.get("/tenants", response_model=list[TenantAdminResponse],
+            dependencies=[Depends(require_permission("tenants:read"))])
 async def get_tenants(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[TenantAdminResponse]:
@@ -124,6 +152,7 @@ async def get_tenants(
 @router.get(
     "/tenants/{tenant_id}",
     response_model=TenantAdminResponse,
+    dependencies=[Depends(require_permission("tenants:read"))],
 )
 async def get_tenant(
     tenant_id: str,
@@ -139,17 +168,34 @@ async def get_tenant(
 @router.patch(
     "/tenants/{tenant_id}/status",
     response_model=TenantAdminResponse,
+    dependencies=[Depends(require_permission("tenants:write"))],
 )
 async def update_tenant_status(
     tenant_id: str,
     payload: LifecycleStatusUpdate,
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
 ) -> TenantAdminResponse:
     try:
         item = await set_tenant_active(
             session,
             tenant_id=tenant_id,
             is_active=payload.is_active,
+        )
+        await _audit_mutation(
+            session,
+            context=context,
+            request=request,
+            settings=settings,
+            event_type="tenant_status_changed",
+            target_type="tenant",
+            target_id=tenant_id,
+            detail={"is_active": payload.is_active},
         )
         await session.commit()
         await session.refresh(item)
@@ -162,12 +208,18 @@ async def update_tenant_status(
 @router.delete(
     "/tenants/{tenant_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission("tenants:delete"))],
 )
 async def permanently_delete_tenant(
     tenant_id: str,
     confirm: Annotated[str, Query(min_length=1, max_length=128)],
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
 ) -> Response:
     if confirm != tenant_id:
         raise HTTPException(
@@ -176,6 +228,15 @@ async def permanently_delete_tenant(
         )
     try:
         result = await delete_tenant(session, tenant_id=tenant_id)
+        await _audit_mutation(
+            session,
+            context=context,
+            request=request,
+            settings=settings,
+            event_type="tenant_deleted",
+            target_type="tenant",
+            target_id=tenant_id,
+        )
         await session.commit()
     except AdminResourceNotFoundError as exc:
         await session.rollback()
@@ -190,6 +251,7 @@ async def permanently_delete_tenant(
 @router.get(
     "/tenants/{tenant_id}/agents",
     response_model=list[AgentAdminResponse],
+    dependencies=[Depends(require_permission("agents:read"))],
 )
 async def get_agents(
     tenant_id: str,
@@ -205,12 +267,19 @@ async def get_agents(
 @router.patch(
     "/tenants/{tenant_id}/agents/{agent_id}/status",
     response_model=AgentAdminResponse,
+    dependencies=[Depends(require_permission("agents:write"))],
 )
 async def update_agent_status(
     tenant_id: str,
     agent_id: str,
     payload: LifecycleStatusUpdate,
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
 ) -> AgentAdminResponse:
     try:
         item = await set_agent_active(
@@ -218,6 +287,16 @@ async def update_agent_status(
             tenant_id=tenant_id,
             agent_id=agent_id,
             is_active=payload.is_active,
+        )
+        await _audit_mutation(
+            session,
+            context=context,
+            request=request,
+            settings=settings,
+            event_type="agent_status_changed",
+            target_type="agent",
+            target_id=agent_id,
+            detail={"tenant_id": tenant_id, "is_active": payload.is_active},
         )
         await session.commit()
         await session.refresh(item)
@@ -230,13 +309,19 @@ async def update_agent_status(
 @router.delete(
     "/tenants/{tenant_id}/agents/{agent_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission("agents:delete"))],
 )
 async def permanently_delete_agent(
     tenant_id: str,
     agent_id: str,
     confirm: Annotated[str, Query(min_length=1, max_length=128)],
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
 ) -> Response:
     if confirm != agent_id:
         raise HTTPException(
@@ -248,6 +333,16 @@ async def permanently_delete_agent(
             session,
             tenant_id=tenant_id,
             agent_id=agent_id,
+        )
+        await _audit_mutation(
+            session,
+            context=context,
+            request=request,
+            settings=settings,
+            event_type="agent_deleted",
+            target_type="agent",
+            target_id=agent_id,
+            detail={"tenant_id": tenant_id},
         )
         await session.commit()
     except AdminResourceNotFoundError as exc:
@@ -263,6 +358,7 @@ async def permanently_delete_agent(
 @router.get(
     "/tenants/{tenant_id}/api-keys",
     response_model=list[ApiKeyAdminResponse],
+    dependencies=[Depends(require_permission("api_keys:read"))],
 )
 async def get_api_keys(
     tenant_id: str,
@@ -278,17 +374,34 @@ async def get_api_keys(
 @router.post(
     "/tenants/{tenant_id}/api-keys/{key_id}/revoke",
     response_model=ApiKeyAdminResponse,
+    dependencies=[Depends(require_permission("api_keys:revoke"))],
 )
 async def revoke_one_api_key(
     tenant_id: str,
     key_id: str,
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
 ) -> ApiKeyAdminResponse:
     try:
         item = await revoke_api_key(
             session,
             tenant_id=tenant_id,
             key_id=key_id,
+        )
+        await _audit_mutation(
+            session,
+            context=context,
+            request=request,
+            settings=settings,
+            event_type="api_key_revoked",
+            target_type="api_key",
+            target_id=key_id,
+            detail={"tenant_id": tenant_id},
         )
         await session.commit()
         await session.refresh(item)
@@ -301,15 +414,32 @@ async def revoke_one_api_key(
 @router.post(
     "/tenants/{tenant_id}/api-keys/revoke-all",
     response_model=RevokeAllApiKeysResponse,
+    dependencies=[Depends(require_permission("api_keys:revoke"))],
 )
 async def revoke_tenant_api_keys(
     tenant_id: str,
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
 ) -> RevokeAllApiKeysResponse:
     try:
         revoked_count = await revoke_all_api_keys(
             session,
             tenant_id=tenant_id,
+        )
+        await _audit_mutation(
+            session,
+            context=context,
+            request=request,
+            settings=settings,
+            event_type="api_keys_revoked_all",
+            target_type="tenant",
+            target_id=tenant_id,
+            detail={"revoked_count": revoked_count},
         )
         await session.commit()
     except AdminResourceNotFoundError as exc:
@@ -321,17 +451,34 @@ async def revoke_tenant_api_keys(
 @router.delete(
     "/tenants/{tenant_id}/conversations/{conversation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission("conversations:delete"))],
 )
 async def permanently_delete_conversation(
     tenant_id: str,
     conversation_id: str,
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
 ) -> Response:
     try:
         await delete_conversation(
             session,
             tenant_id=tenant_id,
             conversation_id=conversation_id,
+        )
+        await _audit_mutation(
+            session,
+            context=context,
+            request=request,
+            settings=settings,
+            event_type="conversation_deleted",
+            target_type="conversation",
+            target_id=conversation_id,
+            detail={"tenant_id": tenant_id},
         )
         await session.commit()
     except AdminResourceNotFoundError as exc:

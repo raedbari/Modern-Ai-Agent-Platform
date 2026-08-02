@@ -24,3 +24,8 @@ pgvector>=0.3,<1.0
 
 # Test async support
 pytest-asyncio>=0.24,<2.0
+
+# Admin authentication
+argon2-cffi>=23.1,<25.0
+PyJWT>=2.8,<3.0
+redis>=5.2,<7.0

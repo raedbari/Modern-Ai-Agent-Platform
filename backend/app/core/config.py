@@ -1,6 +1,7 @@
 """Environment-backed application settings."""
 
 from functools import lru_cache
+from ipaddress import ip_network
 from pathlib import Path
 from typing import Literal
 
@@ -124,6 +125,103 @@ class Settings(BaseSettings):
     # Hard ceiling for retrieved text injected into one generation request.
     rag_max_context_chars: int = Field(default=12000, ge=500, le=100000)
 
+    # ------------------------------------------------------------------ #
+    # Admin authentication                                                 #
+    # ------------------------------------------------------------------ #
+
+    # HS256 signing key for admin JWT access tokens.
+    # Must be at least 32 characters in staging and production.
+    # Leave unset in development to disable JWT-based admin auth.
+    jwt_secret_key: SecretStr | None = None
+
+    # Lifetime of a short-lived admin access token, in minutes.
+    jwt_access_token_expire_minutes: int = Field(default=15, gt=0, le=1440)
+
+    # Lifetime of a long-lived admin refresh token, in days.
+    jwt_refresh_token_expire_days: int = Field(default=7, gt=0, le=90)
+
+    # When True the legacy X-Admin-Key header is accepted alongside JWT
+    # Bearer tokens.  Set to False once all callers have migrated.
+    admin_legacy_key_enabled: bool = True
+
+    # Only direct peers in these networks may supply X-Forwarded-For.
+    trusted_proxy_cidrs: tuple[str, ...] = ()
+
+    # Shared Redis is mandatory outside development/test so rate limits work
+    # consistently across all API containers.
+    redis_url: SecretStr | None = None
+    admin_login_rate_limit_per_account: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+    )
+    admin_login_rate_limit_per_ip: int = Field(
+        default=20,
+        ge=1,
+        le=10000,
+    )
+    admin_login_rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        le=86400,
+    )
+
+    # Browser Widget sessions use a separate signing key and short lifetime.
+    widget_jwt_secret_key: SecretStr | None = None
+    widget_jwt_issuer: str = Field(
+        default="maap-widget-bootstrap",
+        min_length=1,
+        max_length=128,
+    )
+    widget_jwt_audience: str = Field(
+        default="maap-widget-client",
+        min_length=1,
+        max_length=128,
+    )
+    widget_token_lifetime_seconds: int = Field(
+        default=600,
+        ge=60,
+        le=900,
+    )
+    widget_bootstrap_rate_limit_per_widget: int = Field(
+        default=60,
+        ge=1,
+        le=10000,
+    )
+    widget_bootstrap_rate_limit_per_ip: int = Field(
+        default=300,
+        ge=1,
+        le=10000,
+    )
+    widget_bootstrap_rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        le=86400,
+    )
+    widget_chat_rate_limit_per_session: int = Field(
+        default=30,
+        ge=1,
+        le=10000,
+    )
+    widget_chat_rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        le=86400,
+    )
+
+    # ------------------------------------------------------------------ #
+    # Argon2id password hashing                                           #
+    # ------------------------------------------------------------------ #
+
+    # Number of iterations (time cost).  OWASP minimum: 2.
+    argon2_time_cost: int = Field(default=2, ge=1, le=16)
+
+    # Memory usage in KiB.  OWASP minimum: 19456 (19 MiB).
+    argon2_memory_cost: int = Field(default=19456, ge=8192)
+
+    # Degree of parallelism (number of threads).
+    argon2_parallelism: int = Field(default=1, ge=1, le=8)
+
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
@@ -149,10 +247,63 @@ class Settings(BaseSettings):
             self.admin_api_key is None
             or not self.admin_api_key.get_secret_value().strip()
         )
-        if requires_api_key and admin_key_missing:
+        if (
+            requires_api_key
+            and self.admin_legacy_key_enabled
+            and admin_key_missing
+        ):
             raise ValueError(
                 "MAAP_ADMIN_API_KEY is required in staging and production"
             )
+
+        jwt_secret_missing = (
+            self.jwt_secret_key is None
+            or not self.jwt_secret_key.get_secret_value().strip()
+        )
+        if requires_api_key and jwt_secret_missing:
+            raise ValueError(
+                "MAAP_JWT_SECRET_KEY is required in staging and production"
+            )
+        if not jwt_secret_missing:
+            jwt_secret = self.jwt_secret_key.get_secret_value().strip()
+            if len(jwt_secret.encode("utf-8")) < 32:
+                raise ValueError(
+                    "MAAP_JWT_SECRET_KEY must contain at least 32 bytes"
+                )
+
+        redis_missing = (
+            self.redis_url is None
+            or not self.redis_url.get_secret_value().strip()
+        )
+        if requires_api_key and redis_missing:
+            raise ValueError(
+                "MAAP_REDIS_URL is required in staging and production"
+            )
+
+        widget_secret_missing = (
+            self.widget_jwt_secret_key is None
+            or not self.widget_jwt_secret_key.get_secret_value().strip()
+        )
+        if requires_api_key and widget_secret_missing:
+            raise ValueError(
+                "MAAP_WIDGET_JWT_SECRET_KEY is required in staging and production"
+            )
+        if not widget_secret_missing:
+            widget_secret = (
+                self.widget_jwt_secret_key.get_secret_value().strip()
+            )
+            if len(widget_secret.encode("utf-8")) < 32:
+                raise ValueError(
+                    "MAAP_WIDGET_JWT_SECRET_KEY must contain at least 32 bytes"
+                )
+
+        for cidr in self.trusted_proxy_cidrs:
+            try:
+                ip_network(cidr, strict=False)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid trusted proxy CIDR: {cidr}"
+                ) from exc
 
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError(
