@@ -1065,4 +1065,3 @@ async def test_password_change_full_flow(tmp_path: Path) -> None:
             assert "access_token" in new_login.json()
     finally:
         await engine.dispose()
-

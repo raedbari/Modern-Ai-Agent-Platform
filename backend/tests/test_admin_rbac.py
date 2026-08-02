@@ -614,4 +614,3 @@ async def test_rbac_matrix_parameterized(
         )
     finally:
         await engine.dispose()
-
