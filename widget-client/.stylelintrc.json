@@ -1,0 +1,28 @@
+{
+  "extends": ["stylelint-config-standard"],
+  "rules": {
+    "property-disallowed-list": [
+      "left",
+      "right",
+      "margin-left",
+      "margin-right",
+      "padding-left",
+      "padding-right",
+      "border-left",
+      "border-right",
+      "border-left-width",
+      "border-right-width",
+      "border-left-color",
+      "border-right-color",
+      "border-left-style",
+      "border-right-style",
+      "border-top-left-radius",
+      "border-top-right-radius",
+      "border-bottom-left-radius",
+      "border-bottom-right-radius",
+      "float",
+      "clear",
+      "text-align"
+    ]
+  }
+}
