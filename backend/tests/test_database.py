@@ -17,9 +17,11 @@ from backend.app.db.models import (
     AdminUser,
     AdminRefreshSession,
     Agent,
+    AgentWidgetSettings,
     Conversation,
     Message,
     Tenant,
+    WidgetAllowedOrigin,
 )
 
 
@@ -65,7 +67,93 @@ def test_metadata_defines_expected_tables() -> None:
         "admin_users",
         "admin_refresh_sessions",
         "admin_audit_log",
+        # Browser Widget configuration tables added in Wave 2
+        "agent_widget_settings",
+        "widget_allowed_origins",
     }
+
+
+def test_widget_settings_reject_agent_from_another_tenant() -> None:
+    async def scenario() -> None:
+        engine, session_factory = await _open_test_database()
+        try:
+            async with session_factory() as session:
+                session.add_all(
+                    [
+                        Tenant(id="tenant-a", name="Tenant A"),
+                        Tenant(id="tenant-b", name="Tenant B"),
+                        Agent(
+                            id="agent-a",
+                            tenant_id="tenant-a",
+                            name="Agent A",
+                        ),
+                    ]
+                )
+                await session.commit()
+
+            async with session_factory() as session:
+                session.add(
+                    AgentWidgetSettings(
+                        tenant_id="tenant-b",
+                        agent_id="agent-a",
+                        public_widget_id="wgt_cross_tenant_widget_identifier",
+                    )
+                )
+                with pytest.raises(IntegrityError):
+                    await session.flush()
+                await session.rollback()
+        finally:
+            await _dispose(engine)
+
+    asyncio.run(scenario())
+
+
+def test_widget_origin_requires_matching_widget_tenant_and_agent() -> None:
+    async def scenario() -> None:
+        engine, session_factory = await _open_test_database()
+        try:
+            async with session_factory() as session:
+                session.add_all(
+                    [
+                        Tenant(id="tenant-a", name="Tenant A"),
+                        Tenant(id="tenant-b", name="Tenant B"),
+                        Agent(
+                            id="agent-a",
+                            tenant_id="tenant-a",
+                            name="Agent A",
+                        ),
+                        Agent(
+                            id="agent-b",
+                            tenant_id="tenant-b",
+                            name="Agent B",
+                        ),
+                    ]
+                )
+                await session.commit()
+                session.add(
+                    AgentWidgetSettings(
+                        tenant_id="tenant-a",
+                        agent_id="agent-a",
+                        public_widget_id="wgt_valid_widget_identifier_1234",
+                    )
+                )
+                await session.commit()
+
+            async with session_factory() as session:
+                session.add(
+                    WidgetAllowedOrigin(
+                        tenant_id="tenant-b",
+                        agent_id="agent-a",
+                        origin="https://example.com",
+                    )
+                )
+                with pytest.raises(IntegrityError):
+                    await session.flush()
+                await session.rollback()
+        finally:
+            await _dispose(engine)
+
+    asyncio.run(scenario())
 
 
 def test_valid_tenant_hierarchy_can_be_persisted() -> None:

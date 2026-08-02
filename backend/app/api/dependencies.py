@@ -11,10 +11,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.auth.api_keys import parse_api_key, verify_api_key_secret
+from backend.app.auth.origin import normalize_origin
+from backend.app.auth.widget_jwt import WidgetTokenError, decode_widget_token
 from backend.app.ai.ports import EmbeddingProvider
 from backend.app.auth.admin_context import AdminContext
 from backend.app.auth.context import ChatExecutionContext
 from backend.app.core.config import Settings, get_settings
+from backend.app.core.rate_limit import RateLimiter, get_rate_limiter
 from backend.app.db.base import get_db
 from backend.app.db.models import (
     AdminRefreshSession,
@@ -24,6 +27,10 @@ from backend.app.db.models import (
     Tenant,
 )
 from backend.app.services.chat import GenerationRuntime
+from backend.app.operations.widget import (
+    is_widget_origin_allowed,
+    resolve_public_widget,
+)
 
 api_key_header = APIKeyHeader(
     name="X-API-Key",
@@ -62,6 +69,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "admins:write",
             "admins:delete",
             "audit:read",
+            "widgets:read",
+            "widgets:write",
         }
     ),
     "operator": frozenset(
@@ -73,6 +82,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "api_keys:read",
             "api_keys:revoke",
             "conversations:delete",
+            "widgets:read",
+            "widgets:write",
         }
     ),
     "auditor": frozenset(
@@ -81,6 +92,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "agents:read",
             "api_keys:read",
             "audit:read",
+            "widgets:read",
         }
     ),
 }
@@ -282,8 +294,11 @@ def _as_utc(value: datetime) -> datetime:
 
 
 async def require_chat_context(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     raw_api_key: Annotated[str | None, Security(api_key_header)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
     agent_id: Annotated[
         str | None,
         Header(
@@ -292,7 +307,89 @@ async def require_chat_context(
         ),
     ] = None,
 ) -> ChatExecutionContext:
-    """Authenticate the key and resolve a tenant-scoped active agent."""
+    """Authenticate either a browser Widget JWT or a server-side API key."""
+
+    authorization = request.headers.get("Authorization", "")
+    if authorization:
+        if not authorization.startswith("Bearer "):
+            raise _unauthorized()
+        raw_widget_token = authorization[len("Bearer "):].strip()
+        if not raw_widget_token or " " in raw_widget_token:
+            raise _unauthorized()
+        try:
+            widget_context = decode_widget_token(raw_widget_token, settings)
+        except WidgetTokenError as exc:
+            raise _unauthorized() from exc
+
+        origin = normalize_origin(request.headers.get("Origin"))
+        if origin is None or origin != widget_context.origin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Widget origin mismatch",
+            )
+
+        resolved = await resolve_public_widget(
+            session,
+            widget_context.public_widget_id,
+        )
+        if resolved is None:
+            raise _unauthorized()
+        widget, agent, tenant = resolved
+        if (
+            widget.tenant_id != widget_context.tenant_id
+            or widget.agent_id != widget_context.agent_id
+            or tenant.id != widget_context.tenant_id
+            or agent.id != widget_context.agent_id
+        ):
+            raise _unauthorized()
+        if not await is_widget_origin_allowed(
+            session,
+            tenant_id=tenant.id,
+            agent_id=agent.id,
+            origin=origin,
+            environment=settings.environment,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Origin is no longer allowed for this Widget",
+            )
+
+        request.state.widget_cors_origin = origin
+        try:
+            limit = await rate_limiter.check(
+                bucket="widget-chat-session",
+                identity=(
+                    f"{tenant.id}:{agent.id}:{widget_context.session_id}"
+                ),
+                limit=settings.widget_chat_rate_limit_per_session,
+                window_seconds=(
+                    settings.widget_chat_rate_limit_window_seconds
+                ),
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Widget service is temporarily unavailable.",
+            ) from exc
+        if not limit.allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many Widget chat requests.",
+                headers={
+                    "Retry-After": str(limit.retry_after_seconds),
+                },
+            )
+
+        return ChatExecutionContext(
+            tenant_id=tenant.id,
+            agent_id=agent.id,
+            system_prompt=agent.system_prompt,
+            knowledge_mode=agent.knowledge_mode,  # type: ignore[arg-type]
+            contact_message=agent.contact_message,
+            auth_method="widget",
+            session_id=widget_context.session_id,
+            public_widget_id=widget.public_widget_id,
+        )
 
     if raw_api_key is None:
         raise _unauthorized()
@@ -356,6 +453,7 @@ async def require_chat_context(
         system_prompt=agent.system_prompt,
         knowledge_mode=agent.knowledge_mode,
         contact_message=agent.contact_message,
+        auth_method="api_key",
     )
 
 

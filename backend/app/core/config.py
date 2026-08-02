@@ -166,6 +166,49 @@ class Settings(BaseSettings):
         le=86400,
     )
 
+    # Browser Widget sessions use a separate signing key and short lifetime.
+    widget_jwt_secret_key: SecretStr | None = None
+    widget_jwt_issuer: str = Field(
+        default="maap-widget-bootstrap",
+        min_length=1,
+        max_length=128,
+    )
+    widget_jwt_audience: str = Field(
+        default="maap-widget-client",
+        min_length=1,
+        max_length=128,
+    )
+    widget_token_lifetime_seconds: int = Field(
+        default=600,
+        ge=60,
+        le=900,
+    )
+    widget_bootstrap_rate_limit_per_widget: int = Field(
+        default=60,
+        ge=1,
+        le=10000,
+    )
+    widget_bootstrap_rate_limit_per_ip: int = Field(
+        default=300,
+        ge=1,
+        le=10000,
+    )
+    widget_bootstrap_rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        le=86400,
+    )
+    widget_chat_rate_limit_per_session: int = Field(
+        default=30,
+        ge=1,
+        le=10000,
+    )
+    widget_chat_rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        le=86400,
+    )
+
     # ------------------------------------------------------------------ #
     # Argon2id password hashing                                           #
     # ------------------------------------------------------------------ #
@@ -236,6 +279,23 @@ class Settings(BaseSettings):
             raise ValueError(
                 "MAAP_REDIS_URL is required in staging and production"
             )
+
+        widget_secret_missing = (
+            self.widget_jwt_secret_key is None
+            or not self.widget_jwt_secret_key.get_secret_value().strip()
+        )
+        if requires_api_key and widget_secret_missing:
+            raise ValueError(
+                "MAAP_WIDGET_JWT_SECRET_KEY is required in staging and production"
+            )
+        if not widget_secret_missing:
+            widget_secret = (
+                self.widget_jwt_secret_key.get_secret_value().strip()
+            )
+            if len(widget_secret.encode("utf-8")) < 32:
+                raise ValueError(
+                    "MAAP_WIDGET_JWT_SECRET_KEY must contain at least 32 bytes"
+                )
 
         for cidr in self.trusted_proxy_cidrs:
             try:

@@ -34,6 +34,24 @@ RUNTIME_ENVIRONMENT_VARIABLES = (
     "MAAP_RETRIEVAL_TOP_K",
     "MAAP_RETRIEVAL_MIN_SIMILARITY",
     "MAAP_RAG_MAX_CONTEXT_CHARS",
+    "MAAP_JWT_SECRET_KEY",
+    "MAAP_JWT_ACCESS_TOKEN_EXPIRE_MINUTES",
+    "MAAP_JWT_REFRESH_TOKEN_EXPIRE_DAYS",
+    "MAAP_ADMIN_LEGACY_KEY_ENABLED",
+    "MAAP_TRUSTED_PROXY_CIDRS",
+    "MAAP_REDIS_URL",
+    "MAAP_ADMIN_LOGIN_RATE_LIMIT_PER_ACCOUNT",
+    "MAAP_ADMIN_LOGIN_RATE_LIMIT_PER_IP",
+    "MAAP_ADMIN_LOGIN_RATE_LIMIT_WINDOW_SECONDS",
+    "MAAP_WIDGET_JWT_SECRET_KEY",
+    "MAAP_WIDGET_JWT_ISSUER",
+    "MAAP_WIDGET_JWT_AUDIENCE",
+    "MAAP_WIDGET_TOKEN_LIFETIME_SECONDS",
+    "MAAP_WIDGET_BOOTSTRAP_RATE_LIMIT_PER_WIDGET",
+    "MAAP_WIDGET_BOOTSTRAP_RATE_LIMIT_PER_IP",
+    "MAAP_WIDGET_BOOTSTRAP_RATE_LIMIT_WINDOW_SECONDS",
+    "MAAP_WIDGET_CHAT_RATE_LIMIT_PER_SESSION",
+    "MAAP_WIDGET_CHAT_RATE_LIMIT_WINDOW_SECONDS",
 )
 
 
@@ -160,5 +178,26 @@ def test_production_requires_shared_redis():
             admin_api_key="test-admin-key",
             jwt_secret_key="x" * 32,
             redis_url=None,
+            _env_file=None,
+        )
+
+
+def test_short_widget_jwt_secret_is_rejected():
+    with pytest.raises(ValidationError, match="at least 32 bytes"):
+        Settings(widget_jwt_secret_key="x", _env_file=None)
+
+
+def test_production_requires_widget_jwt_secret():
+    with pytest.raises(
+        ValidationError,
+        match="MAAP_WIDGET_JWT_SECRET_KEY",
+    ):
+        Settings(
+            environment="production",
+            deepseek_api_key="test-deepseek-key",
+            admin_api_key="test-admin-key",
+            jwt_secret_key="x" * 32,
+            redis_url="redis://redis:6379/0",
+            widget_jwt_secret_key=None,
             _env_file=None,
         )

@@ -1,0 +1,614 @@
+"""Integration tests for Widget bootstrap, CORS, dual auth and isolation."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import AsyncMock
+from uuid import uuid4
+
+import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event, select
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from backend.app.ai.contracts import GenerationResult
+from backend.app.api.dependencies import get_core_ai_runtime
+from backend.app.auth.widget_jwt import (
+    create_widget_token,
+    decode_widget_token,
+)
+from backend.app.core.config import Settings, get_settings
+from backend.app.core.rate_limit import (
+    RateLimitResult,
+    get_rate_limiter,
+)
+from backend.app.db.base import Base, get_db
+from backend.app.db.models import (
+    Agent,
+    AgentWidgetSettings,
+    Conversation,
+    Tenant,
+    WidgetAllowedOrigin,
+)
+from backend.app.main import create_app
+
+
+_WIDGET_ID = "wgt_customer_widget_identifier_1234"
+_ORIGIN = "https://customer.example"
+_WIDGET_SECRET = "widget-api-test-secret-key-with-at-least-32-bytes!"
+
+
+class AllowingLimiter:
+    async def check(self, **kwargs) -> RateLimitResult:
+        return RateLimitResult(
+            allowed=True,
+            remaining=int(kwargs["limit"]),
+            retry_after_seconds=int(kwargs["window_seconds"]),
+        )
+
+
+async def _open_widget_app(
+    db_path: Path,
+) -> tuple[
+    FastAPI,
+    AsyncEngine,
+    async_sessionmaker,
+    AsyncMock,
+    Settings,
+]:
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{db_path.as_posix()}"
+    )
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def enable_fk(dbapi_conn, _rec):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    runtime = AsyncMock()
+    runtime.generate.return_value = GenerationResult(
+        content="Widget assistant response",
+        model="test-widget-model",
+        finish_reason="stop",
+        prompt_tokens=5,
+        completion_tokens=3,
+    )
+    settings = Settings(
+        environment="test",
+        widget_jwt_secret_key=_WIDGET_SECRET,
+        widget_token_lifetime_seconds=600,
+        _env_file=None,
+    )
+    app = create_app()
+
+    async def override_db():
+        async with sessions() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_rate_limiter] = lambda: AllowingLimiter()
+    app.dependency_overrides[get_core_ai_runtime] = lambda: runtime
+    return app, engine, sessions, runtime, settings
+
+
+async def _seed_widget(
+    sessions: async_sessionmaker,
+    *,
+    widget_id: str = _WIDGET_ID,
+    origin: str = _ORIGIN,
+    tenant_active: bool = True,
+    agent_active: bool = True,
+    widget_enabled: bool = True,
+) -> None:
+    async with sessions() as session:
+        session.add_all(
+            [
+                Tenant(
+                    id="tenant-a",
+                    name="Tenant A",
+                    is_active=tenant_active,
+                ),
+                Agent(
+                    id="agent-a",
+                    tenant_id="tenant-a",
+                    name="Support Agent",
+                    system_prompt="PRIVATE SYSTEM PROMPT - NEVER PUBLIC",
+                    is_active=agent_active,
+                ),
+            ]
+        )
+        await session.commit()
+        session.add(
+            AgentWidgetSettings(
+                tenant_id="tenant-a",
+                agent_id="agent-a",
+                public_widget_id=widget_id,
+                is_enabled=widget_enabled,
+                display_name="Public Support",
+                greeting="Hello from the configured greeting.",
+                primary_color="#112233",
+                text_color="#FFFFFF",
+                launcher_color="#223344",
+                header_color="#334455",
+                user_message_color="#445566",
+                position="left",
+                appearance="dark",
+            )
+        )
+        await session.commit()
+        session.add(
+            WidgetAllowedOrigin(
+                tenant_id="tenant-a",
+                agent_id="agent-a",
+                origin=origin,
+            )
+        )
+        await session.commit()
+
+
+async def _bootstrap(
+    client: AsyncClient,
+    *,
+    origin: str = _ORIGIN,
+) -> tuple[str, dict]:
+    response = await client.post(
+        "/api/widget/bootstrap",
+        json={"widget_id": _WIDGET_ID},
+        headers={"Origin": origin},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["session_token"], response.json()
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_returns_only_safe_runtime_configuration(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, settings = await _open_widget_app(
+        tmp_path / "bootstrap.sqlite3"
+    )
+    await _seed_widget(sessions)
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/widget/bootstrap",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": _ORIGIN},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["widget"]["display_name"] == "Public Support"
+        assert body["widget"]["greeting"] == (
+            "Hello from the configured greeting."
+        )
+        assert body["widget"]["theme"] == {
+            "primaryColor": "#112233",
+            "textColor": "#FFFFFF",
+            "launcherColor": "#223344",
+            "headerColor": "#334455",
+            "userMessageColor": "#445566",
+            "position": "left",
+            "appearance": "dark",
+        }
+        assert "PRIVATE SYSTEM PROMPT" not in response.text
+        assert response.headers["Access-Control-Allow-Origin"] == _ORIGIN
+        assert response.headers["Cache-Control"] == "no-store"
+
+        token_context = decode_widget_token(body["session_token"], settings)
+        assert token_context.session_id == body["session_id"]
+        assert token_context.tenant_id == "tenant-a"
+        assert token_context.agent_id == "agent-a"
+        assert token_context.origin == _ORIGIN
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_rejects_missing_and_unlisted_origins(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path / "origin-reject.sqlite3"
+    )
+    await _seed_widget(sessions)
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            missing = await client.post(
+                "/api/widget/bootstrap",
+                json={"widget_id": _WIDGET_ID},
+            )
+            unlisted = await client.post(
+                "/api/widget/bootstrap",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": "https://attacker.example"},
+            )
+
+        assert missing.status_code == 403
+        assert unlisted.status_code == 403
+        assert "Access-Control-Allow-Origin" not in unlisted.headers
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tenant_active,agent_active,widget_enabled",
+    [
+        (False, True, True),
+        (True, False, True),
+        (True, True, False),
+    ],
+)
+async def test_bootstrap_hides_disabled_resource_state(
+    tmp_path: Path,
+    tenant_active: bool,
+    agent_active: bool,
+    widget_enabled: bool,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path
+        / f"disabled-{tenant_active}-{agent_active}-{widget_enabled}.sqlite3"
+    )
+    await _seed_widget(
+        sessions,
+        tenant_active=tenant_active,
+        agent_active=agent_active,
+        widget_enabled=widget_enabled,
+    )
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/widget/bootstrap",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": _ORIGIN},
+            )
+        assert response.status_code == 404
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_widget_preflight_allows_only_expected_protocol_headers(
+    tmp_path: Path,
+) -> None:
+    app, engine, _, _, _ = await _open_widget_app(
+        tmp_path / "preflight.sqlite3"
+    )
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            accepted = await client.options(
+                "/api/chat",
+                headers={
+                    "Origin": _ORIGIN,
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": (
+                        "authorization, content-type"
+                    ),
+                },
+            )
+            rejected = await client.options(
+                "/api/chat",
+                headers={
+                    "Origin": _ORIGIN,
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "x-api-key",
+                },
+            )
+
+        assert accepted.status_code == 204
+        assert accepted.headers["Access-Control-Allow-Origin"] == _ORIGIN
+        assert rejected.status_code == 403
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_widget_bootstrap_rate_limit_is_enforced(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path / "bootstrap-rate.sqlite3"
+    )
+    await _seed_widget(sessions)
+
+    class DenyingLimiter:
+        async def check(self, **kwargs) -> RateLimitResult:
+            return RateLimitResult(False, 0, 29)
+
+    app.dependency_overrides[get_rate_limiter] = lambda: DenyingLimiter()
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/widget/bootstrap",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": _ORIGIN},
+            )
+        assert response.status_code == 429
+        assert response.headers["Retry-After"] == "29"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_returns_503_when_widget_signing_is_unconfigured(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path / "bootstrap-secret.sqlite3"
+    )
+    await _seed_widget(sessions)
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        environment="test",
+        _env_file=None,
+    )
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/widget/bootstrap",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": _ORIGIN},
+            )
+
+        assert response.status_code == 503
+        assert response.headers["Access-Control-Allow-Origin"] == _ORIGIN
+        assert response.json() == {
+            "detail": "Widget authentication is not configured."
+        }
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_widget_chat_rate_limit_is_enforced_after_bootstrap(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, runtime, _ = await _open_widget_app(
+        tmp_path / "chat-rate.sqlite3"
+    )
+    await _seed_widget(sessions)
+
+    class DenyingLimiter:
+        async def check(self, **kwargs) -> RateLimitResult:
+            return RateLimitResult(False, 0, 17)
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            token, _ = await _bootstrap(client)
+            app.dependency_overrides[get_rate_limiter] = (
+                lambda: DenyingLimiter()
+            )
+            response = await client.post(
+                "/api/chat",
+                json={"message": "Rate limited"},
+                headers={
+                    "Origin": _ORIGIN,
+                    "Authorization": f"Bearer {token}",
+                },
+            )
+
+        assert response.status_code == 429
+        assert response.headers["Retry-After"] == "17"
+        assert response.headers["Access-Control-Allow-Origin"] == _ORIGIN
+        runtime.generate.assert_not_awaited()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_widget_chat_rejects_token_origin_mismatch(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, runtime, _ = await _open_widget_app(
+        tmp_path / "token-origin.sqlite3"
+    )
+    await _seed_widget(sessions)
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            token, _ = await _bootstrap(client)
+            response = await client.post(
+                "/api/chat",
+                json={"message": "Wrong origin"},
+                headers={
+                    "Origin": "https://attacker.example",
+                    "Authorization": f"Bearer {token}",
+                },
+            )
+
+        assert response.status_code == 403
+        assert "Access-Control-Allow-Origin" not in response.headers
+        runtime.generate.assert_not_awaited()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_widget_chat_rejects_signed_cross_tenant_claims(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, runtime, settings = await _open_widget_app(
+        tmp_path / "token-tenant.sqlite3"
+    )
+    await _seed_widget(sessions)
+    token = create_widget_token(
+        tenant_id="tenant-other",
+        agent_id="agent-other",
+        public_widget_id=_WIDGET_ID,
+        origin=_ORIGIN,
+        session_id=str(uuid4()),
+        settings=settings,
+    )
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/chat",
+                json={"message": "Cross tenant"},
+                headers={
+                    "Origin": _ORIGIN,
+                    "Authorization": f"Bearer {token}",
+                },
+            )
+
+        assert response.status_code == 401
+        runtime.generate.assert_not_awaited()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_widget_chat_persists_session_binding_and_blocks_other_session(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, runtime, _ = await _open_widget_app(
+        tmp_path / "widget-chat.sqlite3"
+    )
+    await _seed_widget(sessions)
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            token_a, bootstrap_a = await _bootstrap(client)
+            first = await client.post(
+                "/api/chat",
+                json={"message": "Hello from session A"},
+                headers={
+                    "Origin": _ORIGIN,
+                    "Authorization": f"Bearer {token_a}",
+                },
+            )
+            token_b, _ = await _bootstrap(client)
+            cross_session = await client.post(
+                "/api/chat",
+                json={
+                    "message": "Try another session",
+                    "conversation_id": first.json()["conversation_id"],
+                },
+                headers={
+                    "Origin": _ORIGIN,
+                    "Authorization": f"Bearer {token_b}",
+                },
+            )
+
+        assert first.status_code == 200
+        assert first.headers["Access-Control-Allow-Origin"] == _ORIGIN
+        assert cross_session.status_code == 404
+        assert cross_session.headers["Access-Control-Allow-Origin"] == _ORIGIN
+        async with sessions() as session:
+            conversation = await session.get(
+                Conversation,
+                first.json()["conversation_id"],
+            )
+        assert conversation is not None
+        assert conversation.metadata_json == {
+            "auth_source": "widget",
+            "widget_session_id": bootstrap_a["session_id"],
+            "public_widget_id": _WIDGET_ID,
+        }
+        assert runtime.generate.await_count == 1
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_widget_chat_rechecks_origin_allow_list_after_bootstrap(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, runtime, _ = await _open_widget_app(
+        tmp_path / "origin-recheck.sqlite3"
+    )
+    await _seed_widget(sessions)
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            token, _ = await _bootstrap(client)
+
+            async with sessions() as session:
+                row = await session.scalar(select(WidgetAllowedOrigin))
+                assert row is not None
+                await session.delete(row)
+                await session.commit()
+
+            response = await client.post(
+                "/api/chat",
+                json={"message": "Should not run"},
+                headers={
+                    "Origin": _ORIGIN,
+                    "Authorization": f"Bearer {token}",
+                },
+            )
+
+        assert response.status_code == 403
+        runtime.generate.assert_not_awaited()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_invalid_widget_bearer_never_falls_back_to_api_key(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, runtime, _ = await _open_widget_app(
+        tmp_path / "no-fallback.sqlite3"
+    )
+    await _seed_widget(sessions)
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/chat",
+                json={"message": "Do not fall back"},
+                headers={
+                    "Origin": _ORIGIN,
+                    "Authorization": "Bearer invalid.token.value",
+                    "X-API-Key": "also-invalid",
+                    "X-Agent-ID": "agent-a",
+                },
+            )
+
+        assert response.status_code == 401
+        runtime.generate.assert_not_awaited()
+    finally:
+        await engine.dispose()

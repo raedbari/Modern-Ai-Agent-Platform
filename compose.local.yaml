@@ -117,6 +117,7 @@ services:
       <<: *api-environment
       MAAP_ADMIN_API_KEY: ${MAAP_ADMIN_API_KEY:?Set MAAP_ADMIN_API_KEY in .env.compose}
       MAAP_JWT_SECRET_KEY: ${MAAP_JWT_SECRET_KEY:?Set MAAP_JWT_SECRET_KEY in .env.compose}
+      MAAP_WIDGET_JWT_SECRET_KEY: ${MAAP_WIDGET_JWT_SECRET_KEY:?Set MAAP_WIDGET_JWT_SECRET_KEY in .env.compose}
     ports:
       - "127.0.0.1:${MAAP_API_PORT:-8000}:8000"
     depends_on:
