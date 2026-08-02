@@ -56,7 +56,7 @@ async def create_admin(
     username: str,
     plain_password: str,
     role: str,
-    created_by_id: str,
+    created_by_id: str | None,
     settings,
     client_ip: str | None = None,
 ) -> AdminUser:

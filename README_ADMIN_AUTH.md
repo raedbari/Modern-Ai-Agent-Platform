@@ -54,9 +54,7 @@ export MAAP_JWT_SECRET_KEY="your-secure-32-char-secret"
 alembic upgrade head
 
 # Create first admin
-python -m backend.app.cli.bootstrap_admin \
-  --username superadmin \
-  --password "SecurePassword123!"
+python -m backend.app.cli.bootstrap_admin --username superadmin
 ```
 
 ### 2. Login
@@ -354,4 +352,3 @@ Part of Modern AI Agent Platform
 - [📝 Requirements](.kiro/specs/admin-auth-rbac/requirements.md)
 - [🎨 Design](.kiro/specs/admin-auth-rbac/design.md)
 - [✅ Tasks](.kiro/specs/admin-auth-rbac/tasks.md)
-

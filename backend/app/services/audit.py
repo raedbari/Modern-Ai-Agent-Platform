@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.models import AdminAuditLog
@@ -81,3 +82,36 @@ class AuditService:
         session.add(row)
         await session.flush()   # populate row.id without committing
         return row.id
+
+    @classmethod
+    async def list_events(
+        cls,
+        session: AsyncSession,
+        *,
+        event_type: str | None = None,
+        admin_id: str | None = None,
+        outcome: Literal["success", "failure"] | None = None,
+        before_id: int | None = None,
+        limit: int = 100,
+    ) -> list[AdminAuditLog]:
+        """Return a stable newest-first page without exposing mutation APIs."""
+
+        statement = select(AdminAuditLog)
+        if event_type is not None:
+            statement = statement.where(
+                AdminAuditLog.event_type == event_type
+            )
+        if admin_id is not None:
+            statement = statement.where(AdminAuditLog.admin_id == admin_id)
+        if outcome is not None:
+            statement = statement.where(AdminAuditLog.outcome == outcome)
+        if before_id is not None:
+            statement = statement.where(AdminAuditLog.id < before_id)
+
+        return list(
+            (
+                await session.scalars(
+                    statement.order_by(AdminAuditLog.id.desc()).limit(limit)
+                )
+            ).all()
+        )

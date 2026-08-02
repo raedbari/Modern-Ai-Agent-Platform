@@ -24,6 +24,7 @@ from backend.app.api.schemas.admin_auth import (
     RevokeAdminSessionsResponse,
 )
 from backend.app.auth.admin_context import AdminContext
+from backend.app.core.client_ip import get_client_ip
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
 from backend.app.operations.admin_user_ops import (
@@ -53,25 +54,6 @@ def _admin_response(item) -> AdminUserResponse:
         created_at=item.created_at,
         last_login_at=item.last_login_at,
     )
-
-
-def _get_ctx(request: Request, settings: Settings) -> AdminContext | None:
-    """Re-decode the Bearer token from the request to get the calling context."""
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        return None
-    from backend.app.auth.admin_jwt import AdminTokenError, decode_access_token
-    try:
-        return decode_access_token(auth[len("Bearer "):], settings)
-    except AdminTokenError:
-        return None
-
-
-def _client_ip(request: Request) -> str | None:
-    fwd = request.headers.get("X-Forwarded-For")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return request.client.host if request.client else None
 
 
 # ---------------------------------------------------------------------------
@@ -104,10 +86,10 @@ async def create_admin_endpoint(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    ctx: Annotated[AdminContext, Depends(require_admin_access)],
 ) -> AdminUserResponse:
-    ctx = _get_ctx(request, settings)
-    creator_id = ctx.admin_id if ctx else "legacy"
-    client_ip = _client_ip(request)
+    creator_id = ctx.admin_id if ctx.auth_method == "jwt" else None
+    client_ip = get_client_ip(request, settings)
 
     try:
         admin = await create_admin(
@@ -159,10 +141,10 @@ async def update_admin_status(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    ctx: Annotated[AdminContext, Depends(require_admin_access)],
 ) -> AdminUserResponse:
-    ctx = _get_ctx(request, settings)
-    requester_id = ctx.admin_id if ctx else "legacy"
-    client_ip = _client_ip(request)
+    requester_id = ctx.admin_id
+    client_ip = get_client_ip(request, settings)
 
     try:
         admin = await set_admin_active(
@@ -211,10 +193,10 @@ async def revoke_admin_sessions(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    ctx: Annotated[AdminContext, Depends(require_admin_access)],
 ) -> RevokeAdminSessionsResponse:
-    ctx = _get_ctx(request, settings)
-    requester_id = ctx.admin_id if ctx else "legacy"
-    client_ip = _client_ip(request)
+    requester_id = ctx.admin_id
+    client_ip = get_client_ip(request, settings)
 
     try:
         count = await revoke_all_admin_sessions(

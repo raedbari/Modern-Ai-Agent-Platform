@@ -134,3 +134,31 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size():
             chunk_overlap=100,
             _env_file=None,
         )
+
+
+def test_short_admin_jwt_secret_is_rejected():
+    with pytest.raises(ValidationError, match="at least 32 bytes"):
+        Settings(jwt_secret_key="x", _env_file=None)
+
+
+def test_production_requires_admin_jwt_secret():
+    with pytest.raises(ValidationError, match="MAAP_JWT_SECRET_KEY"):
+        Settings(
+            environment="production",
+            deepseek_api_key="test-deepseek-key",
+            admin_api_key="test-admin-key",
+            jwt_secret_key=None,
+            _env_file=None,
+        )
+
+
+def test_production_requires_shared_redis():
+    with pytest.raises(ValidationError, match="MAAP_REDIS_URL"):
+        Settings(
+            environment="production",
+            deepseek_api_key="test-deepseek-key",
+            admin_api_key="test-admin-key",
+            jwt_secret_key="x" * 32,
+            redis_url=None,
+            _env_file=None,
+        )

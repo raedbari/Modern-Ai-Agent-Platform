@@ -92,6 +92,8 @@ def create_access_token(
     username: str,
     role: str,
     settings: Settings,
+    *,
+    session_family_id: str | None = None,
 ) -> str:
     """Create and sign a new HS256 JWT access token.
 
@@ -124,6 +126,8 @@ def create_access_token(
         "iat": now,
         "exp": expire,
     }
+    if session_family_id is not None:
+        payload["sid"] = session_family_id
 
     return jwt.encode(payload, secret, algorithm=_ALGORITHM)
 
@@ -207,13 +211,23 @@ def decode_access_token(token: str, settings: Settings) -> AdminContext:
 
     # --- jti revocation check -------------------------------------------
     jti = payload.get("jti", "")
-    if not jti:
+    if not isinstance(jti, str) or not jti:
         raise AdminTokenError("Token identifier (jti) is missing.")
     if _is_revoked(jti):
         raise AdminTokenError("Token has been revoked.")
+
+    session_family_id = payload.get("sid")
+    if session_family_id is not None and (
+        not isinstance(session_family_id, str)
+        or not session_family_id.strip()
+    ):
+        raise AdminTokenError("Token session claim is invalid.")
 
     return AdminContext(
         admin_id=sub,
         username=username,
         role=role,  # type: ignore[arg-type]
+        auth_method="jwt",
+        session_family_id=session_family_id,
+        jti=jti,
     )

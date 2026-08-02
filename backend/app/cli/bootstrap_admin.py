@@ -2,7 +2,11 @@
 
 Usage::
 
-    python -m backend.app.cli.bootstrap_admin --username admin --password <pw>
+    python -m backend.app.cli.bootstrap_admin --username admin
+
+The password is read from a hidden terminal prompt. Automation may pass it
+through standard input with ``--password-stdin``; it is never accepted as a
+command-line argument.
 
 Run Alembic migrations before invoking this script.
 """
@@ -11,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import getpass
 import sys
 import uuid
 
@@ -95,8 +100,16 @@ def _parser() -> argparse.ArgumentParser:
             "Run Alembic migrations first."
         )
     )
-    parser.add_argument("--username", required=True, help="Admin username (max 64 chars)")
-    parser.add_argument("--password", required=True, help="Admin password (min 12 chars)")
+    parser.add_argument(
+        "--username",
+        required=True,
+        help="Admin username (max 64 chars)",
+    )
+    parser.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="Read the password from standard input instead of a hidden prompt.",
+    )
     parser.add_argument(
         "--force",
         action="store_true",
@@ -107,7 +120,12 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     """CLI entry point."""
-    return asyncio.run(_run(_parser().parse_args()))
+    args = _parser().parse_args()
+    if args.password_stdin:
+        args.password = sys.stdin.readline().rstrip("\r\n")
+    else:
+        args.password = getpass.getpass("Admin password: ")
+    return asyncio.run(_run(args))
 
 
 if __name__ == "__main__":

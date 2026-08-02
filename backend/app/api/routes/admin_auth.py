@@ -17,6 +17,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.api.dependencies import require_admin_jwt
 from backend.app.api.schemas.admin_auth import (
     AdminProfileResponse,
     ChangePasswordRequest,
@@ -26,7 +27,11 @@ from backend.app.api.schemas.admin_auth import (
     RefreshRequest,
 )
 from backend.app.core.config import Settings, get_settings
+from backend.app.core.client_ip import get_client_ip
+from backend.app.core.rate_limit import RateLimiter, get_rate_limiter
 from backend.app.db.base import get_db
+from backend.app.auth.admin_context import AdminContext
+from backend.app.services.audit import AuditService
 from backend.app.operations.admin_auth_ops import (
     InactiveAdminError,
     InvalidCredentialsError,
@@ -48,16 +53,6 @@ LOGGER = logging.getLogger(__name__)
 _INVALID_CREDENTIALS_DETAIL = "Invalid credentials."
 
 
-def _client_ip(request: Request) -> str | None:
-    """Extract the originating IP from the request, respecting X-Forwarded-For."""
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return None
-
-
 @router.post(
     "/login",
     response_model=LoginResponse,
@@ -74,11 +69,51 @@ async def login(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> LoginResponse:
     """Issue an access token and refresh token for valid admin credentials."""
 
-    client_ip = _client_ip(request)
-    user_agent = request.headers.get("User-Agent")
+    client_ip = get_client_ip(request, settings)
+    user_agent = request.headers.get("User-Agent", "")[:512] or None
+
+    try:
+        account_limit = await rate_limiter.check(
+            bucket="admin-login-account",
+            identity=payload.username.strip().casefold(),
+            limit=settings.admin_login_rate_limit_per_account,
+            window_seconds=settings.admin_login_rate_limit_window_seconds,
+        )
+        ip_limit = await rate_limiter.check(
+            bucket="admin-login-ip",
+            identity=client_ip or "unknown",
+            limit=settings.admin_login_rate_limit_per_ip,
+            window_seconds=settings.admin_login_rate_limit_window_seconds,
+        )
+    except Exception:
+        LOGGER.exception("Admin login rate limiter is unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service is temporarily unavailable.",
+        )
+
+    if not account_limit.allowed or not ip_limit.allowed:
+        retry_after = max(
+            account_limit.retry_after_seconds,
+            ip_limit.retry_after_seconds,
+        )
+        await AuditService.write(
+            session,
+            event_type="login_rate_limited",
+            outcome="failure",
+            client_ip=client_ip,
+            detail={"reason": "rate_limit_exceeded"},
+        )
+        await session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
     try:
         access_token, refresh_token = await authenticate_admin(
@@ -145,8 +180,8 @@ async def refresh(
 ) -> LoginResponse:
     """Rotate a refresh token and return a new token pair."""
 
-    client_ip = _client_ip(request)
-    user_agent = request.headers.get("User-Agent")
+    client_ip = get_client_ip(request, settings)
+    user_agent = request.headers.get("User-Agent", "")[:512] or None
 
     try:
         access_token, new_refresh_token = await rotate_refresh_token(
@@ -252,13 +287,14 @@ async def logout(
             detail=str(exc),
         )
 
-    client_ip = _client_ip(request)
+    client_ip = get_client_ip(request, settings)
 
     try:
         await revoke_session(
             session,
             raw_refresh_token=payload.refresh_token,
             admin_id=ctx.admin_id,
+            family_id=ctx.session_family_id,
             client_ip=client_ip,
         )
         await session.commit()
@@ -285,30 +321,11 @@ async def logout(
     description="Return the profile of the authenticated admin operator.",
 )
 async def me(
-    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    ctx: Annotated[AdminContext, Depends(require_admin_jwt)],
 ) -> AdminProfileResponse:
     """Return the profile of the currently authenticated admin."""
-    from backend.app.auth.admin_jwt import AdminTokenError, decode_access_token
-
-    raw_token = _bearer_token(request)
-    if raw_token is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header with Bearer token is required.",
-        )
-
-    try:
-        ctx = decode_access_token(raw_token, settings)
-    except AdminTokenError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(exc),
-        )
-
     from backend.app.db.models import AdminUser
-    from sqlalchemy import select
 
     admin = await session.get(AdminUser, ctx.admin_id)
     if admin is None or not admin.is_active:
@@ -345,26 +362,10 @@ async def change_password_endpoint(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    ctx: Annotated[AdminContext, Depends(require_admin_jwt)],
 ) -> dict:
     """Change password and revoke all sessions."""
-    from backend.app.auth.admin_jwt import AdminTokenError, decode_access_token
-
-    raw_token = _bearer_token(request)
-    if raw_token is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header with Bearer token is required.",
-        )
-
-    try:
-        ctx = decode_access_token(raw_token, settings)
-    except AdminTokenError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(exc),
-        )
-
-    client_ip = _client_ip(request)
+    client_ip = get_client_ip(request, settings)
 
     try:
         await change_password(
@@ -377,7 +378,8 @@ async def change_password_endpoint(
         )
         await session.commit()
     except WrongCurrentPasswordError:
-        await session.rollback()
+        # The operation changed no account state; commit its failure audit.
+        await session.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Current password is incorrect.",

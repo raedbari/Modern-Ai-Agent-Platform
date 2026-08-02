@@ -230,3 +230,18 @@ def test_bootstrap_validates_password_strength() -> None:
 
     # Valid password — should not raise
     _validate_password_strength("ValidPassword99!")
+
+
+def test_bootstrap_parser_does_not_accept_password_argument() -> None:
+    """Secrets must never be exposed through process command arguments."""
+    import pytest
+
+    from backend.app.cli.bootstrap_admin import _parser
+
+    with pytest.raises(SystemExit):
+        _parser().parse_args(
+            ["--username", "admin", "--password", "VisibleSecret99!"]
+        )
+
+    parsed = _parser().parse_args(["--username", "admin"])
+    assert parsed.password_stdin is False

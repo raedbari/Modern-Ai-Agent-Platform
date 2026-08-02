@@ -1,6 +1,7 @@
 """Environment-backed application settings."""
 
 from functools import lru_cache
+from ipaddress import ip_network
 from pathlib import Path
 from typing import Literal
 
@@ -143,6 +144,28 @@ class Settings(BaseSettings):
     # Bearer tokens.  Set to False once all callers have migrated.
     admin_legacy_key_enabled: bool = True
 
+    # Only direct peers in these networks may supply X-Forwarded-For.
+    trusted_proxy_cidrs: tuple[str, ...] = ()
+
+    # Shared Redis is mandatory outside development/test so rate limits work
+    # consistently across all API containers.
+    redis_url: SecretStr | None = None
+    admin_login_rate_limit_per_account: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+    )
+    admin_login_rate_limit_per_ip: int = Field(
+        default=20,
+        ge=1,
+        le=10000,
+    )
+    admin_login_rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        le=86400,
+    )
+
     # ------------------------------------------------------------------ #
     # Argon2id password hashing                                           #
     # ------------------------------------------------------------------ #
@@ -181,10 +204,46 @@ class Settings(BaseSettings):
             self.admin_api_key is None
             or not self.admin_api_key.get_secret_value().strip()
         )
-        if requires_api_key and admin_key_missing:
+        if (
+            requires_api_key
+            and self.admin_legacy_key_enabled
+            and admin_key_missing
+        ):
             raise ValueError(
                 "MAAP_ADMIN_API_KEY is required in staging and production"
             )
+
+        jwt_secret_missing = (
+            self.jwt_secret_key is None
+            or not self.jwt_secret_key.get_secret_value().strip()
+        )
+        if requires_api_key and jwt_secret_missing:
+            raise ValueError(
+                "MAAP_JWT_SECRET_KEY is required in staging and production"
+            )
+        if not jwt_secret_missing:
+            jwt_secret = self.jwt_secret_key.get_secret_value().strip()
+            if len(jwt_secret.encode("utf-8")) < 32:
+                raise ValueError(
+                    "MAAP_JWT_SECRET_KEY must contain at least 32 bytes"
+                )
+
+        redis_missing = (
+            self.redis_url is None
+            or not self.redis_url.get_secret_value().strip()
+        )
+        if requires_api_key and redis_missing:
+            raise ValueError(
+                "MAAP_REDIS_URL is required in staging and production"
+            )
+
+        for cidr in self.trusted_proxy_cidrs:
+            try:
+                ip_network(cidr, strict=False)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid trusted proxy CIDR: {cidr}"
+                ) from exc
 
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError(

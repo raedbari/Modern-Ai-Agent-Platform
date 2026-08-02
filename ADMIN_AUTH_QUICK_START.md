@@ -59,9 +59,7 @@ This creates 3 new tables:
 ### Step 3: Create First Super Admin
 
 ```bash
-python -m backend.app.cli.bootstrap_admin \
-  --username superadmin \
-  --password "YourSecurePassword123!"
+python -m backend.app.cli.bootstrap_admin --username superadmin
 ```
 
 
@@ -465,4 +463,3 @@ pytest backend/tests/ --cov=backend/app --cov-report=html
 **Status:** ✅ Ready for Production  
 **Version:** 1.0  
 **Last Updated:** August 1, 2026
-

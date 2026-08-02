@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 
 from backend.app.api.routes.admin import router as admin_router
+from backend.app.api.routes.admin_audit import router as admin_audit_router
 from backend.app.api.routes.admin_auth import router as admin_auth_router
 from backend.app.api.routes.admin_users import router as admin_users_router
 from backend.app.api.routes.chat import router as chat_router
@@ -24,6 +25,7 @@ def create_app() -> FastAPI:
     application.include_router(admin_auth_router)
     application.include_router(admin_router)
     application.include_router(admin_users_router)
+    application.include_router(admin_audit_router)
     application.include_router(chat_router)
     application.include_router(knowledge_router)
 

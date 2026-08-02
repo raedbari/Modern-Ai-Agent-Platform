@@ -12,10 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.auth.api_keys import parse_api_key, verify_api_key_secret
 from backend.app.ai.ports import EmbeddingProvider
+from backend.app.auth.admin_context import AdminContext
 from backend.app.auth.context import ChatExecutionContext
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
-from backend.app.db.models import Agent, ApiKey, Tenant
+from backend.app.db.models import (
+    AdminRefreshSession,
+    AdminUser,
+    Agent,
+    ApiKey,
+    Tenant,
+)
 from backend.app.services.chat import GenerationRuntime
 
 api_key_header = APIKeyHeader(
@@ -118,13 +125,89 @@ def require_permission(permission: str) -> Callable:
     return _check
 
 
-def require_admin_access(
+def _admin_unauthorized() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid administrative credentials",
+    )
+
+
+async def _validated_admin_jwt(
+    request: Request,
+    session: AsyncSession,
+    settings: Settings,
+) -> AdminContext:
+    """Validate JWT integrity and its authoritative database session."""
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise _admin_unauthorized()
+
+    from backend.app.auth.admin_jwt import AdminTokenError, decode_access_token
+
+    try:
+        token_context = decode_access_token(
+            auth_header[len("Bearer "):],
+            settings,
+        )
+    except AdminTokenError as exc:
+        raise _admin_unauthorized() from exc
+
+    if token_context.session_family_id is None:
+        raise _admin_unauthorized()
+
+    admin = await session.get(AdminUser, token_context.admin_id)
+    if (
+        admin is None
+        or not admin.is_active
+        or admin.role not in ROLE_PERMISSIONS
+    ):
+        raise _admin_unauthorized()
+
+    now = datetime.now(timezone.utc)
+    family_sessions = list(
+        (
+            await session.scalars(
+                select(AdminRefreshSession).where(
+                    AdminRefreshSession.admin_id == admin.id,
+                    AdminRefreshSession.family_id
+                    == token_context.session_family_id,
+                    AdminRefreshSession.revoked_at.is_(None),
+                )
+            )
+        ).all()
+    )
+    if not any(_as_utc(item.expires_at) > now for item in family_sessions):
+        raise _admin_unauthorized()
+
+    return AdminContext(
+        admin_id=admin.id,
+        username=admin.username,
+        role=admin.role,  # type: ignore[arg-type]
+        auth_method="jwt",
+        session_family_id=token_context.session_family_id,
+        jti=token_context.jti,
+    )
+
+
+async def require_admin_jwt(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AdminContext:
+    """Require a live database-backed admin JWT session."""
+
+    return await _validated_admin_jwt(request, session, settings)
+
+
+async def require_admin_access(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
     raw_admin_key: Annotated[
         str | None,
         Security(admin_api_key_header),
-    ],
-    settings: Annotated[Settings, Depends(get_settings)],
-    request: Request = None,  # type: ignore[assignment]
+    ] = None,
 ) -> "AdminContext | None":
     """Dual-path admin authentication: JWT Bearer or legacy X-Admin-Key.
 
@@ -177,33 +260,11 @@ def require_admin_access(
             admin_id="legacy",
             username="legacy",
             role="super_admin",
+            auth_method="legacy",
         )
 
     # --- Path A: JWT Bearer -------------------------------------------
-    # Extract the token from the Authorization header.
-    # ``request`` is None when the dependency is evaluated outside an HTTP
-    # context (e.g., unit tests that call the function directly).
-    auth_header: str = ""
-    if request is not None:
-        auth_header = request.headers.get("Authorization", "")
-
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid administrative credentials",
-        )
-
-    raw_jwt = auth_header[len("Bearer "):]
-
-    from backend.app.auth.admin_jwt import AdminTokenError, decode_access_token
-
-    try:
-        return decode_access_token(raw_jwt, settings)
-    except AdminTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid administrative credentials",
-        )
+    return await _validated_admin_jwt(request, session, settings)
 
 
 

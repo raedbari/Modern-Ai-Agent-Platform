@@ -139,13 +139,6 @@ async def authenticate_admin(
         admin.hashed_password = hash_admin_password(plain_password, settings)
 
     # --- issue tokens ----------------------------------------------------
-    access_token = create_access_token(
-        admin_id=admin.id,
-        username=admin.username,
-        role=admin.role,
-        settings=settings,
-    )
-
     raw_refresh = _generate_refresh_token()
     family_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
@@ -162,6 +155,14 @@ async def authenticate_admin(
             client_ip=client_ip,
             user_agent=user_agent,
         )
+    )
+
+    access_token = create_access_token(
+        admin_id=admin.id,
+        username=admin.username,
+        role=admin.role,
+        settings=settings,
+        session_family_id=family_id,
     )
 
     # --- update last_login_at -------------------------------------------
@@ -213,7 +214,7 @@ async def rotate_refresh_token(
     presented = await session.scalar(
         select(AdminRefreshSession).where(
             AdminRefreshSession.token_hash == token_hash
-        )
+        ).with_for_update()
     )
 
     if presented is None:
@@ -270,6 +271,7 @@ async def rotate_refresh_token(
         username=admin.username,
         role=admin.role,
         settings=settings,
+        session_family_id=presented.family_id,
     )
 
     await AuditService.write(
@@ -313,6 +315,7 @@ async def revoke_session(
     *,
     raw_refresh_token: str,
     admin_id: str,
+    family_id: str | None = None,
     client_ip: str | None = None,
 ) -> None:
     """Revoke the refresh session identified by *raw_refresh_token*.
@@ -330,6 +333,11 @@ async def revoke_session(
         select(AdminRefreshSession).where(
             AdminRefreshSession.token_hash == token_hash,
             AdminRefreshSession.admin_id == admin_id,
+            *(
+                (AdminRefreshSession.family_id == family_id,)
+                if family_id is not None
+                else ()
+            ),
         )
     )
 

@@ -11,3 +11,6 @@ class AdminContext:
     admin_id: str
     username: str
     role: Literal["super_admin", "operator", "auditor"]
+    auth_method: Literal["jwt", "legacy"] = "jwt"
+    session_family_id: str | None = None
+    jti: str | None = None
