@@ -1,0 +1,5 @@
+Trailing newline check:
+File size: 97796 bytes
+Last byte: b'\n'
+Has trailing newline: True
+✓ File has proper trailing newline

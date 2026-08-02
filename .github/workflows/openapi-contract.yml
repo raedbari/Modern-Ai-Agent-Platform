@@ -1,0 +1,191 @@
+name: OpenAPI Contract Validation
+
+on:
+  push:
+    branches: [main, develop, 'feature/*']
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  validate-contract:
+    name: Validate OpenAPI Contract
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Generate OpenAPI schema
+        working-directory: ./backend
+        run: |
+          python3 scripts/generate_openapi.py
+          echo "✓ OpenAPI schema generated"
+      
+      - name: Verify schema is deterministic
+        working-directory: ./backend
+        run: |
+          # Generate twice and compare
+          cp openapi.json openapi.json.backup
+          python3 scripts/generate_openapi.py
+          
+          if ! cmp -s openapi.json openapi.json.backup; then
+            echo "✗ FAIL: OpenAPI schema is not deterministic!"
+            echo "Schema differs between runs"
+            diff openapi.json openapi.json.backup || true
+            exit 1
+          fi
+          
+          echo "✓ Schema is deterministic (byte-identical)"
+      
+      - name: Check for uncommitted changes
+        run: |
+          # Check if generated schema matches committed version
+          git diff --exit-code backend/openapi.json || {
+            echo "✗ FAIL: OpenAPI schema has uncommitted changes!"
+            echo ""
+            echo "The generated OpenAPI schema differs from the committed version."
+            echo "This means the API contract has changed without updating the schema."
+            echo ""
+            echo "To fix:"
+            echo "  1. Run: python3 backend/scripts/generate_openapi.py"
+            echo "  2. Review changes: git diff backend/openapi.json"
+            echo "  3. Update hash in: backend/tests/test_openapi_contract.py"
+            echo "  4. Regenerate TypeScript clients: python3 generate_ts_clients.py"
+            echo "  5. Commit all changes together"
+            echo ""
+            git diff backend/openapi.json
+            exit 1
+          }
+          
+          echo "✓ OpenAPI schema is up-to-date"
+      
+      - name: Run OpenAPI contract tests
+        working-directory: ./backend
+        run: |
+          python3 -m pytest tests/test_openapi_contract.py -v --tb=short
+      
+      - name: Verify security schemes
+        working-directory: ./backend
+        run: |
+          python3 << 'EOF'
+          import json
+          import sys
+          
+          schema = json.load(open('openapi.json'))
+          schemes = schema.get('components', {}).get('securitySchemes', {})
+          
+          required = {'AdminJWT', 'InternalAdminKey', 'TenantApiKey', 'WidgetToken'}
+          missing = required - set(schemes.keys())
+          
+          if missing:
+              print(f"✗ Missing security schemes: {missing}")
+              sys.exit(1)
+          
+          # Verify descriptions
+          for name, scheme in schemes.items():
+              desc = scheme.get('description', '')
+              if len(desc) < 20:
+                  print(f"✗ Security scheme '{name}' has insufficient description")
+                  sys.exit(1)
+          
+          print(f"✓ All {len(schemes)} security schemes properly defined")
+          EOF
+      
+      - name: Verify operationId uniqueness
+        working-directory: ./backend
+        run: |
+          python3 << 'EOF'
+          import json
+          import sys
+          
+          schema = json.load(open('openapi.json'))
+          operation_ids = []
+          
+          for path, methods in schema.get('paths', {}).items():
+              for method, operation in methods.items():
+                  if method not in ['get', 'post', 'put', 'patch', 'delete']:
+                      continue
+                  op_id = operation.get('operationId')
+                  if op_id:
+                      operation_ids.append(op_id)
+          
+          duplicates = [x for x in set(operation_ids) if operation_ids.count(x) > 1]
+          
+          if duplicates:
+              print(f"✗ Duplicate operationIds: {duplicates}")
+              sys.exit(1)
+          
+          print(f"✓ All {len(operation_ids)} operationIds are unique")
+          EOF
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: |
+          npm ci
+      
+      - name: Generate TypeScript clients
+        run: |
+          python3 generate_ts_clients.py
+          echo "✓ TypeScript clients generated"
+      
+      - name: Verify TypeScript clients are up-to-date
+        run: |
+          # Check if generated clients match committed versions
+          git diff --exit-code frontend/src/lib/api/ || {
+            echo "✗ FAIL: TypeScript clients have uncommitted changes!"
+            echo ""
+            echo "The generated TypeScript clients differ from committed versions."
+            echo ""
+            echo "To fix:"
+            echo "  1. Run: python3 generate_ts_clients.py"
+            echo "  2. Review changes: git diff frontend/src/lib/api/"
+            echo "  3. Commit the updated clients"
+            echo ""
+            git diff frontend/src/lib/api/
+            exit 1
+          }
+          
+          echo "✓ TypeScript clients are up-to-date"
+      
+      - name: TypeScript type check (frontend)
+        working-directory: ./frontend
+        run: |
+          npm run typecheck
+      
+      - name: Build frontend
+        working-directory: ./frontend
+        run: |
+          npm run build
+      
+      - name: Summary
+        if: success()
+        run: |
+          echo "✅ All OpenAPI contract validations passed!"
+          echo ""
+          echo "Verified:"
+          echo "  ✓ Schema generation is deterministic"
+          echo "  ✓ Schema matches committed version (no drift)"
+          echo "  ✓ All contract tests pass"
+          echo "  ✓ Security schemes properly defined"
+          echo "  ✓ All operationIds unique"
+          echo "  ✓ TypeScript clients up-to-date"
+          echo "  ✓ TypeScript type checking passes"
+          echo "  ✓ Frontend builds successfully"

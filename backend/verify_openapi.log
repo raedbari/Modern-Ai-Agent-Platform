@@ -1,0 +1,27 @@
+OpenAPI Schema Verification
+==================================================
+
+File: /home/yawelcome/Documents/Travie x  info/saas ai agent new/Modern-Ai-Agent-Platform/backend/openapi.json
+File size: 97796 bytes
+
+Top-level keys: ['components', 'info', 'openapi', 'paths']
+
+Components keys: ['schemas', 'securitySchemes']
+
+✓ Security schemes found:
+  - AdminJWT: http
+    Description: Short-lived admin access token from login endpoint (15 minutes). Obtain via POST...
+  - InternalAdminKey: apiKey
+    Description: Legacy X-Admin-Key header (deprecated). Use AdminJWT instead....
+  - TenantApiKey: apiKey
+    Description: Server-side tenant API key. Never expose it in a browser. Must be accompanied by...
+  - WidgetToken: http
+    Description: Short-lived browser-safe token from bootstrap endpoint (10 minutes). Obtain via ...
+
+Paths count: 31
+Schemas count: 40
+
+Top-level keys sorted: True
+
+==================================================
+Verification complete!

@@ -1,0 +1,27 @@
+Security Schemes:
+================================================================================
+
+AdminJWT:
+  bearerFormat: JWT
+  description: Short-lived admin access token from login endpoint (15 minutes). Obtain via POST /admin/auth/login.
+  scheme: bearer
+  type: http
+
+InternalAdminKey:
+  description: Legacy X-Admin-Key header (deprecated). Use AdminJWT instead.
+  in: header
+  name: X-Admin-Key
+  type: apiKey
+
+TenantApiKey:
+  description: Server-side tenant API key. Never expose it in a browser. Must be accompanied by X-Agent-ID header.
+  in: header
+  name: X-API-Key
+  type: apiKey
+
+WidgetToken:
+  bearerFormat: JWT
+  description: Short-lived browser-safe token from bootstrap endpoint (10 minutes). Obtain via POST /widget/{public_widget_id}/bootstrap.
+  scheme: bearer
+  type: http
+

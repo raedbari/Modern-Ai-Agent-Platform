@@ -1,0 +1,17 @@
+Testing OpenAPI generation determinism
+================================================================================
+
+Running generation script (first time)...
+✓ First run completed
+  File size: 97796 bytes
+  SHA256: e66969852e045d4054715b0428e5e3ee81ca21e8ce6808462037e13c7ad17ff6
+
+Running generation script (second time)...
+✓ Second run completed
+  File size: 97796 bytes
+  SHA256: e66969852e045d4054715b0428e5e3ee81ca21e8ce6808462037e13c7ad17ff6
+
+================================================================================
+✓ SUCCESS: Output is deterministic (byte-identical)
+  Both runs produced identical files
+  SHA256: e66969852e045d4054715b0428e5e3ee81ca21e8ce6808462037e13c7ad17ff6

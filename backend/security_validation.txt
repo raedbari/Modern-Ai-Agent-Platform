@@ -1,0 +1,32 @@
+Security Scheme Validation
+================================================================================
+
+AdminJWT:
+  Found: ✓
+  Description: Short-lived admin access token from login endpoint (15 minutes). Obtain via POST /admin/auth/login.
+  ✓ Contains: 15 minutes
+  ✓ Contains: login endpoint
+  ✓ Contains: admin
+
+InternalAdminKey:
+  Found: ✓
+  Description: Legacy X-Admin-Key header (deprecated). Use AdminJWT instead.
+  ✓ Contains: Legacy
+  ✓ Contains: deprecated
+
+TenantApiKey:
+  Found: ✓
+  Description: Server-side tenant API key. Never expose it in a browser. Must be accompanied by X-Agent-ID header.
+  ✓ Contains: Server-side
+  ✓ Contains: Never expose
+  ✓ Contains: browser
+
+WidgetToken:
+  Found: ✓
+  Description: Short-lived browser-safe token from bootstrap endpoint (10 minutes). Obtain via POST /widget/{public_widget_id}/bootstrap.
+  ✓ Contains: 10 minutes
+  ✓ Contains: browser-safe
+  ✓ Contains: bootstrap
+
+================================================================================
+✓ All security schemes valid

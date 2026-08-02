@@ -1,0 +1,103 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/yawelcome/Documents/Travie x  info/saas ai agent new/Modern-Ai-Agent-Platform/backend
+plugins: langsmith-0.8.18, asyncio-1.4.0, anyio-4.13.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 13 items
+
+tests/test_openapi_contract.py::TestOpenAPIContractStability::test_openapi_file_exists PASSED [  7%]
+tests/test_openapi_contract.py::TestOpenAPIContractStability::test_openapi_is_valid_json PASSED [ 15%]
+tests/test_openapi_contract.py::TestOpenAPIContractStability::test_operation_id_uniqueness PASSED [ 23%]
+tests/test_openapi_contract.py::TestOpenAPIContractStability::test_operation_ids_stable PASSED [ 30%]
+tests/test_openapi_contract.py::TestOpenAPIContractStability::test_security_schemes_defined PASSED [ 38%]
+tests/test_openapi_contract.py::TestOpenAPIContractStability::test_security_scheme_descriptions_complete PASSED [ 46%]
+tests/test_openapi_contract.py::TestOpenAPIContractStability::test_schema_has_proper_structure PASSED [ 53%]
+tests/test_openapi_contract.py::TestOpenAPIContractStability::test_no_undefined_refs PASSED [ 61%]
+tests/test_openapi_contract.py::TestOpenAPIContractStability::test_deterministic_output PASSED [ 69%]
+tests/test_openapi_contract.py::TestOpenAPIContractStability::test_trailing_newline PASSED [ 76%]
+tests/test_openapi_contract.py::TestOpenAPIContractDrift::test_schema_hash_unchanged FAILED [ 84%]
+tests/test_openapi_contract.py::TestOpenAPIContractDrift::test_minimum_endpoint_count PASSED [ 92%]
+tests/test_openapi_contract.py::TestOpenAPIContractDrift::test_critical_endpoints_exist FAILED [100%]
+
+=================================== FAILURES ===================================
+_____________ TestOpenAPIContractDrift.test_schema_hash_unchanged ______________
+
+self = <backend.tests.test_openapi_contract.TestOpenAPIContractDrift object at 0x7f7cd03fb610>
+
+    def test_schema_hash_unchanged(self):
+        """
+        Detect unintended API contract changes by comparing schema hash.
+    
+        This test will fail if the OpenAPI schema changes in any way.
+    
+        To update after intentional API changes:
+        1. Review the API changes carefully
+        2. Run: python3 backend/scripts/generate_openapi.py
+        3. Compute new hash: sha256sum backend/openapi.json
+        4. Update EXPECTED_SCHEMA_HASH in this test
+        5. Commit both the new openapi.json and this test file
+        """
+        schema = load_openapi_schema()
+        current_hash = compute_schema_hash(schema)
+    
+        if current_hash != self.EXPECTED_SCHEMA_HASH:
+>           pytest.fail(
+                f"\n"
+                f"OpenAPI schema hash mismatch - API contract has changed!\n"
+                f"Expected: {self.EXPECTED_SCHEMA_HASH}\n"
+                f"Current:  {current_hash}\n"
+                f"\n"
+                f"If this change was intentional:\n"
+                f"1. Review the API changes carefully\n"
+                f"2. Regenerate schema: python3 backend/scripts/generate_openapi.py\n"
+                f"3. Update EXPECTED_SCHEMA_HASH in tests/test_openapi_contract.py\n"
+                f"4. Regenerate TypeScript clients\n"
+                f"5. Commit all changes together\n"
+            )
+E           Failed: 
+E           OpenAPI schema hash mismatch - API contract has changed!
+E           Expected: e66969852e045d4054715b0428e5e3ee81ca21e8ce6808462037e13c7ad17ff6
+E           Current:  6eb260da4d7c72cbf3dd7e87aba9e6f67e880695c68a1b36bf658baa53cb407d
+E           
+E           If this change was intentional:
+E           1. Review the API changes carefully
+E           2. Regenerate schema: python3 backend/scripts/generate_openapi.py
+E           3. Update EXPECTED_SCHEMA_HASH in tests/test_openapi_contract.py
+E           4. Regenerate TypeScript clients
+E           5. Commit all changes together
+
+tests/test_openapi_contract.py:281: Failed
+____________ TestOpenAPIContractDrift.test_critical_endpoints_exist ____________
+
+self = <backend.tests.test_openapi_contract.TestOpenAPIContractDrift object at 0x7f7cd0284c30>
+
+    def test_critical_endpoints_exist(self):
+        """Ensure critical endpoints haven't been removed."""
+        schema = load_openapi_schema()
+        paths = schema.get("paths", {})
+    
+        # Define critical endpoints that must always exist
+        critical_endpoints = [
+            "/api/v1/health",
+            "/api/v1/admin/auth/login",
+            "/api/v1/chat",
+            "/api/v1/knowledge/upload",
+            "/api/v1/widget/{public_widget_id}/bootstrap",
+        ]
+    
+        missing = [ep for ep in critical_endpoints if ep not in paths]
+    
+>       assert not missing, (
+            f"Critical endpoints missing: {missing}"
+        )
+E       AssertionError: Critical endpoints missing: ['/api/v1/health', '/api/v1/admin/auth/login', '/api/v1/chat', '/api/v1/knowledge/upload', '/api/v1/widget/{public_widget_id}/bootstrap']
+E       assert not ['/api/v1/health', '/api/v1/admin/auth/login', '/api/v1/chat', '/api/v1/knowledge/upload', '/api/v1/widget/{public_widget_id}/bootstrap']
+
+tests/test_openapi_contract.py:329: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_openapi_contract.py::TestOpenAPIContractDrift::test_schema_hash_unchanged
+FAILED tests/test_openapi_contract.py::TestOpenAPIContractDrift::test_critical_endpoints_exist
+========================= 2 failed, 11 passed in 0.07s =========================
+
+=== STDERR ===
