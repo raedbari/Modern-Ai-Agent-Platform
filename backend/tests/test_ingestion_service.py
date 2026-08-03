@@ -443,3 +443,145 @@ async def test_embedding_failure_marks_document_failed() -> None:
     assert chunks.records == []
     document = next(iter(documents.documents.values()))
     assert document.failure_reason == "Document processing failed."
+
+
+class ObservingEmbeddingProvider(StubEmbeddingProvider):
+    """Record the document status seen during the external embedding call."""
+
+    def __init__(self, document: Document) -> None:
+        super().__init__()
+        self._document = document
+        self.observed_statuses: list[DocumentProcessingStatus] = []
+
+    async def embed(
+        self,
+        request: EmbeddingRequest,
+    ) -> ProviderEmbeddingResult:
+        self.observed_statuses.append(self._document.status)
+        return await super().embed(request)
+
+
+def _ready_document() -> Document:
+    return Document(
+        id="document-existing",
+        tenant_id="tenant-1",
+        knowledge_base_id="kb-1",
+        agent_id="agent-1",
+        source_name="old-source",
+        original_filename="old-policy.txt",
+        mime_type="text/plain",
+        file_size_bytes=128,
+        content_hash="a" * 64,
+        status=DocumentProcessingStatus.READY,
+    )
+
+
+def _old_chunk_write(document: Document) -> ChunkWrite:
+    return ChunkWrite(
+        chunk=Chunk(
+            id="chunk-old",
+            tenant_id=document.tenant_id,
+            agent_id=document.agent_id or "agent-1",
+            knowledge_base_id=document.knowledge_base_id,
+            document_id=document.id,
+            source_name=document.source_name,
+            page_number=0,
+            chunk_index=0,
+            content="Old active policy content.",
+            content_hash="old-chunk-hash",
+        ),
+        embedding=(0.25, 0.25, 0.25, 0.25),
+    )
+
+
+@pytest.mark.asyncio
+async def test_reindex_keeps_ready_document_active_during_embedding() -> None:
+    document = _ready_document()
+    documents = InMemoryDocumentRepository(existing=document)
+    chunks = InMemoryChunkRepository()
+    chunks.records.append(_old_chunk_write(document))
+
+    provider = ObservingEmbeddingProvider(document)
+
+    service, _, _, _ = _service(
+        provider=provider,
+        document_repository=documents,
+        chunk_repository=chunks,
+    )
+
+    result = await service.reindex(
+        document_id=document.id,
+        request=_request(
+            content=b"Replacement policy information. " * 20,
+            filename="replacement-policy.txt",
+            source_name="replacement-upload",
+        ),
+    )
+
+    assert provider.observed_statuses
+    assert all(
+        status == DocumentProcessingStatus.READY
+        for status in provider.observed_statuses
+    )
+    assert DocumentProcessingStatus.PROCESSING not in documents.statuses
+
+    assert result.document.id == document.id
+    assert result.document.status == DocumentProcessingStatus.READY
+    assert result.document.original_filename == "replacement-policy.txt"
+
+    persisted_ids = {
+        record.chunk.id
+        for record in chunks.records
+    }
+
+    assert "chunk-old" not in persisted_ids
+    assert result.chunks_persisted == len(chunks.records) > 0
+
+
+@pytest.mark.asyncio
+async def test_reindex_embedding_failure_preserves_old_active_version() -> None:
+    document = _ready_document()
+
+    original_metadata = {
+        "source_name": document.source_name,
+        "original_filename": document.original_filename,
+        "mime_type": document.mime_type,
+        "file_size_bytes": document.file_size_bytes,
+        "content_hash": document.content_hash,
+    }
+
+    documents = InMemoryDocumentRepository(existing=document)
+    chunks = InMemoryChunkRepository()
+    old_record = _old_chunk_write(document)
+    chunks.records.append(old_record)
+
+    service, _, _, _ = _service(
+        provider=WrongDimensionProvider(),
+        document_repository=documents,
+        chunk_repository=chunks,
+    )
+
+    with pytest.raises(EmbeddingError):
+        await service.reindex(
+            document_id=document.id,
+            request=_request(
+                content=b"Broken replacement content. " * 20,
+                filename="broken-replacement.txt",
+                source_name="broken-upload",
+            ),
+        )
+
+    assert document.status == DocumentProcessingStatus.READY
+    assert document.failure_reason is None
+    assert documents.statuses == []
+
+    assert document.source_name == original_metadata["source_name"]
+    assert (
+        document.original_filename
+        == original_metadata["original_filename"]
+    )
+    assert document.mime_type == original_metadata["mime_type"]
+    assert document.file_size_bytes == original_metadata["file_size_bytes"]
+    assert document.content_hash == original_metadata["content_hash"]
+
+    assert chunks.records == [old_record]
