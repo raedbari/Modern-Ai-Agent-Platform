@@ -14,10 +14,20 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request,
+    Security,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.dependencies import require_admin_jwt
+from backend.app.api.dependencies import (
+    admin_bearer,
+    require_admin_jwt,
+)
 from backend.app.api.schemas.admin_auth import (
     AdminProfileResponse,
     ChangePasswordRequest,
@@ -255,6 +265,7 @@ class _LogoutResponse:
 @router.post(
     "/logout",
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(admin_bearer)],
     summary="Admin logout",
     description=(
         "Revoke the presented refresh token.  Idempotent — calling logout "
