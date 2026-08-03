@@ -1,0 +1,109 @@
+name: OpenAPI Contract
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "frontend/scripts/**"
+      - "frontend/src/lib/api/generated/**"
+      - "requirements.lock.txt"
+      - ".github/workflows/openapi-contract.yml"
+  push:
+    branches:
+      - main
+      - integration/admin-widget-repair
+    paths:
+      - "backend/**"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "frontend/scripts/**"
+      - "frontend/src/lib/api/generated/**"
+      - "requirements.lock.txt"
+      - ".github/workflows/openapi-contract.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openapi-contract-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-contract:
+    name: Backend OpenAPI contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            requirements.lock.txt
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+          python -m pip install -r requirements.lock.txt
+          python -m pip check
+
+      - name: Test OpenAPI and authentication boundaries
+        run: |
+          python -m pytest             backend/tests/test_openapi_contract.py             backend/tests/test_knowledge_auth_boundary.py             -q
+
+      - name: Verify committed OpenAPI is current
+        run: |
+          python backend/scripts/generate_openapi.py
+          git diff --exit-code -- backend/openapi.json
+
+  typed-clients:
+    name: Typed TypeScript clients
+    needs: backend-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      CI: "true"
+      NODE_OPTIONS: "--max-old-space-size=4096"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: |
+          npm ci             --ignore-scripts             --no-audit             --no-fund
+
+      - name: Check generator syntax
+        run: |
+          node --check frontend/scripts/generate-api-clients.mjs
+          node --check frontend/scripts/check-api-clients.mjs
+
+      - name: Verify generated clients are current
+        working-directory: frontend
+        run: npm run check:api-clients
+
+      - name: Type-check frontend
+        working-directory: frontend
+        run: npm exec -- tsc --noEmit --incremental false
+
+      - name: Verify no generated drift
+        run: |
+          git diff --exit-code --             backend/openapi.json             frontend/src/lib/api/generated

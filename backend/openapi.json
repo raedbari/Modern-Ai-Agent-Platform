@@ -3064,9 +3064,6 @@
         "security": [
           {
             "TenantApiKey": []
-          },
-          {
-            "WidgetToken": []
           }
         ],
         "summary": "List Knowledge Bases",
@@ -3131,9 +3128,6 @@
         "security": [
           {
             "TenantApiKey": []
-          },
-          {
-            "WidgetToken": []
           }
         ],
         "summary": "Create Knowledge Base",
@@ -3192,9 +3186,6 @@
         "security": [
           {
             "TenantApiKey": []
-          },
-          {
-            "WidgetToken": []
           }
         ],
         "summary": "Delete Knowledge Base",
@@ -3258,9 +3249,6 @@
         "security": [
           {
             "TenantApiKey": []
-          },
-          {
-            "WidgetToken": []
           }
         ],
         "summary": "Get Knowledge Base",
@@ -3334,9 +3322,6 @@
         "security": [
           {
             "TenantApiKey": []
-          },
-          {
-            "WidgetToken": []
           }
         ],
         "summary": "Update Knowledge Base",
@@ -3413,9 +3398,6 @@
         "security": [
           {
             "TenantApiKey": []
-          },
-          {
-            "WidgetToken": []
           }
         ],
         "summary": "Queue Document",
@@ -3491,9 +3473,6 @@
         "security": [
           {
             "TenantApiKey": []
-          },
-          {
-            "WidgetToken": []
           }
         ],
         "summary": "Get Document Job",
@@ -3563,9 +3542,6 @@
         "security": [
           {
             "TenantApiKey": []
-          },
-          {
-            "WidgetToken": []
           }
         ],
         "summary": "List Documents",
@@ -3639,9 +3615,6 @@
         "security": [
           {
             "TenantApiKey": []
-          },
-          {
-            "WidgetToken": []
           }
         ],
         "summary": "Upload Document",
@@ -3709,9 +3682,6 @@
         "security": [
           {
             "TenantApiKey": []
-          },
-          {
-            "WidgetToken": []
           }
         ],
         "summary": "Delete Document",
@@ -3784,9 +3754,6 @@
         "security": [
           {
             "TenantApiKey": []
-          },
-          {
-            "WidgetToken": []
           }
         ],
         "summary": "Get Document",
@@ -3871,9 +3838,6 @@
         "security": [
           {
             "TenantApiKey": []
-          },
-          {
-            "WidgetToken": []
           }
         ],
         "summary": "Reindex Document",

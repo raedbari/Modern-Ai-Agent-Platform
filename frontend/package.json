@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "generate:api-clients": "node scripts/generate-api-clients.mjs",
+    "check:api-clients": "node scripts/check-api-clients.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.5.7",
@@ -27,6 +29,7 @@
     "@types/react-dom": "^19",
     "eslint": "9.39.5",
     "eslint-config-next": "16.2.12",
+    "openapi-typescript": "7.13.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
