@@ -1,3 +1,4 @@
 backend/openapi.json text eol=lf
 frontend/scripts/*.mjs text eol=lf
 frontend/src/lib/api/generated/*.ts text eol=lf
+.github/workflows/*.yml text eol=lf
