@@ -3,6 +3,17 @@ import "server-only";
 import { cookies } from "next/headers";
 
 import {
+  ADMIN_ACCESS_COOKIE,
+  ADMIN_REFRESH_COOKIE,
+} from "@/lib/auth/session-constants";
+
+export {
+  ADMIN_ACCESS_COOKIE,
+  ADMIN_REFRESH_COOKIE,
+};
+
+
+import {
   AdminApiError,
   getAdminProfile,
   refreshAdminTokens,
@@ -11,12 +22,6 @@ import {
 } from "./admin-api";
 
 import { shouldUseSecureCookies } from "./config";
-
-export const ADMIN_ACCESS_COOKIE =
-  "athka_admin_access";
-
-export const ADMIN_REFRESH_COOKIE =
-  "athka_admin_refresh";
 
 const REFRESH_COOKIE_MAX_AGE =
   7 * 24 * 60 * 60;
