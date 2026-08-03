@@ -315,13 +315,20 @@ class SQLAlchemyChunkRepository(ChunkRepository):
         top_k: int,
         min_similarity: float,
     ) -> list[tuple[Chunk, float]]:
+        """Search only chunks whose owning document is ready."""
+
         vector = self._validated_vector(query_embedding)
+
         if top_k <= 0:
             raise ValueError("top_k must be positive.")
+
         if not 0.0 <= min_similarity <= 1.0:
-            raise ValueError("min_similarity must be between 0.0 and 1.0.")
+            raise ValueError(
+                "min_similarity must be between 0.0 and 1.0."
+            )
 
         bind = self._session.get_bind()
+
         if bind.dialect.name == "sqlite":
             return await self._sqlite_semantic_search(
                 vector=vector,
@@ -334,19 +341,43 @@ class SQLAlchemyChunkRepository(ChunkRepository):
 
         distance = ChunkModel.embedding.cosine_distance(vector)
         similarity = (1.0 - distance).label("similarity")
+
         rows = (
             await self._session.execute(
                 select(ChunkModel, similarity)
+                .join(
+                    DocumentModel,
+                    (
+                        DocumentModel.tenant_id
+                        == ChunkModel.tenant_id
+                    )
+                    & (
+                        DocumentModel.knowledge_base_id
+                        == ChunkModel.knowledge_base_id
+                    )
+                    & (
+                        DocumentModel.id
+                        == ChunkModel.document_id
+                    ),
+                )
                 .where(
                     ChunkModel.tenant_id == tenant_id,
                     ChunkModel.agent_id == agent_id,
-                    ChunkModel.knowledge_base_id == knowledge_base_id,
+                    ChunkModel.knowledge_base_id
+                    == knowledge_base_id,
+                    DocumentModel.tenant_id == tenant_id,
+                    DocumentModel.agent_id == agent_id,
+                    DocumentModel.knowledge_base_id
+                    == knowledge_base_id,
+                    DocumentModel.status
+                    == DocumentProcessingStatus.READY.value,
                     similarity >= min_similarity,
                 )
                 .order_by(distance, ChunkModel.id)
                 .limit(top_k)
             )
         ).all()
+
         return [
             (_chunk_to_domain(row), float(score))
             for row, score in rows
@@ -362,29 +393,67 @@ class SQLAlchemyChunkRepository(ChunkRepository):
         top_k: int,
         min_similarity: float,
     ) -> list[tuple[Chunk, float]]:
-        """Exact fallback used only by SQLite tests and local development."""
+        """Exact SQLite fallback with the same ready-document scope."""
 
         rows = list(
             (
                 await self._session.scalars(
-                    select(ChunkModel).where(
+                    select(ChunkModel)
+                    .join(
+                        DocumentModel,
+                        (
+                            DocumentModel.tenant_id
+                            == ChunkModel.tenant_id
+                        )
+                        & (
+                            DocumentModel.knowledge_base_id
+                            == ChunkModel.knowledge_base_id
+                        )
+                        & (
+                            DocumentModel.id
+                            == ChunkModel.document_id
+                        ),
+                    )
+                    .where(
                         ChunkModel.tenant_id == tenant_id,
                         ChunkModel.agent_id == agent_id,
-                        ChunkModel.knowledge_base_id == knowledge_base_id,
+                        ChunkModel.knowledge_base_id
+                        == knowledge_base_id,
+                        DocumentModel.tenant_id == tenant_id,
+                        DocumentModel.agent_id == agent_id,
+                        DocumentModel.knowledge_base_id
+                        == knowledge_base_id,
+                        DocumentModel.status
+                        == DocumentProcessingStatus.READY.value,
                     )
                 )
             ).all()
         )
+
         scored = [
-            (row, self._cosine_similarity(vector, row.embedding))
+            (
+                row,
+                self._cosine_similarity(
+                    vector,
+                    row.embedding,
+                ),
+            )
             for row in rows
         ]
+
         filtered = [
             (row, score)
             for row, score in scored
             if score >= min_similarity
         ]
-        filtered.sort(key=lambda item: (-item[1], item[0].id))
+
+        filtered.sort(
+            key=lambda item: (
+                -item[1],
+                item[0].id,
+            )
+        )
+
         return [
             (_chunk_to_domain(row), score)
             for row, score in filtered[:top_k]

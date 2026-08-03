@@ -300,6 +300,17 @@ async def test_chunk_repository_search_filters_scope_before_ranking(
             )
         )
 
+        await documents.update_processing_status(
+            document_id="doc-a",
+            tenant_id="tenant-a",
+            status=DocumentProcessingStatus.READY,
+        )
+        await documents.update_processing_status(
+            document_id="doc-b",
+            tenant_id="tenant-b",
+            status=DocumentProcessingStatus.READY,
+        )
+
         chunks = SQLAlchemyChunkRepository(session)
         await chunks.create_many(
             [

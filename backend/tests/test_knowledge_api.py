@@ -19,7 +19,9 @@ from backend.app.auth.api_keys import IssuedApiKey, issue_api_key
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import Base, get_db
 from backend.app.db.models import (
+    AdminAuditLog,
     Agent,
+    AgentKnowledgeBase,
     ChunkModel,
     DocumentModel,
     IngestionJob,
@@ -28,6 +30,7 @@ from backend.app.db.models import (
     ApiKey,
 )
 from backend.app.main import create_app
+from backend.app.infrastructure.database.repositories import SQLAlchemyChunkRepository
 
 
 async def _open_test_app(
@@ -606,5 +609,172 @@ async def test_delete_document_and_knowledge_base_are_cascaded(
             assert await session.scalar(
                 select(func.count()).select_from(KnowledgeBaseModel)
             ) == 0
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_delete_document_enforces_agent_scope_audits_and_removes_from_rag(
+    tmp_path: Path,
+) -> None:
+    app, engine, session_factory, _ = await _open_test_app(
+        tmp_path / "knowledge-delete-scope.sqlite3"
+    )
+
+    try:
+        issued = await _seed_tenant(
+            session_factory,
+            tenant_id="tenant-delete",
+            agent_ids=("agent-owner", "agent-other"),
+        )
+
+        owner_headers = _headers(
+            issued,
+            "agent-owner",
+        )
+
+        other_headers = _headers(
+            issued,
+            "agent-other",
+        )
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            knowledge_base_id = await _create_knowledge_base(
+                client,
+                owner_headers,
+                name="Deletion scope",
+            )
+
+            uploaded = await client.post(
+                (
+                    f"/api/knowledge-bases/{knowledge_base_id}"
+                    "/documents"
+                ),
+                headers=owner_headers,
+                files={
+                    "file": (
+                        "delete-me.txt",
+                        b"Active content that must disappear.",
+                        "text/plain",
+                    )
+                },
+            )
+
+        assert uploaded.status_code == 201, uploaded.text
+        document_id = uploaded.json()["id"]
+
+        # Assign the same KB to another agent. The document itself still
+        # belongs only to agent-owner.
+        async with session_factory() as session:
+            session.add(
+                AgentKnowledgeBase(
+                    tenant_id="tenant-delete",
+                    agent_id="agent-other",
+                    knowledge_base_id=knowledge_base_id,
+                )
+            )
+            await session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            forbidden = await client.delete(
+                (
+                    f"/api/knowledge-bases/{knowledge_base_id}"
+                    f"/documents/{document_id}"
+                ),
+                headers=other_headers,
+            )
+
+        assert forbidden.status_code == 404
+
+        async with session_factory() as session:
+            assert await session.get(
+                DocumentModel,
+                document_id,
+            ) is not None
+
+            forbidden_audits = await session.scalar(
+                select(func.count())
+                .select_from(AdminAuditLog)
+                .where(
+                    AdminAuditLog.event_type
+                    == "knowledge_document_deleted",
+                    AdminAuditLog.target_id == document_id,
+                )
+            )
+
+        assert forbidden_audits == 0
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            deleted = await client.delete(
+                (
+                    f"/api/knowledge-bases/{knowledge_base_id}"
+                    f"/documents/{document_id}"
+                ),
+                headers=owner_headers,
+            )
+
+        assert deleted.status_code == 204
+
+        async with session_factory() as session:
+            assert await session.get(
+                DocumentModel,
+                document_id,
+            ) is None
+
+            chunk_count = await session.scalar(
+                select(func.count())
+                .select_from(ChunkModel)
+                .where(
+                    ChunkModel.document_id == document_id
+                )
+            )
+
+            audit = await session.scalar(
+                select(AdminAuditLog).where(
+                    AdminAuditLog.event_type
+                    == "knowledge_document_deleted",
+                    AdminAuditLog.target_id == document_id,
+                )
+            )
+
+            search_results = await SQLAlchemyChunkRepository(
+                session
+            ).semantic_search(
+                query_embedding=[1.0] + [0.0] * 1023,
+                tenant_id="tenant-delete",
+                agent_id="agent-owner",
+                knowledge_base_id=knowledge_base_id,
+                top_k=5,
+                min_similarity=0.0,
+            )
+
+        assert chunk_count == 0
+        assert search_results == []
+
+        assert audit is not None
+        assert audit.admin_id is None
+        assert audit.target_type == "knowledge_document"
+        assert audit.outcome == "success"
+        assert audit.detail == {
+            "tenant_id": "tenant-delete",
+            "agent_id": "agent-owner",
+            "knowledge_base_id": knowledge_base_id,
+        }
+
+        serialized_detail = str(audit.detail).lower()
+
+        assert "content" not in serialized_detail
+        assert "token" not in serialized_detail
+        assert "api_key" not in serialized_detail
+
     finally:
         await engine.dispose()
