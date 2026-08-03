@@ -325,6 +325,85 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+async def require_tenant_api_key_context(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    raw_api_key: Annotated[str | None, Security(api_key_header)],
+    agent_id: Annotated[
+        str | None,
+        Header(
+            alias="X-Agent-ID",
+            description="Agent selector authorized against the API-key tenant.",
+        ),
+    ] = None,
+) -> ChatExecutionContext:
+    """Authenticate a server-side tenant API key only."""
+
+    if raw_api_key is None:
+        raise _unauthorized()
+
+    parsed = parse_api_key(raw_api_key)
+    if parsed is None:
+        raise _unauthorized()
+
+    key_id, secret = parsed
+    row = (
+        await session.execute(
+            select(ApiKey, Tenant)
+            .join(Tenant, Tenant.id == ApiKey.tenant_id)
+            .where(ApiKey.key_id == key_id)
+        )
+    ).one_or_none()
+
+    if row is None:
+        raise _unauthorized()
+
+    api_key, tenant = row
+    now = datetime.now(timezone.utc)
+    expired = (
+        api_key.expires_at is not None
+        and _as_utc(api_key.expires_at) <= now
+    )
+
+    if (
+        not verify_api_key_secret(secret, api_key.key_digest)
+        or not api_key.is_active
+        or api_key.revoked_at is not None
+        or expired
+        or not tenant.is_active
+    ):
+        raise _unauthorized()
+
+    normalized_agent_id = (agent_id or "").strip()
+    if not normalized_agent_id or len(normalized_agent_id) > 128:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Agent-ID is required",
+        )
+
+    agent = await session.scalar(
+        select(Agent).where(
+            Agent.id == normalized_agent_id,
+            Agent.tenant_id == tenant.id,
+            Agent.is_active.is_(True),
+        )
+    )
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Agent is not authorized for these credentials",
+        )
+
+    api_key.last_used_at = now
+    return ChatExecutionContext(
+        tenant_id=tenant.id,
+        agent_id=agent.id,
+        system_prompt=agent.system_prompt,
+        knowledge_mode=agent.knowledge_mode,
+        contact_message=agent.contact_message,
+        auth_method="api_key",
+    )
+
+
 async def require_chat_context(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
