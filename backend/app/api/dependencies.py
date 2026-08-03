@@ -6,7 +6,11 @@ import secrets
 from typing import Annotated, Callable, Optional
 
 from fastapi import Depends, Header, HTTPException, Request, Security, status
-from fastapi.security import APIKeyHeader
+from fastapi.security import (
+    APIKeyHeader,
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,8 +47,28 @@ admin_api_key_header = APIKeyHeader(
     name="X-Admin-Key",
     scheme_name="InternalAdminKey",
     description=(
-        "Temporary internal administrative credential. "
-        "It will be replaced by RBAC-backed admin sessions."
+        "Legacy internal administrative credential. "
+        "Prefer a short-lived AdminJWT session."
+    ),
+    auto_error=False,
+)
+
+admin_bearer = HTTPBearer(
+    scheme_name="AdminJWT",
+    bearerFormat="JWT",
+    description=(
+        "Short-lived administrative access token issued by "
+        "POST /api/admin/auth/login."
+    ),
+    auto_error=False,
+)
+
+widget_bearer = HTTPBearer(
+    scheme_name="WidgetToken",
+    bearerFormat="JWT",
+    description=(
+        "Short-lived, origin-bound browser token issued by "
+        "POST /api/widget/bootstrap."
     ),
     auto_error=False,
 )
@@ -206,6 +230,10 @@ async def require_admin_jwt(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    _admin_credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(admin_bearer),
+    ] = None,
 ) -> AdminContext:
     """Require a live database-backed admin JWT session."""
 
@@ -219,6 +247,10 @@ async def require_admin_access(
     raw_admin_key: Annotated[
         str | None,
         Security(admin_api_key_header),
+    ] = None,
+    _admin_credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(admin_bearer),
     ] = None,
 ) -> "AdminContext | None":
     """Dual-path admin authentication: JWT Bearer or legacy X-Admin-Key.
@@ -299,6 +331,10 @@ async def require_chat_context(
     raw_api_key: Annotated[str | None, Security(api_key_header)],
     settings: Annotated[Settings, Depends(get_settings)],
     rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+    _widget_credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(widget_bearer),
+    ] = None,
     agent_id: Annotated[
         str | None,
         Header(
