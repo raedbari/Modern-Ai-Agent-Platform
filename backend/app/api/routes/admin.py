@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.api.dependencies import require_admin_access, require_permission
 from backend.app.api.schemas.admin import (
     AgentAdminResponse,
+    AgentConfigResponse,
+    AgentConfigUpdate,
     ApiKeyAdminResponse,
     LifecycleStatusUpdate,
     RevokeAllApiKeysResponse,
@@ -31,6 +33,7 @@ from backend.app.db.base import get_db
 from backend.app.infrastructure.storage import LocalUploadStorage
 from backend.app.operations.admin_lifecycle import (
     AdminLifecycleConflictError,
+    AdminLifecycleValidationError,
     AdminResourceNotFoundError,
     delete_agent,
     delete_conversation,
@@ -43,6 +46,7 @@ from backend.app.operations.admin_lifecycle import (
     revoke_api_key,
     set_agent_active,
     set_tenant_active,
+    update_agent_config,
 )
 from backend.app.services.audit import AuditService
 
@@ -71,6 +75,21 @@ def _agent_response(item) -> AgentAdminResponse:
         name=item.name,
         is_active=item.is_active,
         knowledge_mode=item.knowledge_mode,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+
+def _agent_config_response(item) -> AgentConfigResponse:
+    return AgentConfigResponse(
+        id=item.id,
+        tenant_id=item.tenant_id,
+        name=item.name,
+        system_prompt=item.system_prompt,
+        knowledge_mode=item.knowledge_mode,
+        contact_message=item.contact_message,
+        is_active=item.is_active,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -262,6 +281,67 @@ async def get_agents(
     except AdminResourceNotFoundError as exc:
         raise _not_found(exc) from exc
     return [_agent_response(item) for item in items]
+
+
+@router.patch(
+    "/tenants/{tenant_id}/agents/{agent_id}/config",
+    response_model=AgentConfigResponse,
+    dependencies=[Depends(require_permission("agents:write"))],
+)
+async def update_agent_configuration(
+    tenant_id: str,
+    agent_id: str,
+    payload: AgentConfigUpdate,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> AgentConfigResponse:
+    """Update editable configuration for one tenant-scoped agent."""
+
+    try:
+        item = await update_agent_config(
+            session,
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            update=payload,
+        )
+
+        changed_fields = sorted(payload.model_fields_set)
+
+        await _audit_mutation(
+            session,
+            context=context,
+            request=request,
+            settings=settings,
+            event_type="agent_config_updated",
+            target_type="agent",
+            target_id=agent_id,
+            detail={
+                "tenant_id": tenant_id,
+                "changed_fields": changed_fields,
+            },
+        )
+
+        await session.commit()
+        await session.refresh(item)
+
+    except AdminLifecycleValidationError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+    except AdminResourceNotFoundError as exc:
+        await session.rollback()
+        raise _not_found(exc) from exc
+
+    return _agent_config_response(item)
+
 
 
 @router.patch(
