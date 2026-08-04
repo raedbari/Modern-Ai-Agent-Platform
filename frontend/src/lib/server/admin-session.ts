@@ -112,7 +112,11 @@ export async function rotateAdminSession(): Promise<LoginResponse> {
   }
 }
 
-export async function getCurrentAdminProfile(): Promise<AdminProfile> {
+export async function withAdminAccessToken<T>(
+  operation: (
+    accessToken: string,
+  ) => Promise<T>,
+): Promise<T> {
   let {
     accessToken,
     refreshToken,
@@ -127,12 +131,13 @@ export async function getCurrentAdminProfile(): Promise<AdminProfile> {
 
   if (!accessToken) {
     const tokens = await rotateAdminSession();
+
     accessToken = tokens.access_token;
     refreshToken = tokens.refresh_token;
   }
 
   try {
-    return await getAdminProfile(accessToken);
+    return await operation(accessToken);
   } catch (error) {
     if (
       !(error instanceof AdminApiError) ||
@@ -153,11 +158,23 @@ export async function getCurrentAdminProfile(): Promise<AdminProfile> {
   const tokens = await rotateAdminSession();
 
   try {
-    return await getAdminProfile(
+    return await operation(
       tokens.access_token,
     );
   } catch (error) {
-    await clearAdminSessionCookies();
+    if (
+      error instanceof AdminApiError &&
+      error.status === 401
+    ) {
+      await clearAdminSessionCookies();
+    }
+
     throw error;
   }
+}
+
+export async function getCurrentAdminProfile(): Promise<AdminProfile> {
+  return withAdminAccessToken(
+    getAdminProfile,
+  );
 }

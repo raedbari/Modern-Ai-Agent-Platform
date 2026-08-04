@@ -15,6 +15,19 @@ export type LoginResponse =
 export type AdminProfile =
   components["schemas"]["AdminProfileResponse"];
 
+
+export type TenantAdmin =
+  components["schemas"]["TenantAdminResponse"];
+
+export type AgentAdmin =
+  components["schemas"]["AgentAdminResponse"];
+
+export type ApiKeyAdmin =
+  components["schemas"]["ApiKeyAdminResponse"];
+
+export type AdminAuditEvent =
+  components["schemas"]["AdminAuditEventResponse"];
+
 type ErrorPayload = {
   detail?: unknown;
 };
@@ -179,6 +192,66 @@ export async function logoutAdmin(
       body: JSON.stringify({
         refresh_token: refreshToken,
       }),
+    },
+  );
+}
+
+export async function listAdminTenants(
+  accessToken: string,
+): Promise<TenantAdmin[]> {
+  return requestAdminApi<TenantAdmin[]>(
+    "/api/admin/tenants",
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function listTenantAgents(
+  accessToken: string,
+  tenantId: string,
+): Promise<AgentAdmin[]> {
+  return requestAdminApi<AgentAdmin[]>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/agents`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function listTenantApiKeys(
+  accessToken: string,
+  tenantId: string,
+): Promise<ApiKeyAdmin[]> {
+  return requestAdminApi<ApiKeyAdmin[]>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/api-keys`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function listAdminAuditEvents(
+  accessToken: string,
+  limit = 12,
+): Promise<AdminAuditEvent[]> {
+  const normalizedLimit = Math.min(
+    Math.max(Math.trunc(limit), 1),
+    100,
+  );
+
+  return requestAdminApi<AdminAuditEvent[]>(
+    `/api/admin/audit?limit=${normalizedLimit}`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
     },
   );
 }
