@@ -387,7 +387,23 @@ function runGenerator(inputPath, outputPath) {
   let command;
   let args;
 
-  if (existsSync(localBinary)) {
+  const localCli = resolve(
+    frontendRoot,
+    "node_modules",
+    "openapi-typescript",
+    "bin",
+    "cli.js",
+  );
+
+  if (existsSync(localCli)) {
+    command = process.execPath;
+    args = [
+      localCli,
+      inputPath,
+      "-o",
+      outputPath,
+    ];
+  } else if (existsSync(localBinary)) {
     command = localBinary;
     args = [
       inputPath,

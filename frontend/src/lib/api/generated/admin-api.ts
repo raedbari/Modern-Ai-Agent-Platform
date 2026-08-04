@@ -369,6 +369,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/tenants/{tenant_id}/knowledge-bases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Admin Knowledge Bases */
+        get: operations["list_admin_knowledge_bases_api_admin_tenants__tenant_id__knowledge_bases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/tenants/{tenant_id}/knowledge-bases/{knowledge_base_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Admin Knowledge Base */
+        get: operations["read_admin_knowledge_base_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/tenants/{tenant_id}/knowledge-bases/{knowledge_base_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Admin Documents */
+        get: operations["list_admin_documents_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/tenants/{tenant_id}/knowledge-bases/{knowledge_base_id}/ingestion-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Admin Ingestion Jobs */
+        get: operations["list_admin_ingestion_jobs_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__ingestion_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/tenants/{tenant_id}/status": {
         parameters: {
             query?: never;
@@ -802,6 +870,48 @@ export interface components {
             /** Username */
             username: string;
         };
+        /**
+         * DocumentAdminResponse
+         * @description Administrative document metadata with derived ingestion details.
+         */
+        DocumentAdminResponse: {
+            /** Agent Id */
+            agent_id: string | null;
+            /** Chunk Count */
+            chunk_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Failure Reason */
+            failure_reason: string | null;
+            /** File Size Bytes */
+            file_size_bytes: number;
+            /** Id */
+            id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            latest_job: components["schemas"]["IngestionJobAdminResponse"] | null;
+            /** Mime Type */
+            mime_type: string;
+            /** Original Filename */
+            original_filename: string;
+            /** Source Name */
+            source_name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "processing" | "ready" | "failed";
+            /** Tenant Id */
+            tenant_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** DocumentIngestionResponse */
         DocumentIngestionResponse: {
             /** Chunks Persisted */
@@ -918,6 +1028,99 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /**
+         * IngestionJobAdminResponse
+         * @description Non-secret lifecycle details for one ingestion job.
+         */
+        IngestionJobAdminResponse: {
+            /** Agent Id */
+            agent_id: string;
+            /** Attempts */
+            attempts: number;
+            /**
+             * Available At
+             * Format: date-time
+             */
+            available_at: string;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Document Id */
+            document_id: string;
+            /** Id */
+            id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Max Attempts */
+            max_attempts: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "processing" | "succeeded" | "failed";
+            /** Tenant Id */
+            tenant_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * KnowledgeBaseAdminResponse
+         * @description Administrative summary for one tenant-owned knowledge base.
+         */
+        KnowledgeBaseAdminResponse: {
+            /** Assigned Agent Ids */
+            assigned_agent_ids?: string[];
+            /** Chunk Count */
+            chunk_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Document Count */
+            document_count: number;
+            /** Failed Document Count */
+            failed_document_count: number;
+            /** Failed Job Count */
+            failed_job_count: number;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Pending Document Count */
+            pending_document_count: number;
+            /** Pending Job Count */
+            pending_job_count: number;
+            /** Processing Document Count */
+            processing_document_count: number;
+            /** Processing Job Count */
+            processing_job_count: number;
+            /** Ready Document Count */
+            ready_document_count: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "inactive";
+            /** Tenant Id */
+            tenant_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * KnowledgeBaseCreate
@@ -1872,6 +2075,137 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admin_knowledge_bases_api_admin_tenants__tenant_id__knowledge_bases_get: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+            };
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseAdminResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_admin_knowledge_base_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseAdminResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admin_documents_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentAdminResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admin_ingestion_jobs_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__ingestion_jobs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                tenant_id: string;
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionJobAdminResponse"][];
+                };
             };
             /** @description Validation Error */
             422: {

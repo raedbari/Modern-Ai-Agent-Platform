@@ -681,6 +681,115 @@
         "title": "CreateAdminRequest",
         "type": "object"
       },
+      "DocumentAdminResponse": {
+        "description": "Administrative document metadata with derived ingestion details.",
+        "properties": {
+          "agent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Id"
+          },
+          "chunk_count": {
+            "minimum": 0.0,
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "file_size_bytes": {
+            "minimum": 0.0,
+            "title": "File Size Bytes",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "latest_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IngestionJobAdminResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "original_filename": {
+            "title": "Original Filename",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "processing",
+              "ready",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "knowledge_base_id",
+          "agent_id",
+          "original_filename",
+          "source_name",
+          "mime_type",
+          "file_size_bytes",
+          "status",
+          "failure_reason",
+          "created_at",
+          "updated_at",
+          "chunk_count",
+          "latest_job"
+        ],
+        "title": "DocumentAdminResponse",
+        "type": "object"
+      },
       "DocumentIngestionResponse": {
         "properties": {
           "chunks_persisted": {
@@ -978,6 +1087,217 @@
           "environment"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "IngestionJobAdminResponse": {
+        "description": "Non-secret lifecycle details for one ingestion job.",
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "attempts": {
+            "minimum": 0.0,
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "available_at": {
+            "format": "date-time",
+            "title": "Available At",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "max_attempts": {
+            "exclusiveMinimum": 0.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "processing",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "agent_id",
+          "knowledge_base_id",
+          "document_id",
+          "status",
+          "attempts",
+          "max_attempts",
+          "available_at",
+          "last_error",
+          "created_at",
+          "updated_at",
+          "completed_at"
+        ],
+        "title": "IngestionJobAdminResponse",
+        "type": "object"
+      },
+      "KnowledgeBaseAdminResponse": {
+        "description": "Administrative summary for one tenant-owned knowledge base.",
+        "properties": {
+          "assigned_agent_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Assigned Agent Ids",
+            "type": "array"
+          },
+          "chunk_count": {
+            "minimum": 0.0,
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "document_count": {
+            "minimum": 0.0,
+            "title": "Document Count",
+            "type": "integer"
+          },
+          "failed_document_count": {
+            "minimum": 0.0,
+            "title": "Failed Document Count",
+            "type": "integer"
+          },
+          "failed_job_count": {
+            "minimum": 0.0,
+            "title": "Failed Job Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pending_document_count": {
+            "minimum": 0.0,
+            "title": "Pending Document Count",
+            "type": "integer"
+          },
+          "pending_job_count": {
+            "minimum": 0.0,
+            "title": "Pending Job Count",
+            "type": "integer"
+          },
+          "processing_document_count": {
+            "minimum": 0.0,
+            "title": "Processing Document Count",
+            "type": "integer"
+          },
+          "processing_job_count": {
+            "minimum": 0.0,
+            "title": "Processing Job Count",
+            "type": "integer"
+          },
+          "ready_document_count": {
+            "minimum": 0.0,
+            "title": "Ready Document Count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "description",
+          "status",
+          "created_at",
+          "updated_at",
+          "document_count",
+          "pending_document_count",
+          "processing_document_count",
+          "ready_document_count",
+          "failed_document_count",
+          "chunk_count",
+          "pending_job_count",
+          "processing_job_count",
+          "failed_job_count"
+        ],
+        "title": "KnowledgeBaseAdminResponse",
         "type": "object"
       },
       "KnowledgeBaseCreate": {
@@ -2879,6 +3199,275 @@
         "summary": "Permanently Delete Conversation",
         "tags": [
           "admin"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/knowledge-bases": {
+      "get": {
+        "operationId": "list_admin_knowledge_bases_api_admin_tenants__tenant_id__knowledge_bases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeBaseAdminResponse"
+                  },
+                  "title": "Response List Admin Knowledge Bases Api Admin Tenants  Tenant Id  Knowledge Bases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "List Admin Knowledge Bases",
+        "tags": [
+          "admin-knowledge"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/knowledge-bases/{knowledge_base_id}": {
+      "get": {
+        "operationId": "read_admin_knowledge_base_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseAdminResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Read Admin Knowledge Base",
+        "tags": [
+          "admin-knowledge"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/knowledge-bases/{knowledge_base_id}/documents": {
+      "get": {
+        "operationId": "list_admin_documents_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentAdminResponse"
+                  },
+                  "title": "Response List Admin Documents Api Admin Tenants  Tenant Id  Knowledge Bases  Knowledge Base Id  Documents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "List Admin Documents",
+        "tags": [
+          "admin-knowledge"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/knowledge-bases/{knowledge_base_id}/ingestion-jobs": {
+      "get": {
+        "operationId": "list_admin_ingestion_jobs_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__ingestion_jobs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IngestionJobAdminResponse"
+                  },
+                  "title": "Response List Admin Ingestion Jobs Api Admin Tenants  Tenant Id  Knowledge Bases  Knowledge Base Id  Ingestion Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "List Admin Ingestion Jobs",
+        "tags": [
+          "admin-knowledge"
         ]
       }
     },

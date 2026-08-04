@@ -158,6 +158,15 @@ export type WidgetSettings =
 export type WidgetSettingsUpdatePayload =
   components["schemas"]["WidgetSettingsUpdate"];
 
+export type KnowledgeBaseAdmin =
+  components["schemas"]["KnowledgeBaseAdminResponse"];
+
+export type KnowledgeDocumentAdmin =
+  components["schemas"]["DocumentAdminResponse"];
+
+export type KnowledgeIngestionJobAdmin =
+  components["schemas"]["IngestionJobAdminResponse"];
+
 export async function loginAdmin(
   payload: LoginRequest,
 ): Promise<LoginResponse> {
@@ -352,6 +361,111 @@ export async function putAdminWidgetSettings(
   );
 }
 
+
+
+export async function listAdminKnowledgeBases(
+  accessToken: string,
+  tenantId: string,
+  agentId?: string,
+): Promise<KnowledgeBaseAdmin[]> {
+  const searchParams =
+    new URLSearchParams();
+
+  if (agentId) {
+    searchParams.set(
+      "agent_id",
+      agentId,
+    );
+  }
+
+  const queryString =
+    searchParams.toString();
+
+  const query = queryString
+    ? `?${queryString}`
+    : "";
+
+  return requestAdminApi<
+    KnowledgeBaseAdmin[]
+  >(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/knowledge-bases${query}`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function getAdminKnowledgeBase(
+  accessToken: string,
+  tenantId: string,
+  knowledgeBaseId: string,
+): Promise<KnowledgeBaseAdmin> {
+  return requestAdminApi<
+    KnowledgeBaseAdmin
+  >(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/knowledge-bases/${
+      encodeURIComponent(knowledgeBaseId)
+    }`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function listAdminKnowledgeDocuments(
+  accessToken: string,
+  tenantId: string,
+  knowledgeBaseId: string,
+): Promise<KnowledgeDocumentAdmin[]> {
+  return requestAdminApi<
+    KnowledgeDocumentAdmin[]
+  >(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/knowledge-bases/${
+      encodeURIComponent(knowledgeBaseId)
+    }/documents`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function listAdminKnowledgeIngestionJobs(
+  accessToken: string,
+  tenantId: string,
+  knowledgeBaseId: string,
+  limit = 100,
+): Promise<KnowledgeIngestionJobAdmin[]> {
+  const normalizedLimit = Math.min(
+    Math.max(
+      Math.trunc(limit),
+      1,
+    ),
+    200,
+  );
+
+  return requestAdminApi<
+    KnowledgeIngestionJobAdmin[]
+  >(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/knowledge-bases/${
+      encodeURIComponent(knowledgeBaseId)
+    }/ingestion-jobs?limit=${normalizedLimit}`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
 
 export async function permanentlyDeleteAdminAgent(
   accessToken: string,

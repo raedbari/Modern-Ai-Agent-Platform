@@ -95,6 +95,9 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "audit:read",
             "widgets:read",
             "widgets:write",
+            "knowledge:read",
+            "knowledge:write",
+            "knowledge:delete",
         }
     ),
     "operator": frozenset(
@@ -108,6 +111,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "conversations:delete",
             "widgets:read",
             "widgets:write",
+            "knowledge:read",
+            "knowledge:write",
         }
     ),
     "auditor": frozenset(
@@ -117,6 +122,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "api_keys:read",
             "audit:read",
             "widgets:read",
+            "knowledge:read",
         }
     ),
 }
