@@ -383,6 +383,9 @@ async def test_document_job_retains_file_without_blocking_for_embeddings(
         async with session_factory() as session:
             job = await session.get(IngestionJob, job_id)
         assert job is not None
+        assert job.source_filename == "queued.txt"
+        assert job.source_mime_type == "text/plain"
+        assert job.source_name == "upload"
         assert (storage_root / job.storage_key).read_bytes() == content
     finally:
         app.dependency_overrides.pop(get_settings, None)

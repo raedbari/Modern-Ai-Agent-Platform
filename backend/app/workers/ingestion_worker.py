@@ -109,9 +109,18 @@ class IngestionWorker:
 
             storage_key = job.storage_key
             document_id = document.id
-            filename = document.original_filename
-            mime_type = document.mime_type
-            source_name = document.source_name
+            filename = (
+                job.source_filename
+                or document.original_filename
+            )
+            mime_type = (
+                job.source_mime_type
+                or document.mime_type
+            )
+            source_name = (
+                job.source_name
+                or document.source_name
+            )
             tenant_id = job.tenant_id
             agent_id = job.agent_id
             knowledge_base_id = job.knowledge_base_id

@@ -182,8 +182,14 @@ async def test_worker_processes_retained_document_end_to_end(
         assert stored_job.status == "succeeded"
         assert stored_job.attempts == 1
         assert stored_job.completed_at is not None
+        assert stored_job.source_filename is None
+        assert stored_job.source_mime_type is None
+        assert stored_job.source_name is None
         assert document is not None
         assert document.status == "ready"
+        assert document.original_filename == request.filename
+        assert document.mime_type == request.mime_type
+        assert document.source_name == request.source_name
         assert len(chunks) == 1
         assert chunks[0].content == request.content.decode()
         assert await storage.read(storage_key) == request.content
@@ -258,5 +264,185 @@ async def test_failed_job_retries_then_becomes_terminal(
             assert document is not None
             assert document.status == "failed"
             assert document.failure_reason == "Document processing failed."
+    finally:
+        await engine.dispose()
+
+@pytest.mark.asyncio
+async def test_enqueue_persists_source_metadata_and_external_job_id(
+    tmp_path: Path,
+) -> None:
+    engine, sessions = await _database(
+        tmp_path / "job-source-metadata.sqlite3"
+    )
+    await _seed_scope(sessions)
+    settings = _settings(tmp_path / "uploads")
+    request = IngestionRequest(
+        content=b"Queued source metadata.",
+        filename="queued.md",
+        mime_type="text/markdown",
+        tenant_id="tenant-a",
+        agent_id="agent-a",
+        knowledge_base_id="kb-a",
+        source_name="admin-upload",
+    )
+
+    try:
+        async with sessions() as session:
+            prepared = await build_ingestion_service(
+                session=session,
+                runtime=FixedEmbeddingProvider(),
+                settings=settings,
+            ).prepare(request)
+
+            job = await IngestionJobService.enqueue(
+                session,
+                tenant_id="tenant-a",
+                agent_id="agent-a",
+                knowledge_base_id="kb-a",
+                document_id=prepared.document.id,
+                storage_key="opaque-job-source",
+                max_attempts=3,
+                source_filename=request.filename,
+                source_mime_type=request.mime_type,
+                source_name=request.source_name,
+                job_id="job-source-metadata",
+            )
+            document_id = prepared.document.id
+            await session.commit()
+
+        async with sessions() as session:
+            stored = await session.get(
+                IngestionJob,
+                "job-source-metadata",
+            )
+
+        assert stored is not None
+        assert stored.document_id == document_id
+        assert stored.source_filename == "queued.md"
+        assert stored.source_mime_type == "text/markdown"
+        assert stored.source_name == "admin-upload"
+
+        async with sessions() as session:
+            with pytest.raises(
+                ValueError,
+                match="job_id must not be blank",
+            ):
+                await IngestionJobService.enqueue(
+                    session,
+                    tenant_id="tenant-a",
+                    agent_id="agent-a",
+                    knowledge_base_id="kb-a",
+                    document_id=document_id,
+                    storage_key="unused",
+                    max_attempts=1,
+                    job_id="   ",
+                )
+
+            with pytest.raises(
+                ValueError,
+                match="at most 128",
+            ):
+                await IngestionJobService.enqueue(
+                    session,
+                    tenant_id="tenant-a",
+                    agent_id="agent-a",
+                    knowledge_base_id="kb-a",
+                    document_id=document_id,
+                    storage_key="unused",
+                    max_attempts=1,
+                    job_id="x" * 129,
+                )
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_worker_prefers_job_source_metadata_over_document_metadata(
+    tmp_path: Path,
+) -> None:
+    engine, sessions = await _database(
+        tmp_path / "worker-job-source-metadata.sqlite3"
+    )
+    await _seed_scope(sessions)
+    settings = _settings(tmp_path / "uploads")
+    storage = LocalUploadStorage(settings.upload_storage_root)
+
+    original_request = IngestionRequest(
+        content=b"Original pending source.",
+        filename="original.txt",
+        mime_type="text/plain",
+        tenant_id="tenant-a",
+        agent_id="agent-a",
+        knowledge_base_id="kb-a",
+        source_name="original-source",
+    )
+    replacement_content = b"# Replacement content from job metadata"
+    job_id = "job-metadata-precedence"
+
+    try:
+        async with sessions() as session:
+            prepared = await build_ingestion_service(
+                session=session,
+                runtime=FixedEmbeddingProvider(),
+                settings=settings,
+            ).prepare(original_request)
+            document_id = prepared.document.id
+            await session.commit()
+
+        storage_key = await storage.store(
+            tenant_id="tenant-a",
+            document_id=job_id,
+            content=replacement_content,
+        )
+
+        async with sessions() as session:
+            await IngestionJobService.enqueue(
+                session,
+                tenant_id="tenant-a",
+                agent_id="agent-a",
+                knowledge_base_id="kb-a",
+                document_id=document_id,
+                storage_key=storage_key,
+                max_attempts=1,
+                source_filename="replacement.md",
+                source_mime_type="text/markdown",
+                source_name="replacement-source",
+                job_id=job_id,
+            )
+            await session.commit()
+
+        worker = IngestionWorker(
+            settings=settings,
+            worker_id="worker-metadata-precedence",
+            session_factory=sessions,
+            embedding_provider=FixedEmbeddingProvider(),
+            storage=storage,
+        )
+
+        assert await worker.process_one() is True
+
+        async with sessions() as session:
+            stored_job = await session.get(IngestionJob, job_id)
+            document = await session.get(DocumentModel, document_id)
+            chunks = list(
+                (
+                    await session.scalars(
+                        select(ChunkModel).where(
+                            ChunkModel.document_id == document_id
+                        )
+                    )
+                ).all()
+            )
+
+        assert stored_job is not None
+        assert stored_job.status == "succeeded"
+        assert document is not None
+        assert document.status == "ready"
+        assert document.original_filename == "replacement.md"
+        assert document.mime_type == "text/markdown"
+        assert document.source_name == "replacement-source"
+        assert len(chunks) == 1
+        assert chunks[0].content == replacement_content.decode()
+        assert chunks[0].source_name == "replacement-source"
     finally:
         await engine.dispose()

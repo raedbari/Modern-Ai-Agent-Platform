@@ -624,6 +624,9 @@ async def queue_document(
             document_id=prepared.document.id,
             storage_key=storage_key,
             max_attempts=settings.ingestion_job_max_attempts,
+            source_filename=request.filename,
+            source_mime_type=request.mime_type,
+            source_name=request.source_name,
         )
         await session.commit()
         return _job_response(document=prepared.document, job=job)

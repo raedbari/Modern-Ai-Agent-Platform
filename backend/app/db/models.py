@@ -828,6 +828,9 @@ class IngestionJob(Base):
     )
     document_id: Mapped[str] = mapped_column(String(128), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_filename: Mapped[str | None] = mapped_column(String(512))
+    source_mime_type: Mapped[str | None] = mapped_column(String(255))
+    source_name: Mapped[str | None] = mapped_column(String(512))
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
