@@ -152,6 +152,12 @@ export type AgentConfigUpdatePayload =
 export type AgentConfig =
   components["schemas"]["AgentConfigResponse"];
 
+export type WidgetSettings =
+  components["schemas"]["WidgetSettingsResponse"];
+
+export type WidgetSettingsUpdatePayload =
+  components["schemas"]["WidgetSettingsUpdate"];
+
 export async function loginAdmin(
   payload: LoginRequest,
 ): Promise<LoginResponse> {
@@ -307,6 +313,45 @@ export async function updateAdminAgentConfiguration(
     },
   );
 }
+
+export async function getAdminWidgetSettings(
+  accessToken: string,
+  tenantId: string,
+  agentId: string,
+): Promise<WidgetSettings> {
+  return requestAdminApi<WidgetSettings>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/agents/${
+      encodeURIComponent(agentId)
+    }/widget`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function putAdminWidgetSettings(
+  accessToken: string,
+  tenantId: string,
+  agentId: string,
+  payload: WidgetSettingsUpdatePayload,
+): Promise<WidgetSettings> {
+  return requestAdminApi<WidgetSettings>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/agents/${
+      encodeURIComponent(agentId)
+    }/widget`,
+    {
+      method: "PUT",
+      headers: bearerHeaders(accessToken),
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 
 export async function permanentlyDeleteAdminAgent(
   accessToken: string,
