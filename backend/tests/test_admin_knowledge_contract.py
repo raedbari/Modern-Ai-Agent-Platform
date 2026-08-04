@@ -83,7 +83,7 @@ def test_admin_knowledge_read_paths_are_registered() -> None:
         )
 
 
-def test_admin_knowledge_routes_are_read_only_initially() -> None:
+def test_admin_knowledge_phase2a_routes_are_registered() -> None:
     document = create_app().openapi()
     paths = document["paths"]
 
@@ -92,7 +92,7 @@ def test_admin_knowledge_routes_are_read_only_initially() -> None:
     ]
 
     assert "get" in collection
-    assert "post" not in collection
+    assert "post" in collection
 
     detail = paths[
         (
@@ -102,5 +102,5 @@ def test_admin_knowledge_routes_are_read_only_initially() -> None:
     ]
 
     assert "get" in detail
-    assert "patch" not in detail
+    assert "patch" in detail
     assert "delete" not in detail

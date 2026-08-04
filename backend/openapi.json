@@ -1338,6 +1338,48 @@
         "title": "IngestionJobAdminResponse",
         "type": "object"
       },
+      "KnowledgeBaseAdminCreate": {
+        "additionalProperties": false,
+        "description": "Create one tenant-owned knowledge base.",
+        "properties": {
+          "assigned_agent_ids": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Assigned Agent Ids",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "KnowledgeBaseAdminCreate",
+        "type": "object"
+      },
       "KnowledgeBaseAdminResponse": {
         "description": "Administrative summary for one tenant-owned knowledge base.",
         "properties": {
@@ -1447,6 +1489,72 @@
           "failed_job_count"
         ],
         "title": "KnowledgeBaseAdminResponse",
+        "type": "object"
+      },
+      "KnowledgeBaseAdminUpdate": {
+        "additionalProperties": false,
+        "description": "Update mutable knowledge-base fields.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "active",
+                  "inactive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "KnowledgeBaseAdminUpdate",
+        "type": "object"
+      },
+      "KnowledgeBaseAgentAssignmentsUpdate": {
+        "additionalProperties": false,
+        "description": "Replace the complete agent assignment set.",
+        "properties": {
+          "agent_ids": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Agent Ids",
+            "type": "array"
+          }
+        },
+        "title": "KnowledgeBaseAgentAssignmentsUpdate",
         "type": "object"
       },
       "KnowledgeBaseCreate": {
@@ -3745,6 +3853,64 @@
         "tags": [
           "admin-knowledge"
         ]
+      },
+      "post": {
+        "operationId": "create_admin_knowledge_base_api_admin_tenants__tenant_id__knowledge_bases_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeBaseAdminCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseAdminResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Create Admin Knowledge Base",
+        "tags": [
+          "admin-knowledge"
+        ]
       }
     },
     "/api/admin/tenants/{tenant_id}/knowledge-bases/{knowledge_base_id}": {
@@ -3801,6 +3967,142 @@
           }
         ],
         "summary": "Read Admin Knowledge Base",
+        "tags": [
+          "admin-knowledge"
+        ]
+      },
+      "patch": {
+        "operationId": "update_admin_knowledge_base_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeBaseAdminUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseAdminResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Update Admin Knowledge Base",
+        "tags": [
+          "admin-knowledge"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/knowledge-bases/{knowledge_base_id}/agents": {
+      "put": {
+        "operationId": "replace_admin_knowledge_base_agents_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__agents_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeBaseAgentAssignmentsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseAdminResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Replace Admin Knowledge Base Agents",
         "tags": [
           "admin-knowledge"
         ]

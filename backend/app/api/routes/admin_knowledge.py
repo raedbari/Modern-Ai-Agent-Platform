@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from uuid import uuid4
 from typing import Annotated
 
 from fastapi import (
@@ -10,9 +11,10 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
     status,
 )
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.dependencies import (
@@ -22,8 +24,14 @@ from backend.app.api.dependencies import (
 from backend.app.api.schemas.admin_knowledge import (
     DocumentAdminResponse,
     IngestionJobAdminResponse,
+    KnowledgeBaseAdminCreate,
     KnowledgeBaseAdminResponse,
+    KnowledgeBaseAdminUpdate,
+    KnowledgeBaseAgentAssignmentsUpdate,
 )
+from backend.app.auth.admin_context import AdminContext
+from backend.app.core.client_ip import get_client_ip
+from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
 from backend.app.db.models import (
     AgentKnowledgeBase,
@@ -37,6 +45,7 @@ from backend.app.operations.admin_lifecycle import (
     require_agent,
     require_tenant,
 )
+from backend.app.services.audit import AuditService
 
 
 router = APIRouter(
@@ -51,6 +60,53 @@ def _not_found(detail: str) -> HTTPException:
         status_code=status.HTTP_404_NOT_FOUND,
         detail=detail,
     )
+
+
+def _unprocessable(detail: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail=detail,
+    )
+
+
+async def _audit_mutation(
+    session: AsyncSession,
+    *,
+    context: AdminContext | None,
+    request: Request,
+    settings: Settings,
+    event_type: str,
+    target_type: str,
+    target_id: str,
+    detail: dict | None = None,
+) -> None:
+    await AuditService.write(
+        session,
+        event_type=event_type,
+        outcome="success",
+        admin_id=context.admin_id if context is not None else None,
+        target_type=target_type,
+        target_id=target_id,
+        client_ip=get_client_ip(request, settings),
+        detail=detail,
+    )
+
+
+async def _validate_agent_ids(
+    session: AsyncSession,
+    *,
+    tenant_id: str,
+    agent_ids: list[str],
+) -> None:
+    for agent_id in agent_ids:
+        try:
+            await require_agent(
+                session,
+                tenant_id=tenant_id,
+                agent_id=agent_id,
+            )
+        except AdminResourceNotFoundError as exc:
+            raise _not_found(str(exc)) from exc
 
 
 async def _require_knowledge_base(
@@ -625,3 +681,209 @@ async def list_admin_ingestion_jobs(
         _job_response(job)
         for job in jobs
     ]
+
+
+@router.post(
+    "",
+    response_model=KnowledgeBaseAdminResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("knowledge:write"))],
+)
+async def create_admin_knowledge_base(
+    tenant_id: str,
+    payload: KnowledgeBaseAdminCreate,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> KnowledgeBaseAdminResponse:
+    try:
+        await require_tenant(session, tenant_id)
+        await _validate_agent_ids(
+            session,
+            tenant_id=tenant_id,
+            agent_ids=payload.assigned_agent_ids,
+        )
+
+        knowledge_base = KnowledgeBaseModel(
+            id=str(uuid4()),
+            tenant_id=tenant_id,
+            name=payload.name,
+            description=payload.description,
+            status=payload.status,
+        )
+        session.add(knowledge_base)
+        await session.flush()
+
+        for agent_id in payload.assigned_agent_ids:
+            session.add(
+                AgentKnowledgeBase(
+                    tenant_id=tenant_id,
+                    agent_id=agent_id,
+                    knowledge_base_id=knowledge_base.id,
+                )
+            )
+
+        await session.flush()
+        await _audit_mutation(
+            session,
+            context=context,
+            request=request,
+            settings=settings,
+            event_type="knowledge_base_created",
+            target_type="knowledge_base",
+            target_id=knowledge_base.id,
+            detail={
+                "tenant_id": tenant_id,
+                "status": payload.status,
+                "assigned_agent_ids": payload.assigned_agent_ids,
+            },
+        )
+        await session.commit()
+
+    except AdminResourceNotFoundError as exc:
+        await session.rollback()
+        raise _not_found(str(exc)) from exc
+
+    items = await _knowledge_base_responses(
+        session,
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base.id,
+    )
+    if not items:
+        raise _not_found("Knowledge base not found.")
+    return items[0]
+
+
+@router.patch(
+    "/{knowledge_base_id}",
+    response_model=KnowledgeBaseAdminResponse,
+    dependencies=[Depends(require_permission("knowledge:write"))],
+)
+async def update_admin_knowledge_base(
+    tenant_id: str,
+    knowledge_base_id: str,
+    payload: KnowledgeBaseAdminUpdate,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> KnowledgeBaseAdminResponse:
+    if not payload.has_changes():
+        raise _unprocessable("At least one field is required.")
+
+    knowledge_base = await _require_knowledge_base(
+        session,
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+    )
+
+    changed_fields = sorted(payload.model_fields_set)
+
+    if payload.name is not None:
+        knowledge_base.name = payload.name
+    if payload.description is not None:
+        knowledge_base.description = payload.description
+    if payload.status is not None:
+        knowledge_base.status = payload.status
+
+    await session.flush()
+    await _audit_mutation(
+        session,
+        context=context,
+        request=request,
+        settings=settings,
+        event_type="knowledge_base_updated",
+        target_type="knowledge_base",
+        target_id=knowledge_base_id,
+        detail={
+            "tenant_id": tenant_id,
+            "changed_fields": changed_fields,
+        },
+    )
+    await session.commit()
+
+    items = await _knowledge_base_responses(
+        session,
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+    )
+    if not items:
+        raise _not_found("Knowledge base not found.")
+    return items[0]
+
+
+@router.put(
+    "/{knowledge_base_id}/agents",
+    response_model=KnowledgeBaseAdminResponse,
+    dependencies=[Depends(require_permission("knowledge:write"))],
+)
+async def replace_admin_knowledge_base_agents(
+    tenant_id: str,
+    knowledge_base_id: str,
+    payload: KnowledgeBaseAgentAssignmentsUpdate,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> KnowledgeBaseAdminResponse:
+    await _require_knowledge_base(
+        session,
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+    )
+    await _validate_agent_ids(
+        session,
+        tenant_id=tenant_id,
+        agent_ids=payload.agent_ids,
+    )
+
+    await session.execute(
+        delete(AgentKnowledgeBase).where(
+            AgentKnowledgeBase.tenant_id == tenant_id,
+            AgentKnowledgeBase.knowledge_base_id == knowledge_base_id,
+        )
+    )
+
+    for agent_id in payload.agent_ids:
+        session.add(
+            AgentKnowledgeBase(
+                tenant_id=tenant_id,
+                agent_id=agent_id,
+                knowledge_base_id=knowledge_base_id,
+            )
+        )
+
+    await session.flush()
+    await _audit_mutation(
+        session,
+        context=context,
+        request=request,
+        settings=settings,
+        event_type="knowledge_base_agents_changed",
+        target_type="knowledge_base",
+        target_id=knowledge_base_id,
+        detail={
+            "tenant_id": tenant_id,
+            "assigned_agent_ids": payload.agent_ids,
+        },
+    )
+    await session.commit()
+
+    items = await _knowledge_base_responses(
+        session,
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+    )
+    if not items:
+        raise _not_found("Knowledge base not found.")
+    return items[0]

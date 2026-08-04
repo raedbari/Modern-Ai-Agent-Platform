@@ -414,7 +414,8 @@ export interface paths {
         /** List Admin Knowledge Bases */
         get: operations["list_admin_knowledge_bases_api_admin_tenants__tenant_id__knowledge_bases_get"];
         put?: never;
-        post?: never;
+        /** Create Admin Knowledge Base */
+        post: operations["create_admin_knowledge_base_api_admin_tenants__tenant_id__knowledge_bases_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -431,6 +432,24 @@ export interface paths {
         /** Read Admin Knowledge Base */
         get: operations["read_admin_knowledge_base_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Admin Knowledge Base */
+        patch: operations["update_admin_knowledge_base_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__patch"];
+        trace?: never;
+    };
+    "/api/admin/tenants/{tenant_id}/knowledge-bases/{knowledge_base_id}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace Admin Knowledge Base Agents */
+        put: operations["replace_admin_knowledge_base_agents_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__agents_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1163,6 +1182,27 @@ export interface components {
             updated_at: string;
         };
         /**
+         * KnowledgeBaseAdminCreate
+         * @description Create one tenant-owned knowledge base.
+         */
+        KnowledgeBaseAdminCreate: {
+            /** Assigned Agent Ids */
+            assigned_agent_ids?: string[];
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "inactive";
+        };
+        /**
          * KnowledgeBaseAdminResponse
          * @description Administrative summary for one tenant-owned knowledge base.
          */
@@ -1210,6 +1250,26 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * KnowledgeBaseAdminUpdate
+         * @description Update mutable knowledge-base fields.
+         */
+        KnowledgeBaseAdminUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Status */
+            status?: ("active" | "inactive") | null;
+        };
+        /**
+         * KnowledgeBaseAgentAssignmentsUpdate
+         * @description Replace the complete agent assignment set.
+         */
+        KnowledgeBaseAgentAssignmentsUpdate: {
+            /** Agent Ids */
+            agent_ids?: string[];
         };
         /**
          * KnowledgeBaseCreate
@@ -2353,6 +2413,41 @@ export interface operations {
             };
         };
     };
+    create_admin_knowledge_base_api_admin_tenants__tenant_id__knowledge_bases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeBaseAdminCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseAdminResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_admin_knowledge_base_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__get: {
         parameters: {
             query?: never;
@@ -2364,6 +2459,78 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseAdminResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_admin_knowledge_base_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeBaseAdminUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseAdminResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_admin_knowledge_base_agents_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__agents_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeBaseAgentAssignmentsUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
