@@ -145,6 +145,13 @@ function bearerHeaders(
 export type RevokeAllApiKeysResult =
   components["schemas"]["RevokeAllApiKeysResponse"];
 
+
+export type AgentConfigUpdatePayload =
+  components["schemas"]["AgentConfigUpdate"];
+
+export type AgentConfig =
+  components["schemas"]["AgentConfigResponse"];
+
 export async function loginAdmin(
   payload: LoginRequest,
 ): Promise<LoginResponse> {
@@ -254,6 +261,69 @@ export async function listAdminAuditEvents(
     `/api/admin/audit?limit=${normalizedLimit}`,
     {
       method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function updateAdminAgentStatus(
+  accessToken: string,
+  tenantId: string,
+  agentId: string,
+  isActive: boolean,
+): Promise<AgentAdmin> {
+  return requestAdminApi<AgentAdmin>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/agents/${
+      encodeURIComponent(agentId)
+    }/status`,
+    {
+      method: "PATCH",
+      headers: bearerHeaders(accessToken),
+      body: JSON.stringify({
+        is_active: isActive,
+      }),
+    },
+  );
+}
+
+export async function updateAdminAgentConfiguration(
+  accessToken: string,
+  tenantId: string,
+  agentId: string,
+  payload: AgentConfigUpdatePayload,
+): Promise<AgentConfig> {
+  return requestAdminApi<AgentConfig>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/agents/${
+      encodeURIComponent(agentId)
+    }/config`,
+    {
+      method: "PATCH",
+      headers: bearerHeaders(accessToken),
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function permanentlyDeleteAdminAgent(
+  accessToken: string,
+  tenantId: string,
+  agentId: string,
+  confirmation: string,
+): Promise<void> {
+  await requestAdminApi<void>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/agents/${
+      encodeURIComponent(agentId)
+    }?confirm=${
+      encodeURIComponent(confirmation)
+    }`,
+    {
+      method: "DELETE",
       headers: bearerHeaders(accessToken),
     },
   );
