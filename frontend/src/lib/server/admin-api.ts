@@ -142,6 +142,9 @@ function bearerHeaders(
   };
 }
 
+export type RevokeAllApiKeysResult =
+  components["schemas"]["RevokeAllApiKeysResponse"];
+
 export async function loginAdmin(
   payload: LoginRequest,
 ): Promise<LoginResponse> {
@@ -251,6 +254,54 @@ export async function listAdminAuditEvents(
     `/api/admin/audit?limit=${normalizedLimit}`,
     {
       method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function getAdminTenant(
+  accessToken: string,
+  tenantId: string,
+): Promise<TenantAdmin> {
+  return requestAdminApi<TenantAdmin>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function revokeAdminApiKey(
+  accessToken: string,
+  tenantId: string,
+  keyId: string,
+): Promise<ApiKeyAdmin> {
+  return requestAdminApi<ApiKeyAdmin>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/api-keys/${
+      encodeURIComponent(keyId)
+    }/revoke`,
+    {
+      method: "POST",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function revokeAllAdminApiKeys(
+  accessToken: string,
+  tenantId: string,
+): Promise<RevokeAllApiKeysResult> {
+  return requestAdminApi<RevokeAllApiKeysResult>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/api-keys/revoke-all`,
+    {
+      method: "POST",
       headers: bearerHeaders(accessToken),
     },
   );

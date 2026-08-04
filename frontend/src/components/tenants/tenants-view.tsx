@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import {
   AlertTriangle,
+  ArrowLeft,
   Bot,
   CalendarDays,
   CheckCircle2,
@@ -842,6 +844,20 @@ export function TenantsView() {
                     className="tenant-actions"
                     role="cell"
                   >
+                    <Link
+                      className="tenant-action is-primary"
+                      href={`/dashboard/tenants/${
+                        encodeURIComponent(
+                          tenant.id,
+                        )
+                      }`}
+                    >
+                      <ArrowLeft aria-hidden="true" />
+                      <span>
+                        عرض التفاصيل
+                      </span>
+                    </Link>
+
                     <button
                       type="button"
                       className="tenant-action"
