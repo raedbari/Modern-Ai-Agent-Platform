@@ -256,6 +256,43 @@ export async function listAdminAuditEvents(
   );
 }
 
+export async function updateAdminTenantStatus(
+  accessToken: string,
+  tenantId: string,
+  isActive: boolean,
+): Promise<TenantAdmin> {
+  return requestAdminApi<TenantAdmin>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/status`,
+    {
+      method: "PATCH",
+      headers: bearerHeaders(accessToken),
+      body: JSON.stringify({
+        is_active: isActive,
+      }),
+    },
+  );
+}
+
+export async function permanentlyDeleteAdminTenant(
+  accessToken: string,
+  tenantId: string,
+  confirmation: string,
+): Promise<void> {
+  await requestAdminApi<void>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }?confirm=${
+      encodeURIComponent(confirmation)
+    }`,
+    {
+      method: "DELETE",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
 export function adminApiErrorResponse(
   error: unknown,
 ): Response {
