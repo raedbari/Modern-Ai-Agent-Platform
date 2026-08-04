@@ -630,3 +630,171 @@ export function adminApiErrorResponse(
     },
   );
 }
+
+export type ConversationAdmin =
+  components["schemas"]["ConversationAdminResponse"];
+
+export type ConversationAdminList =
+  components["schemas"]["ConversationAdminListResponse"];
+
+export type MessageAdmin =
+  components["schemas"]["MessageAdminResponse"];
+
+export type MessageAdminList =
+  components["schemas"]["MessageAdminListResponse"];
+
+type ConversationListOptions = {
+  agentId?: string;
+  limit?: number;
+  offset?: number;
+};
+
+type MessageListOptions = {
+  limit?: number;
+  offset?: number;
+};
+
+function normalizeInteger(
+  value: number | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  if (
+    value === undefined ||
+    !Number.isFinite(value)
+  ) {
+    return fallback;
+  }
+
+  return Math.min(
+    Math.max(
+      Math.trunc(value),
+      minimum,
+    ),
+    maximum,
+  );
+}
+
+export async function listAdminConversations(
+  accessToken: string,
+  tenantId: string,
+  options: ConversationListOptions = {},
+): Promise<ConversationAdminList> {
+  const searchParams =
+    new URLSearchParams();
+
+  const normalizedAgentId =
+    options.agentId?.trim();
+
+  if (normalizedAgentId) {
+    searchParams.set(
+      "agent_id",
+      normalizedAgentId,
+    );
+  }
+
+  searchParams.set(
+    "limit",
+    String(
+      normalizeInteger(
+        options.limit,
+        100,
+        1,
+        200,
+      ),
+    ),
+  );
+
+  searchParams.set(
+    "offset",
+    String(
+      normalizeInteger(
+        options.offset,
+        0,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      ),
+    ),
+  );
+
+  return requestAdminApi<
+    ConversationAdminList
+  >(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/conversations?${searchParams.toString()}`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function getAdminConversation(
+  accessToken: string,
+  tenantId: string,
+  conversationId: string,
+): Promise<ConversationAdmin> {
+  return requestAdminApi<
+    ConversationAdmin
+  >(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/conversations/${
+      encodeURIComponent(conversationId)
+    }`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function listAdminConversationMessages(
+  accessToken: string,
+  tenantId: string,
+  conversationId: string,
+  options: MessageListOptions = {},
+): Promise<MessageAdminList> {
+  const searchParams =
+    new URLSearchParams();
+
+  searchParams.set(
+    "limit",
+    String(
+      normalizeInteger(
+        options.limit,
+        200,
+        1,
+        500,
+      ),
+    ),
+  );
+
+  searchParams.set(
+    "offset",
+    String(
+      normalizeInteger(
+        options.offset,
+        0,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      ),
+    ),
+  );
+
+  return requestAdminApi<
+    MessageAdminList
+  >(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/conversations/${
+      encodeURIComponent(conversationId)
+    }/messages?${searchParams.toString()}`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}

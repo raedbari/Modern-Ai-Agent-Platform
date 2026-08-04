@@ -352,6 +352,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/tenants/{tenant_id}/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Admin Conversations */
+        get: operations["list_admin_conversations_api_admin_tenants__tenant_id__conversations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/tenants/{tenant_id}/conversations/{conversation_id}": {
         parameters: {
             query?: never;
@@ -359,11 +376,29 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Read Admin Conversation */
+        get: operations["read_admin_conversation_api_admin_tenants__tenant_id__conversations__conversation_id__get"];
         put?: never;
         post?: never;
         /** Permanently Delete Conversation */
         delete: operations["permanently_delete_conversation_api_admin_tenants__tenant_id__conversations__conversation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/tenants/{tenant_id}/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Admin Conversation Messages */
+        get: operations["list_admin_conversation_messages_api_admin_tenants__tenant_id__conversations__conversation_id__messages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -855,6 +890,60 @@ export interface components {
             new_password: string;
         };
         /**
+         * ConversationAdminListResponse
+         * @description Paginated tenant conversation collection.
+         */
+        ConversationAdminListResponse: {
+            /** Items */
+            items?: components["schemas"]["ConversationAdminResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * ConversationAdminResponse
+         * @description Administrative summary for one tenant-owned conversation.
+         */
+        ConversationAdminResponse: {
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Name */
+            agent_name: string;
+            /** Assistant Message Count */
+            assistant_message_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Last Message Preview */
+            last_message_preview: string | null;
+            /** Last Message Role */
+            last_message_role: ("system" | "user" | "assistant" | "tool") | null;
+            /** Message Count */
+            message_count: number;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            } | null;
+            /** Tenant Id */
+            tenant_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** User Identifier */
+            user_identifier: string | null;
+            /** User Message Count */
+            user_message_count: number;
+        };
+        /**
          * CreateAdminRequest
          * @description Payload for POST /api/admin/admins (super_admin only).
          */
@@ -1214,6 +1303,48 @@ export interface components {
         LogoutRequest: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /**
+         * MessageAdminListResponse
+         * @description Paginated messages for one conversation.
+         */
+        MessageAdminListResponse: {
+            /** Items */
+            items?: components["schemas"]["MessageAdminResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * MessageAdminResponse
+         * @description One persisted tenant-scoped conversation message.
+         */
+        MessageAdminResponse: {
+            /** Content */
+            content: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "system" | "user" | "assistant" | "tool";
+            /** Tenant Id */
+            tenant_id: string;
         };
         /**
          * ReadinessResponse
@@ -2057,6 +2188,73 @@ export interface operations {
             };
         };
     };
+    list_admin_conversations_api_admin_tenants__tenant_id__conversations_get: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationAdminListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_admin_conversation_api_admin_tenants__tenant_id__conversations__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationAdminResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     permanently_delete_conversation_api_admin_tenants__tenant_id__conversations__conversation_id__delete: {
         parameters: {
             query?: never;
@@ -2075,6 +2273,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admin_conversation_messages_api_admin_tenants__tenant_id__conversations__conversation_id__messages_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                tenant_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageAdminListResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
