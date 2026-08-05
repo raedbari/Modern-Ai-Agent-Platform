@@ -1,4 +1,4 @@
-"""Administrator read endpoints for tenant-scoped knowledge data."""
+"""Administrator endpoints for tenant-scoped knowledge data."""
 
 from __future__ import annotations
 
@@ -9,26 +9,33 @@ from typing import Annotated
 from fastapi import (
     APIRouter,
     Depends,
+    File,
+    Form,
     HTTPException,
     Query,
     Request,
+    UploadFile,
     status,
 )
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.dependencies import (
+    get_embedding_provider,
     require_admin_access,
     require_permission,
 )
 from backend.app.api.schemas.admin_knowledge import (
     DocumentAdminResponse,
+    DocumentJobAdminResponse,
     IngestionJobAdminResponse,
     KnowledgeBaseAdminCreate,
     KnowledgeBaseAdminResponse,
     KnowledgeBaseAdminUpdate,
     KnowledgeBaseAgentAssignmentsUpdate,
 )
+from backend.app.ai.ports import EmbeddingProvider
 from backend.app.auth.admin_context import AdminContext
 from backend.app.core.client_ip import get_client_ip
 from backend.app.core.config import Settings, get_settings
@@ -40,12 +47,28 @@ from backend.app.db.models import (
     IngestionJob,
     KnowledgeBaseModel,
 )
+from backend.app.domain.exceptions import (
+    DocumentNotFoundError,
+    DomainError,
+    KnowledgeBaseNotFoundError,
+    UnsupportedDocumentTypeError,
+)
+from backend.app.infrastructure.storage import LocalUploadStorage
 from backend.app.operations.admin_lifecycle import (
     AdminResourceNotFoundError,
     require_agent,
     require_tenant,
 )
+from backend.app.operations.ingestion_runtime import (
+    build_ingestion_service,
+)
 from backend.app.services.audit import AuditService
+from backend.app.services.knowledge.ingestion_service import (
+    IngestionRequest,
+)
+from backend.app.services.knowledge.job_service import (
+    IngestionJobService,
+)
 
 
 router = APIRouter(
@@ -67,6 +90,43 @@ def _unprocessable(detail: str) -> HTTPException:
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail=detail,
     )
+
+
+def _conflict(detail: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=detail,
+    )
+
+
+async def _read_admin_upload(
+    file: UploadFile,
+    size_limit: int,
+) -> bytes:
+    content = await file.read(size_limit + 1)
+    if len(content) > size_limit:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="The uploaded document exceeds the size limit.",
+        )
+    return content
+
+
+def _document_status_value(value: object) -> str:
+    return str(getattr(value, "value", value))
+
+
+def _raise_admin_ingestion_error(exc: DomainError) -> None:
+    if isinstance(
+        exc,
+        (KnowledgeBaseNotFoundError, DocumentNotFoundError),
+    ):
+        raise _not_found(str(exc)) from exc
+    if isinstance(exc, UnsupportedDocumentTypeError):
+        raise _unprocessable(str(exc)) from exc
+    raise _unprocessable(
+        "Document processing could not be queued."
+    ) from exc
 
 
 async def _audit_mutation(
@@ -128,6 +188,69 @@ async def _require_knowledge_base(
         )
 
     return item
+
+
+async def _require_assigned_agent(
+    session: AsyncSession,
+    *,
+    tenant_id: str,
+    knowledge_base_id: str,
+    agent_id: str,
+) -> None:
+    try:
+        await require_agent(
+            session,
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+        )
+    except AdminResourceNotFoundError as exc:
+        raise _not_found(str(exc)) from exc
+
+    assignment = await session.scalar(
+        select(AgentKnowledgeBase).where(
+            AgentKnowledgeBase.tenant_id == tenant_id,
+            AgentKnowledgeBase.knowledge_base_id == knowledge_base_id,
+            AgentKnowledgeBase.agent_id == agent_id,
+        )
+    )
+    if assignment is None:
+        raise _not_found(
+            "Agent is not assigned to this knowledge base."
+        )
+
+
+async def _require_document(
+    session: AsyncSession,
+    *,
+    tenant_id: str,
+    knowledge_base_id: str,
+    document_id: str,
+) -> DocumentModel:
+    document = await session.scalar(
+        select(DocumentModel).where(
+            DocumentModel.tenant_id == tenant_id,
+            DocumentModel.knowledge_base_id == knowledge_base_id,
+            DocumentModel.id == document_id,
+        )
+    )
+    if document is None:
+        raise _not_found("Document not found.")
+    return document
+
+
+def _document_job_response(
+    *,
+    document_id: str,
+    document_status: object,
+    job: IngestionJob | None = None,
+    duplicate: bool = False,
+) -> DocumentJobAdminResponse:
+    return DocumentJobAdminResponse(
+        document_id=document_id,
+        document_status=_document_status_value(document_status),
+        duplicate=duplicate,
+        job=_job_response(job) if job is not None else None,
+    )
 
 
 def _job_response(
@@ -887,3 +1010,284 @@ async def replace_admin_knowledge_base_agents(
     if not items:
         raise _not_found("Knowledge base not found.")
     return items[0]
+
+@router.post(
+    "/{knowledge_base_id}/documents",
+    response_model=DocumentJobAdminResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_permission("knowledge:write"))],
+)
+async def queue_admin_document(
+    tenant_id: str,
+    knowledge_base_id: str,
+    file: Annotated[UploadFile, File()],
+    http_request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    runtime: Annotated[
+        EmbeddingProvider,
+        Depends(get_embedding_provider),
+    ],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+    agent_id: Annotated[
+        str,
+        Form(min_length=1, max_length=128),
+    ],
+    source_name: Annotated[
+        str,
+        Form(min_length=1, max_length=512),
+    ] = "admin-upload",
+) -> DocumentJobAdminResponse:
+    """Retain and queue one new administrative document upload."""
+
+    await _require_knowledge_base(
+        session,
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+    )
+    await _require_assigned_agent(
+        session,
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+        agent_id=agent_id,
+    )
+
+    content = await _read_admin_upload(
+        file,
+        settings.max_upload_size_bytes,
+    )
+    ingestion_request = IngestionRequest(
+        content=content,
+        filename=file.filename or "upload",
+        mime_type=file.content_type or "application/octet-stream",
+        tenant_id=tenant_id,
+        agent_id=agent_id,
+        knowledge_base_id=knowledge_base_id,
+        source_name=source_name,
+    )
+    service = build_ingestion_service(
+        session=session,
+        runtime=runtime,
+        settings=settings,
+    )
+    storage = LocalUploadStorage(settings.upload_storage_root)
+    storage_key: str | None = None
+    job_id = str(uuid4())
+
+    try:
+        prepared = await service.prepare(ingestion_request)
+        if prepared.duplicate:
+            await session.rollback()
+            return _document_job_response(
+                document_id=prepared.document.id,
+                document_status=prepared.document.status,
+                duplicate=True,
+            )
+
+        await session.flush()
+        storage_key = await storage.store(
+            tenant_id=tenant_id,
+            document_id=job_id,
+            content=content,
+        )
+        job = await IngestionJobService.enqueue(
+            session,
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            knowledge_base_id=knowledge_base_id,
+            document_id=prepared.document.id,
+            storage_key=storage_key,
+            max_attempts=settings.ingestion_job_max_attempts,
+            source_filename=ingestion_request.filename,
+            source_mime_type=ingestion_request.mime_type,
+            source_name=ingestion_request.source_name,
+            job_id=job_id,
+        )
+        await _audit_mutation(
+            session,
+            context=context,
+            request=http_request,
+            settings=settings,
+            event_type="knowledge_document_upload_queued",
+            target_type="knowledge_document",
+            target_id=prepared.document.id,
+            detail={
+                "tenant_id": tenant_id,
+                "agent_id": agent_id,
+                "knowledge_base_id": knowledge_base_id,
+                "job_id": job.id,
+            },
+        )
+        await session.commit()
+        return _document_job_response(
+            document_id=prepared.document.id,
+            document_status=prepared.document.status,
+            job=job,
+        )
+    except DomainError as exc:
+        await session.rollback()
+        if storage_key is not None:
+            await storage.delete(storage_key)
+        _raise_admin_ingestion_error(exc)
+    except IntegrityError as exc:
+        await session.rollback()
+        if storage_key is not None:
+            await storage.delete(storage_key)
+        raise _conflict(
+            "An active ingestion job already exists."
+        ) from exc
+    except Exception:
+        await session.rollback()
+        if storage_key is not None:
+            await storage.delete(storage_key)
+        raise
+
+
+@router.post(
+    "/{knowledge_base_id}/documents/{document_id}/replace",
+    response_model=DocumentJobAdminResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_permission("knowledge:write"))],
+)
+async def queue_admin_document_replacement(
+    tenant_id: str,
+    knowledge_base_id: str,
+    document_id: str,
+    file: Annotated[UploadFile, File()],
+    http_request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    runtime: Annotated[
+        EmbeddingProvider,
+        Depends(get_embedding_provider),
+    ],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+    source_name: Annotated[
+        str,
+        Form(min_length=1, max_length=512),
+    ] = "admin-replacement",
+) -> DocumentJobAdminResponse:
+    """Queue a replacement while preserving the active document."""
+
+    await _require_knowledge_base(
+        session,
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+    )
+    document = await _require_document(
+        session,
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+        document_id=document_id,
+    )
+    if document.agent_id is None:
+        raise _conflict("Document is not assigned to an agent.")
+
+    await _require_assigned_agent(
+        session,
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+        agent_id=document.agent_id,
+    )
+    active_job = await IngestionJobService.get_active_for_document(
+        session,
+        tenant_id=tenant_id,
+        document_id=document_id,
+    )
+    if active_job is not None:
+        raise _conflict(
+            "An active ingestion job already exists."
+        )
+
+    content = await _read_admin_upload(
+        file,
+        settings.max_upload_size_bytes,
+    )
+    ingestion_request = IngestionRequest(
+        content=content,
+        filename=file.filename or "upload",
+        mime_type=file.content_type or "application/octet-stream",
+        tenant_id=tenant_id,
+        agent_id=document.agent_id,
+        knowledge_base_id=knowledge_base_id,
+        source_name=source_name,
+    )
+    service = build_ingestion_service(
+        session=session,
+        runtime=runtime,
+        settings=settings,
+    )
+    storage = LocalUploadStorage(settings.upload_storage_root)
+    storage_key: str | None = None
+    job_id = str(uuid4())
+
+    try:
+        validated = await service.validate_reindex_target(
+            document_id=document_id,
+            request=ingestion_request,
+        )
+        preserved_status = validated.status
+        await session.rollback()
+
+        storage_key = await storage.store(
+            tenant_id=tenant_id,
+            document_id=job_id,
+            content=content,
+        )
+        job = await IngestionJobService.enqueue(
+            session,
+            tenant_id=tenant_id,
+            agent_id=ingestion_request.agent_id,
+            knowledge_base_id=knowledge_base_id,
+            document_id=document_id,
+            storage_key=storage_key,
+            max_attempts=settings.ingestion_job_max_attempts,
+            source_filename=ingestion_request.filename,
+            source_mime_type=ingestion_request.mime_type,
+            source_name=ingestion_request.source_name,
+            job_id=job_id,
+        )
+        await _audit_mutation(
+            session,
+            context=context,
+            request=http_request,
+            settings=settings,
+            event_type="knowledge_document_replacement_queued",
+            target_type="knowledge_document",
+            target_id=document_id,
+            detail={
+                "tenant_id": tenant_id,
+                "agent_id": ingestion_request.agent_id,
+                "knowledge_base_id": knowledge_base_id,
+                "job_id": job.id,
+            },
+        )
+        await session.commit()
+        return _document_job_response(
+            document_id=document_id,
+            document_status=preserved_status,
+            job=job,
+        )
+    except DomainError as exc:
+        await session.rollback()
+        if storage_key is not None:
+            await storage.delete(storage_key)
+        _raise_admin_ingestion_error(exc)
+    except IntegrityError as exc:
+        await session.rollback()
+        if storage_key is not None:
+            await storage.delete(storage_key)
+        raise _conflict(
+            "An active ingestion job already exists."
+        ) from exc
+    except Exception:
+        await session.rollback()
+        if storage_key is not None:
+            await storage.delete(storage_key)
+        raise

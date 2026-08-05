@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    text,
     JSON,
     Boolean,
     CheckConstraint,
@@ -812,6 +813,18 @@ class IngestionJob(Base):
             "tenant_id",
             "agent_id",
             "created_at",
+        ),
+        Index(
+            "uq_ingestion_jobs_active_document",
+            "tenant_id",
+            "document_id",
+            unique=True,
+            postgresql_where=text(
+                "status IN ('pending', 'processing')"
+            ),
+            sqlite_where=text(
+                "status IN ('pending', 'processing')"
+            ),
         ),
     )
 

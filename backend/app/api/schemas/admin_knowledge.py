@@ -76,6 +76,15 @@ class IngestionJobAdminResponse(BaseModel):
     completed_at: datetime | None
 
 
+class DocumentJobAdminResponse(BaseModel):
+    """Queued administrative document-ingestion operation."""
+
+    document_id: str
+    document_status: DocumentAdminStatus
+    duplicate: bool = False
+    job: IngestionJobAdminResponse | None = None
+
+
 class DocumentAdminResponse(BaseModel):
     """Administrative document metadata with derived ingestion details."""
 

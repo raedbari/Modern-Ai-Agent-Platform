@@ -60,6 +60,29 @@ class IngestionJobService:
         return job
 
     @staticmethod
+    async def get_active_for_document(
+        session: AsyncSession,
+        *,
+        tenant_id: str,
+        document_id: str,
+    ) -> IngestionJob | None:
+        """Return one pending or processing job for a document."""
+
+        return await session.scalar(
+            select(IngestionJob)
+            .where(
+                IngestionJob.tenant_id == tenant_id,
+                IngestionJob.document_id == document_id,
+                IngestionJob.status.in_(("pending", "processing")),
+            )
+            .order_by(
+                IngestionJob.created_at.desc(),
+                IngestionJob.id.desc(),
+            )
+            .limit(1)
+        )
+
+    @staticmethod
     async def get_scoped(
         session: AsyncSession,
         *,

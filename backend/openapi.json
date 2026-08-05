@@ -435,6 +435,55 @@
         "title": "ApiKeyAdminResponse",
         "type": "object"
       },
+      "Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post": {
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "source_name": {
+            "default": "admin-upload",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Source Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "agent_id"
+        ],
+        "title": "Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post",
+        "type": "object"
+      },
+      "Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "source_name": {
+            "default": "admin-replacement",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Source Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post",
+        "type": "object"
+      },
       "Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post": {
         "properties": {
           "file": {
@@ -1015,6 +1064,46 @@
           "duplicate"
         ],
         "title": "DocumentIngestionResponse",
+        "type": "object"
+      },
+      "DocumentJobAdminResponse": {
+        "description": "Queued administrative document-ingestion operation.",
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "document_status": {
+            "enum": [
+              "pending",
+              "processing",
+              "ready",
+              "failed"
+            ],
+            "title": "Document Status",
+            "type": "string"
+          },
+          "duplicate": {
+            "default": false,
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IngestionJobAdminResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "document_id",
+          "document_status"
+        ],
+        "title": "DocumentJobAdminResponse",
         "type": "object"
       },
       "DocumentJobResponse": {
@@ -4166,6 +4255,153 @@
           }
         ],
         "summary": "List Admin Documents",
+        "tags": [
+          "admin-knowledge"
+        ]
+      },
+      "post": {
+        "description": "Retain and queue one new administrative document upload.",
+        "operationId": "queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentJobAdminResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Queue Admin Document",
+        "tags": [
+          "admin-knowledge"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/knowledge-bases/{knowledge_base_id}/documents/{document_id}/replace": {
+      "post": {
+        "description": "Queue a replacement while preserving the active document.",
+        "operationId": "queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentJobAdminResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Queue Admin Document Replacement",
         "tags": [
           "admin-knowledge"
         ]

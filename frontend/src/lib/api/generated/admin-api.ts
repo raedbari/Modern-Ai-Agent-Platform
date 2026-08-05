@@ -467,7 +467,31 @@ export interface paths {
         /** List Admin Documents */
         get: operations["list_admin_documents_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_get"];
         put?: never;
-        post?: never;
+        /**
+         * Queue Admin Document
+         * @description Retain and queue one new administrative document upload.
+         */
+        post: operations["queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/tenants/{tenant_id}/knowledge-bases/{knowledge_base_id}/documents/{document_id}/replace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue Admin Document Replacement
+         * @description Queue a replacement while preserving the active document.
+         */
+        post: operations["queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -856,6 +880,34 @@ export interface components {
             /** Tenant Id */
             tenant_id: string;
         };
+        /** Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post */
+        Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post: {
+            /** Agent Id */
+            agent_id: string;
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Source Name
+             * @default admin-upload
+             */
+            source_name: string;
+        };
+        /** Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post */
+        Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Source Name
+             * @default admin-replacement
+             */
+            source_name: string;
+        };
         /** Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post */
         Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post: {
             /**
@@ -1051,6 +1103,25 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * DocumentJobAdminResponse
+         * @description Queued administrative document-ingestion operation.
+         */
+        DocumentJobAdminResponse: {
+            /** Document Id */
+            document_id: string;
+            /**
+             * Document Status
+             * @enum {string}
+             */
+            document_status: "pending" | "processing" | "ready" | "failed";
+            /**
+             * Duplicate
+             * @default false
+             */
+            duplicate: boolean;
+            job?: components["schemas"]["IngestionJobAdminResponse"] | null;
         };
         /**
          * DocumentJobResponse
@@ -2571,6 +2642,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentAdminResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentJobAdminResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                knowledge_base_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentJobAdminResponse"];
                 };
             };
             /** @description Validation Error */
