@@ -1,0 +1,241 @@
+.section {
+  border-bottom: 1px solid rgba(126, 117, 151, 0.14);
+  padding: 20px 22px;
+  background: rgba(22, 18, 39, 0.5);
+}
+
+.heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.headingIcon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(151, 116, 255, 0.28);
+  border-radius: 12px;
+  background: rgba(84, 50, 158, 0.26);
+  color: #b798ff;
+}
+
+.headingIcon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.heading h4,
+.heading p {
+  margin: 0;
+}
+
+.heading h4 {
+  font-size: 0.9rem;
+}
+
+.heading p {
+  margin-top: 5px;
+  color: #8e879b;
+  font-size: 0.76rem;
+  line-height: 1.7;
+}
+
+.form {
+  display: grid;
+  grid-template-columns:
+    minmax(180px, 0.8fr)
+    minmax(180px, 0.8fr)
+    minmax(220px, 1.2fr)
+    auto;
+  gap: 11px;
+  align-items: end;
+  margin-top: 16px;
+}
+
+.field,
+.fileField {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.field > span,
+.fileField > span {
+  color: #9a94a7;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.field select,
+.field input,
+.fileField {
+  min-height: 44px;
+  border: 1px solid rgba(137, 126, 164, 0.22);
+  border-radius: 12px;
+  background: rgba(13, 13, 27, 0.88);
+  color: #f5f2ff;
+  font: inherit;
+}
+
+.field select,
+.field input {
+  width: 100%;
+  padding: 0 12px;
+  outline: none;
+}
+
+.fileField {
+  position: relative;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.fileField > span {
+  overflow: hidden;
+  color: #b7b0c4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileField input,
+.replaceButton input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.primaryButton,
+.replaceButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(151, 116, 255, 0.38);
+  border-radius: 12px;
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.primaryButton {
+  min-height: 44px;
+  padding: 0 16px;
+  background: linear-gradient(
+    135deg,
+    rgba(116, 74, 220, 0.88),
+    rgba(74, 43, 149, 0.88)
+  );
+}
+
+.primaryButton:disabled,
+.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.primaryButton svg,
+.replaceButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.success,
+.error {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 13px;
+  border-radius: 11px;
+  padding: 10px 12px;
+  font-size: 0.75rem;
+}
+
+.success {
+  border: 1px solid rgba(46, 211, 180, 0.2);
+  background: rgba(18, 75, 69, 0.22);
+  color: #84e5d3;
+}
+
+.error {
+  border: 1px solid rgba(255, 91, 120, 0.17);
+  background: rgba(127, 26, 50, 0.12);
+  color: #ff8ba0;
+}
+
+.success svg,
+.error svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+
+.replaceArea {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.replaceButton {
+  position: relative;
+  min-height: 38px;
+  padding: 0 13px;
+  background: rgba(61, 39, 112, 0.55);
+}
+
+.inlineSuccess,
+.inlineError {
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.inlineSuccess {
+  color: #75dfca;
+}
+
+.inlineError {
+  color: #ff8ba0;
+}
+
+.spinner {
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1180px) {
+  .form {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .section {
+    padding: 17px;
+  }
+
+  .form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .primaryButton,
+  .replaceButton {
+    width: 100%;
+  }
+}

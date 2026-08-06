@@ -1,0 +1,472 @@
+#!/usr/bin/env python
+from __future__ import annotations
+
+from pathlib import Path
+
+
+ROOT = Path.cwd().resolve()
+TARGET = (
+    ROOT
+    / "frontend"
+    / "public"
+    / "kiwi-widget-test.html"
+)
+
+html = """<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  />
+  <title>Kiwi Travels Yemen</title>
+
+  <style>
+    :root {
+      color-scheme: light;
+      --brand: #0e9f6e;
+      --brand-dark: #0b6d4f;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --surface: #ffffff;
+      --soft: #f4fbf8;
+      --line: #dce9e4;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family:
+        Inter,
+        "Segoe UI",
+        Tahoma,
+        Arial,
+        sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(
+          circle at 14% 18%,
+          rgba(14, 159, 110, 0.12),
+          transparent 34%
+        ),
+        linear-gradient(
+          180deg,
+          #ffffff,
+          #f5faf8
+        );
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 28px;
+      padding:
+        20px
+        clamp(24px, 6vw, 88px);
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 900;
+    }
+
+    .logo {
+      display: grid;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      border-radius: 15px;
+      color: white;
+      background:
+        linear-gradient(
+          135deg,
+          var(--brand),
+          #52c98f
+        );
+      box-shadow:
+        0 12px 28px
+        rgba(14, 159, 110, 0.28);
+      font-size: 22px;
+    }
+
+    nav {
+      display: flex;
+      gap: 24px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    main {
+      padding:
+        clamp(54px, 8vw, 110px)
+        clamp(24px, 7vw, 104px)
+        100px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns:
+        minmax(0, 1.1fr)
+        minmax(320px, 0.9fr);
+      gap: 52px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid
+        rgba(14, 159, 110, 0.2);
+      border-radius: 999px;
+      padding: 8px 12px;
+      color: var(--brand-dark);
+      background: rgba(14, 159, 110, 0.07);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 18px 0 16px;
+      font-size:
+        clamp(2.7rem, 6vw, 5.2rem);
+      line-height: 1.05;
+      letter-spacing: -0.045em;
+    }
+
+    .lead {
+      max-width: 680px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 2;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .button {
+      display: inline-flex;
+      min-height: 48px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 14px;
+      padding: 0 20px;
+      text-decoration: none;
+      font-weight: 900;
+    }
+
+    .button-primary {
+      color: white;
+      background:
+        linear-gradient(
+          135deg,
+          var(--brand),
+          var(--brand-dark)
+        );
+      box-shadow:
+        0 14px 30px
+        rgba(14, 159, 110, 0.24);
+    }
+
+    .button-secondary {
+      border: 1px solid var(--line);
+      color: var(--ink);
+      background: white;
+    }
+
+    .travel-card {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 30px;
+      background: white;
+      box-shadow:
+        0 28px 72px
+        rgba(15, 23, 42, 0.14);
+    }
+
+    .travel-card__hero {
+      min-height: 220px;
+      padding: 30px;
+      color: white;
+      background:
+        radial-gradient(
+          circle at 18% 20%,
+          rgba(255, 255, 255, 0.2),
+          transparent 30%
+        ),
+        linear-gradient(
+          135deg,
+          #0b6d4f,
+          #0e9f6e 60%,
+          #76d9a5
+        );
+    }
+
+    .travel-card__hero small {
+      opacity: 0.85;
+      font-weight: 800;
+    }
+
+    .travel-card__hero strong {
+      display: block;
+      margin-top: 20px;
+      font-size: 32px;
+    }
+
+    .details {
+      display: grid;
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      padding: 20px;
+    }
+
+    .details article {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      background: var(--soft);
+    }
+
+    .details span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .details strong {
+      display: block;
+      margin-top: 8px;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns:
+        repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 70px;
+    }
+
+    .feature {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 24px;
+      background:
+        rgba(255, 255, 255, 0.86);
+    }
+
+    .feature strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .test-note {
+      margin-top: 40px;
+      border: 1px dashed
+        rgba(14, 159, 110, 0.38);
+      border-radius: 18px;
+      padding: 18px;
+      color: var(--brand-dark);
+      background: rgba(14, 159, 110, 0.06);
+      line-height: 1.9;
+    }
+
+    code {
+      direction: ltr;
+      unicode-bidi: embed;
+      font-family:
+        "Cascadia Code",
+        Consolas,
+        monospace;
+    }
+
+    @media (max-width: 900px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .features {
+        grid-template-columns: 1fr;
+      }
+
+      nav {
+        display: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo">✈</span>
+      <span>Kiwi Travels Yemen</span>
+    </div>
+
+    <nav aria-label="التنقل الرئيسي">
+      <span>الرحلات</span>
+      <span>التأشيرات</span>
+      <span>العروض</span>
+      <span>تواصل معنا</span>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <span class="eyebrow">
+          رحلتك تبدأ من هنا
+        </span>
+
+        <h1>
+          نسهل عليك التخطيط والسفر
+        </h1>
+
+        <p class="lead">
+          خدمات حجوزات الطيران والفنادق والتأشيرات،
+          مع مساعد ذكي يجيب من معلومات المكتب
+          المعتمدة مباشرة.
+        </p>
+
+        <div class="actions">
+          <a
+            class="button button-primary"
+            href="#offers"
+          >
+            استكشف العروض
+          </a>
+
+          <a
+            class="button button-secondary"
+            href="#services"
+          >
+            خدماتنا
+          </a>
+        </div>
+      </div>
+
+      <aside class="travel-card">
+        <div class="travel-card__hero">
+          <small>عرض هذا الأسبوع</small>
+
+          <strong>
+            إسطنبول وطرابزون
+          </strong>
+
+          <p>
+            باقة مرنة تشمل الطيران والإقامة
+            وخيارات التنقل.
+          </p>
+        </div>
+
+        <div class="details">
+          <article>
+            <span>المدة</span>
+            <strong>8 أيام</strong>
+          </article>
+
+          <article>
+            <span>الدعم</span>
+            <strong>قبل وأثناء السفر</strong>
+          </article>
+
+          <article>
+            <span>التأشيرات</span>
+            <strong>مراجعة المتطلبات</strong>
+          </article>
+
+          <article>
+            <span>الحجز</span>
+            <strong>خيارات مرنة</strong>
+          </article>
+        </div>
+      </aside>
+    </section>
+
+    <section
+      class="features"
+      id="services"
+    >
+      <article class="feature">
+        <strong>حجوزات الطيران</strong>
+        <p>
+          مقارنة الخيارات واختيار الرحلة المناسبة.
+        </p>
+      </article>
+
+      <article class="feature">
+        <strong>خدمات التأشيرات</strong>
+        <p>
+          توضيح المتطلبات وتجهيز قائمة الوثائق.
+        </p>
+      </article>
+
+      <article class="feature">
+        <strong>المساعد الذكي</strong>
+        <p>
+          إجابات مرتبطة بقاعدة معرفة المكتب.
+        </p>
+      </article>
+    </section>
+
+    <div class="test-note">
+      هذه صفحة عميل مستقلة. الفقاعة التي ستظهر
+      في أسفل الصفحة تأتي فقط من
+      <code>athka-widget.js</code>
+      الرسمي.
+    </div>
+  </main>
+
+  <script
+    src="http://127.0.0.1:3000/widget/athka-widget.js"
+    data-widget-id="wgt_pb6z7wFhCnmVXjABUlHgW0Gt4SnIhU-_"
+    data-api-base="http://127.0.0.1:8000"
+    defer
+  ></script>
+</body>
+</html>
+"""
+
+TARGET.parent.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+TARGET.write_text(
+    html,
+    encoding="utf-8",
+    newline="\n",
+)
+
+print(f"WROTE={TARGET}")
+print("USES_OFFICIAL_WIDGET_LOADER=True")
+print(
+    "WIDGET_ID="
+    "wgt_pb6z7wFhCnmVXjABUlHgW0Gt4SnIhU-_"
+)
+print("CLIENT_PAGE_READY=True")
+print("REBUILD_REQUIRED=False")
+print("FILES_STAGED=False")
+print("FILES_COMMITTED=False")

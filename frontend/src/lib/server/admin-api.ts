@@ -99,7 +99,15 @@ async function requestAdminApi<T>(
 
   headers.set("Accept", "application/json");
 
-  if (init.body !== undefined && !headers.has("Content-Type")) {
+  const isFormDataBody =
+    typeof FormData !== "undefined" &&
+    init.body instanceof FormData;
+
+  if (
+    init.body !== undefined &&
+    !isFormDataBody &&
+    !headers.has("Content-Type")
+  ) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -795,6 +803,57 @@ export async function listAdminConversationMessages(
     {
       method: "GET",
       headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function queueAdminKnowledgeDocument(
+  accessToken: string,
+  tenantId: string,
+  knowledgeBaseId: string,
+  formData: FormData,
+): Promise<
+  components["schemas"]["DocumentJobAdminResponse"]
+> {
+  return requestAdminApi<
+    components["schemas"]["DocumentJobAdminResponse"]
+  >(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/knowledge-bases/${
+      encodeURIComponent(knowledgeBaseId)
+    }/documents`,
+    {
+      method: "POST",
+      headers: bearerHeaders(accessToken),
+      body: formData,
+    },
+  );
+}
+
+export async function queueAdminKnowledgeDocumentReplacement(
+  accessToken: string,
+  tenantId: string,
+  knowledgeBaseId: string,
+  documentId: string,
+  formData: FormData,
+): Promise<
+  components["schemas"]["DocumentJobAdminResponse"]
+> {
+  return requestAdminApi<
+    components["schemas"]["DocumentJobAdminResponse"]
+  >(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/knowledge-bases/${
+      encodeURIComponent(knowledgeBaseId)
+    }/documents/${
+      encodeURIComponent(documentId)
+    }/replace`,
+    {
+      method: "POST",
+      headers: bearerHeaders(accessToken),
+      body: formData,
     },
   );
 }

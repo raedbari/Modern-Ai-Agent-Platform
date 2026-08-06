@@ -1,7 +1,6 @@
 import {
   adminApiErrorResponse,
-  listAdminKnowledgeDocuments,
-  queueAdminKnowledgeDocument,
+  queueAdminKnowledgeDocumentReplacement,
 } from "@/lib/server/admin-api";
 
 import {
@@ -12,44 +11,11 @@ type RouteContext = {
   params: Promise<{
     tenantId: string;
     knowledgeBaseId: string;
+    documentId: string;
   }>;
 };
 
 export const dynamic = "force-dynamic";
-
-export async function GET(
-  _request: Request,
-  context: RouteContext,
-): Promise<Response> {
-  const {
-    tenantId,
-    knowledgeBaseId,
-  } = await context.params;
-
-  try {
-    const items =
-      await withAdminAccessToken(
-        (accessToken) =>
-          listAdminKnowledgeDocuments(
-            accessToken,
-            tenantId,
-            knowledgeBaseId,
-          ),
-      );
-
-    return Response.json(
-      items,
-      {
-        headers: {
-          "Cache-Control":
-            "private, no-store, max-age=0",
-        },
-      },
-    );
-  } catch (error) {
-    return adminApiErrorResponse(error);
-  }
-}
 
 export async function POST(
   request: Request,
@@ -58,6 +24,7 @@ export async function POST(
   const {
     tenantId,
     knowledgeBaseId,
+    documentId,
   } = await context.params;
 
   try {
@@ -66,10 +33,11 @@ export async function POST(
     const item =
       await withAdminAccessToken(
         (accessToken) =>
-          queueAdminKnowledgeDocument(
+          queueAdminKnowledgeDocumentReplacement(
             accessToken,
             tenantId,
             knowledgeBaseId,
+            documentId,
             formData,
           ),
       );

@@ -10,3 +10,6 @@ export type KnowledgeDocumentRecord =
 
 export type KnowledgeIngestionJobRecord =
   components["schemas"]["IngestionJobAdminResponse"];
+
+export type KnowledgeDocumentJobRecord =
+  components["schemas"]["DocumentJobAdminResponse"];

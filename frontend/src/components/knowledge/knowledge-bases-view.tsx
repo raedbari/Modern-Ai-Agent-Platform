@@ -27,6 +27,11 @@ import type {
   KnowledgeIngestionJobRecord,
 } from "@/lib/knowledge/contracts";
 
+import {
+  KnowledgeDocumentActions,
+  KnowledgeDocumentReplaceAction,
+} from "@/components/knowledge/knowledge-document-actions";
+
 import type {
   TenantDirectoryItem,
   TenantDirectoryResponse,
@@ -386,6 +391,11 @@ export function KnowledgeBasesView() {
     setRefreshVersion,
   ] = useState(0);
 
+  const [
+    detailRefreshVersion,
+    setDetailRefreshVersion,
+  ] = useState(0);
+
   const loadTenants = useCallback(
     async (
       signal?: AbortSignal,
@@ -652,6 +662,7 @@ export function KnowledgeBasesView() {
       controller.abort();
     };
   }, [
+    detailRefreshVersion,
     refreshVersion,
     selectedBaseId,
     selectedTenantId,
@@ -703,6 +714,31 @@ export function KnowledgeBasesView() {
         item.id === selectedBaseId,
     ) ??
     null;
+
+  const hasActiveJobs = jobs.some(
+    (job) =>
+      job.status === "pending" ||
+      job.status === "processing",
+  );
+
+  useEffect(() => {
+    if (!hasActiveJobs) {
+      return;
+    }
+
+    const timer = window.setInterval(
+      () => {
+        setDetailRefreshVersion(
+          (current) => current + 1,
+        );
+      },
+      3000,
+    );
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [hasActiveJobs]);
 
   const totals = useMemo(
     () => ({
@@ -1319,6 +1355,22 @@ export function KnowledgeBasesView() {
                 )}
               </section>
 
+              <KnowledgeDocumentActions
+                key={currentBase.id}
+                tenantId={selectedTenantId}
+                knowledgeBaseId={currentBase.id}
+                assignedAgentIds={
+                  currentBase.assigned_agent_ids ??
+                  []
+                }
+                onQueued={() => {
+                  setActiveTab("jobs");
+                  setDetailRefreshVersion(
+                    (current) => current + 1,
+                  );
+                }}
+              />
+
               <div className={styles.tabs}>
                 <button
                   type="button"
@@ -1508,6 +1560,25 @@ export function KnowledgeBasesView() {
                               </dd>
                             </div>
                           </dl>
+
+                          <KnowledgeDocumentReplaceAction
+                            tenantId={
+                              selectedTenantId
+                            }
+                            knowledgeBaseId={
+                              currentBase.id
+                            }
+                            documentId={
+                              document.id
+                            }
+                            onQueued={() => {
+                              setActiveTab("jobs");
+                              setDetailRefreshVersion(
+                                (current) =>
+                                  current + 1,
+                              );
+                            }}
+                          />
 
                           {document.failure_reason && (
                             <div

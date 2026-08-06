@@ -12,7 +12,6 @@ import {
   RefreshCw,
   Save,
   Search,
-  Send,
   ShieldCheck,
   Undo2,
 } from "lucide-react";
@@ -23,6 +22,10 @@ import {
   useMemo,
   useState,
 } from "react";
+
+import {
+  LiveWidgetPreview,
+} from "@/components/widget-settings/live-widget-preview";
 
 import {
   createDefaultWidgetPayload,
@@ -130,6 +133,20 @@ const copy = {
     "\u064a\u064f\u0646\u0634\u0623 \u0639\u0646\u062f \u0623\u0648\u0644 \u062d\u0641\u0638 \u0648\u064a\u0628\u0642\u0649 \u062b\u0627\u0628\u062a\u064b\u0627 \u0639\u0628\u0631 \u0627\u0644\u062a\u062d\u062f\u064a\u062b\u0627\u062a.",
   copyId:
     "\u0646\u0633\u062e \u0627\u0644\u0645\u0639\u0631\u0641",
+  installTitle:
+    "\u062a\u062b\u0628\u064a\u062a \u0627\u0644\u0648\u064a\u062f\u062c\u062a \u0641\u064a \u0645\u0648\u0642\u0639 \u0627\u0644\u0639\u0645\u064a\u0644",
+  embedCode:
+    "\u0643\u0648\u062f \u0627\u0644\u062a\u0636\u0645\u064a\u0646",
+  copyEmbed:
+    "\u0646\u0633\u062e \u0643\u0648\u062f \u0627\u0644\u062a\u0636\u0645\u064a\u0646",
+  embedCopied:
+    "\u062a\u0645 \u0646\u0633\u062e \u0643\u0648\u062f \u0627\u0644\u062a\u0636\u0645\u064a\u0646",
+  embedReady:
+    "\u0643\u0648\u062f \u0627\u0644\u062a\u0636\u0645\u064a\u0646 \u062c\u0627\u0647\u0632 \u0644\u0644\u0639\u0645\u064a\u0644.",
+  embedNotReady:
+    "\u0641\u0639\u0644 \u0627\u0644\u0648\u064a\u062f\u062c\u062a\u060c \u0623\u0636\u0641 \u0646\u0637\u0627\u0642\u064b\u0627 \u0645\u0633\u0645\u0648\u062d\u064b\u0627\u060c \u062b\u0645 \u0627\u062d\u0641\u0638 \u0627\u0644\u0625\u0639\u062f\u0627\u062f\u0627\u062a.",
+  embedHint:
+    "\u0636\u0639 \u0627\u0644\u0643\u0648\u062f \u0642\u0628\u0644 \u0648\u0633\u0645 </body> \u0641\u064a \u0645\u0648\u0642\u0639 \u0627\u0644\u0639\u0645\u064a\u0644.",
   copied:
     "\u062a\u0645 \u0627\u0644\u0646\u0633\u062e",
   notCreated:
@@ -173,6 +190,17 @@ const copy = {
   retry:
     "\u0625\u0639\u0627\u062f\u0629 \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629",
 } as const;
+
+const widgetScriptUrl = (
+  process.env.NEXT_PUBLIC_WIDGET_SCRIPT_URL ??
+  "http://127.0.0.1:3000/widget/athka-widget.js"
+).trim();
+
+const widgetApiBaseUrl = (
+  process.env.NEXT_PUBLIC_WIDGET_API_BASE_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "http://127.0.0.1:8000"
+).replace(/\/+$/, "");
 
 const hexColorPattern =
   /^#[0-9A-Fa-f]{6}$/;
@@ -667,6 +695,11 @@ export function WidgetSettingsView() {
   ] = useState(false);
 
   const [
+    copiedEmbed,
+    setCopiedEmbed,
+  ] = useState(false);
+
+  const [
     reloadVersion,
     setReloadVersion,
   ] = useState(0);
@@ -776,6 +809,7 @@ export function WidgetSettingsView() {
       setActionError(null);
       setNotice(null);
       setCopied(false);
+      setCopiedEmbed(false);
 
       try {
         const response = await fetch(
@@ -1189,6 +1223,49 @@ export function WidgetSettingsView() {
       );
     } catch {
       setCopied(false);
+    }
+  }
+
+  const embedReady =
+    Boolean(publicWidgetId) &&
+    configured &&
+    baseline?.is_enabled === true &&
+    baseline.allowed_origins.length > 0 &&
+    !dirty;
+
+  const embedCode = useMemo(
+    () =>
+      publicWidgetId
+        ? [
+            "<script",
+            `  src="${widgetScriptUrl}"`,
+            `  data-widget-id="${publicWidgetId}"`,
+            `  data-api-base="${widgetApiBaseUrl}"`,
+            "  defer",
+            "></script>",
+          ].join("\n")
+        : "",
+    [publicWidgetId],
+  );
+
+  async function copyEmbedCode() {
+    if (!embedReady || !embedCode) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        embedCode,
+      );
+
+      setCopiedEmbed(true);
+
+      window.setTimeout(
+        () => setCopiedEmbed(false),
+        1800,
+      );
+    } catch {
+      setCopiedEmbed(false);
     }
   }
 
@@ -1826,6 +1903,83 @@ export function WidgetSettingsView() {
                 <p className="widget-settings-help">
                   {copy.publicIdHint}
                 </p>
+
+                <div className="widget-settings-install">
+                  <div className="widget-settings-card__title">
+                    <Clipboard
+                      aria-hidden="true"
+                    />
+                    <h3>{copy.installTitle}</h3>
+                  </div>
+
+                  <label className="widget-settings-embed-code">
+                    <span>{copy.embedCode}</span>
+
+                    <textarea
+                      dir="ltr"
+                      rows={7}
+                      readOnly
+                      value={
+                        embedCode ||
+                        copy.notCreated
+                      }
+                    />
+                  </label>
+
+                  <div
+                    className={
+                      "widget-settings-embed-status"
+                      + (
+                        embedReady
+                          ? " is-ready"
+                          : " is-blocked"
+                      )
+                    }
+                  >
+                    {embedReady ? (
+                      <Check
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <ShieldCheck
+                        aria-hidden="true"
+                      />
+                    )}
+
+                    <span>
+                      {embedReady
+                        ? copy.embedReady
+                        : copy.embedNotReady}
+                    </span>
+                  </div>
+
+                  <button
+                    className="widget-settings-button widget-settings-button--primary"
+                    type="button"
+                    disabled={!embedReady}
+                    onClick={() =>
+                      void copyEmbedCode()
+                    }
+                  >
+                    {copiedEmbed ? (
+                      <Check
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Clipboard
+                        aria-hidden="true"
+                      />
+                    )}
+
+                    {copiedEmbed
+                      ? copy.embedCopied
+                      : copy.copyEmbed}
+                  </button>
+
+                  <p className="widget-settings-help">
+                    {copy.embedHint}
+                  </p>
+                </div>
               </section>
 
               <footer className="widget-settings-actions">
@@ -1906,69 +2060,15 @@ export function WidgetSettingsView() {
                 <span />
               </div>
 
-              <div className="widget-settings-chat-window">
-                <header
-                  style={{
-                    backgroundColor:
-                      draft.theme.headerColor,
-                    color:
-                      draft.theme.textColor,
-                  }}
-                >
-                  <span className="widget-settings-chat-avatar">
-                    <Bot aria-hidden="true" />
-                  </span>
-
-                  <span>
-                    <strong>
-                      {previewName}
-                    </strong>
-
-                    <small>
-                      <i />
-                      {copy.online}
-                    </small>
-                  </span>
-                </header>
-
-                <div className="widget-settings-chat-body">
-                  <div className="widget-settings-chat-message widget-settings-chat-message--assistant">
-                    {previewGreeting}
-                  </div>
-
-                  <div
-                    className="widget-settings-chat-message widget-settings-chat-message--user"
-                    style={{
-                      backgroundColor:
-                        draft.theme
-                          .userMessageColor,
-                      color:
-                        draft.theme.textColor,
-                    }}
-                  >
-                    Athkachatbots
-                  </div>
-                </div>
-
-                <footer>
-                  <span>{copy.composer}</span>
-
-                  <button
-                    type="button"
-                    title={copy.send}
-                    style={{
-                      backgroundColor:
-                        draft.theme
-                          .primaryColor,
-                      color:
-                        draft.theme.textColor,
-                    }}
-                  >
-                    <Send aria-hidden="true" />
-                  </button>
-                </footer>
-              </div>
-
+              <LiveWidgetPreview
+                publicWidgetId={
+                  publicWidgetId
+                }
+                displayName={previewName}
+                greeting={previewGreeting}
+                theme={draft.theme}
+                isEnabled={draft.is_enabled}
+              />
               <button
                 type="button"
                 className="widget-settings-launcher"
