@@ -32,6 +32,7 @@ from backend.app.auth.admin_context import AdminContext
 from backend.app.core.client_ip import get_client_ip
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
+from backend.app.services.customer_email import send_verification_email
 from backend.app.operations.saas_onboarding import (
     ApplicationNotFoundError,
     ApplicationStateConflictError,
@@ -89,6 +90,16 @@ async def signup(
             user_agent=request.headers.get("User-Agent", "")[:512] or None,
         )
         await session.commit()
+
+        try:
+            await send_verification_email(
+                recipient=payload.email.strip(),
+                raw_token=raw_token,
+            )
+        except Exception:
+            LOGGER.exception(
+                "Verification email delivery failed after signup"
+            )
     except OnboardingConflictError as exc:
         await session.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -182,6 +193,17 @@ async def resend_verification_route(
     )
 
     await session.commit()
+
+    if raw_token is not None:
+        try:
+            await send_verification_email(
+                recipient=payload.email.strip(),
+                raw_token=raw_token,
+            )
+        except Exception:
+            LOGGER.exception(
+                "Verification email resend delivery failed"
+            )
 
     return ResendVerificationResponse(
         verification_token=(

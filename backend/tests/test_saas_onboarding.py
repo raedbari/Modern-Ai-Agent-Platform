@@ -316,3 +316,42 @@ async def test_admin_reject_application(
 
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_signup_uses_email_delivery_adapter(tmp_path, monkeypatch):
+    app, engine, _sessions = await open_app(tmp_path / "email-delivery.db")
+    sent = {}
+
+    async def fake_send_verification_email(*, recipient, raw_token):
+        sent["recipient"] = recipient
+        sent["raw_token"] = raw_token
+        return "http://example.test/verify-email"
+
+    monkeypatch.setattr(
+        "backend.app.api.routes.saas_onboarding.send_verification_email",
+        fake_send_verification_email,
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/saas/signup",
+                json={
+                    "name": "Owner",
+                    "email": "mail@example.com",
+                    "company_name": "Mail Company",
+                    "password": PASSWORD,
+                    "requested_plan": "starter",
+                    "legal_accepted": True,
+                },
+            )
+
+        assert response.status_code == 201, response.text
+        assert sent["recipient"] == "mail@example.com"
+        assert sent["raw_token"].startswith("athka_verify_")
+    finally:
+        await engine.dispose()
