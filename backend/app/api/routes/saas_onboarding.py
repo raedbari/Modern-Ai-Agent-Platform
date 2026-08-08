@@ -1,4 +1,16 @@
-﻿from typing import Annotated
+
+from backend.app.operations.saas_onboarding import (
+    reject_application,
+    request_application_changes,
+    resend_verification,
+)
+
+from backend.app.api.schemas.saas_onboarding import (
+    ResendVerificationRequest,
+    ResendVerificationResponse,
+    ReviewNoteRequest,
+)
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
@@ -7,6 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.api.dependencies import require_admin_access, require_permission
 from backend.app.api.schemas.saas_onboarding import (
     ApprovalRequest,
+    ResendVerificationRequest,
+    ResendVerificationResponse,
+    ReviewNoteRequest,
     SignupRequest,
     SignupResponse,
     TenantApplicationResponse,
@@ -24,6 +39,9 @@ from backend.app.operations.saas_onboarding import (
     OnboardingConflictError,
     approve_application,
     get_application,
+    reject_application,
+    request_application_changes,
+    resend_verification,
     list_applications,
     signup_customer,
     verify_email,
@@ -138,4 +156,283 @@ async def admin_approve_application(
     except IntegrityError as exc:
         await session.rollback()
         raise HTTPException(status_code=409, detail="Approval conflict.") from exc
+    return response_row(row)
+
+
+@router.post(
+    "/api/saas/resend-verification",
+    response_model=ResendVerificationResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def resend_verification_route(
+    payload: ResendVerificationRequest,
+    session: Annotated[
+        AsyncSession,
+        Depends(get_db),
+    ],
+    settings: Annotated[
+        Settings,
+        Depends(get_settings),
+    ],
+) -> ResendVerificationResponse:
+
+    raw_token = await resend_verification(
+        session,
+        email=payload.email,
+    )
+
+    await session.commit()
+
+    return ResendVerificationResponse(
+        verification_token=(
+            raw_token
+            if (
+                raw_token is not None
+                and settings.environment
+                in {"development", "test"}
+            )
+            else None
+        )
+    )
+
+
+@router.post(
+    "/api/admin/tenant-applications/"
+    "{application_id}/request-changes",
+    response_model=TenantApplicationResponse,
+    dependencies=[
+        Depends(require_permission("tenants:write"))
+    ],
+)
+async def admin_request_changes(
+    application_id: str,
+    payload: ReviewNoteRequest,
+    request: Request,
+    session: Annotated[
+        AsyncSession,
+        Depends(get_db),
+    ],
+    settings: Annotated[
+        Settings,
+        Depends(get_settings),
+    ],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> TenantApplicationResponse:
+
+    try:
+        await request_application_changes(
+            session,
+            application_id=application_id,
+            admin_id=(
+                context.admin_id
+                if context is not None
+                else None
+            ),
+            review_note=payload.review_note,
+            client_ip=get_client_ip(
+                request,
+                settings,
+            ),
+        )
+
+        await session.commit()
+
+        row = await get_application(
+            session,
+            application_id,
+        )
+
+    except ApplicationNotFoundError as exc:
+        await session.rollback()
+
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    except ApplicationStateConflictError as exc:
+        await session.rollback()
+
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+    return response_row(row)
+
+
+@router.post(
+    "/api/admin/tenant-applications/"
+    "{application_id}/reject",
+    response_model=TenantApplicationResponse,
+    dependencies=[
+        Depends(require_permission("tenants:write"))
+    ],
+)
+async def admin_reject_application(
+    application_id: str,
+    payload: ReviewNoteRequest,
+    request: Request,
+    session: Annotated[
+        AsyncSession,
+        Depends(get_db),
+    ],
+    settings: Annotated[
+        Settings,
+        Depends(get_settings),
+    ],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> TenantApplicationResponse:
+
+    try:
+        await reject_application(
+            session,
+            application_id=application_id,
+            admin_id=(
+                context.admin_id
+                if context is not None
+                else None
+            ),
+            review_note=payload.review_note,
+            client_ip=get_client_ip(
+                request,
+                settings,
+            ),
+        )
+
+        await session.commit()
+
+        row = await get_application(
+            session,
+            application_id,
+        )
+
+    except ApplicationNotFoundError as exc:
+        await session.rollback()
+
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    except ApplicationStateConflictError as exc:
+        await session.rollback()
+
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+    return response_row(row)
+
+
+@router.post(
+    "/api/admin/tenant-applications/{application_id}/request-changes",
+    response_model=TenantApplicationResponse,
+    dependencies=[Depends(require_permission("tenants:write"))],
+)
+async def admin_request_changes(
+    application_id: str,
+    payload: ReviewNoteRequest,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> TenantApplicationResponse:
+    try:
+        await request_application_changes(
+            session,
+            application_id=application_id,
+            admin_id=(
+                context.admin_id
+                if context is not None
+                else None
+            ),
+            review_note=payload.review_note,
+            client_ip=get_client_ip(request, settings),
+        )
+
+        await session.commit()
+
+        row = await get_application(
+            session,
+            application_id,
+        )
+
+    except ApplicationNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    except ApplicationStateConflictError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+    return response_row(row)
+
+
+@router.post(
+    "/api/admin/tenant-applications/{application_id}/reject",
+    response_model=TenantApplicationResponse,
+    dependencies=[Depends(require_permission("tenants:write"))],
+)
+async def admin_reject_application(
+    application_id: str,
+    payload: ReviewNoteRequest,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> TenantApplicationResponse:
+    try:
+        await reject_application(
+            session,
+            application_id=application_id,
+            admin_id=(
+                context.admin_id
+                if context is not None
+                else None
+            ),
+            review_note=payload.review_note,
+            client_ip=get_client_ip(request, settings),
+        )
+
+        await session.commit()
+
+        row = await get_application(
+            session,
+            application_id,
+        )
+
+    except ApplicationNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    except ApplicationStateConflictError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
     return response_row(row)

@@ -158,3 +158,161 @@ async def test_missing_legal_acceptance_rolls_back_approval(tmp_path):
         assert application.approved_tenant_id is None
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_resend_invalidates_previous_token(
+    tmp_path,
+):
+    app, engine, sessions = await open_app(
+        tmp_path / "resend.db"
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+
+            first = await client.post(
+                "/api/saas/signup",
+                json={
+                    "name": "Owner",
+                    "email": "resend@example.com",
+                    "company_name": "Resend Company",
+                    "password": PASSWORD,
+                    "requested_plan": "starter",
+                    "legal_accepted": True,
+                },
+            )
+
+            old_token = first.json()[
+                "verification_token"
+            ]
+
+            resent = await client.post(
+                "/api/saas/resend-verification",
+                json={
+                    "email": "resend@example.com"
+                },
+            )
+
+            assert resent.status_code == 202
+
+            new_token = resent.json()[
+                "verification_token"
+            ]
+
+            assert new_token
+            assert new_token != old_token
+
+            old_result = await client.post(
+                "/api/saas/verify-email",
+                json={"token": old_token},
+            )
+
+            assert old_result.status_code == 400
+
+            new_result = await client.post(
+                "/api/saas/verify-email",
+                json={"token": new_token},
+            )
+
+            assert new_result.status_code == 200
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_admin_request_changes(
+    tmp_path,
+):
+    app, engine, sessions = await open_app(
+        tmp_path / "changes.db"
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+
+            await signup_verify(
+                client,
+                "changes@example.com",
+            )
+
+            listed = await client.get(
+                "/api/admin/tenant-applications"
+            )
+
+            application_id = listed.json()[0]["id"]
+
+            result = await client.post(
+                "/api/admin/tenant-applications/"
+                f"{application_id}/request-changes",
+                json={
+                    "review_note":
+                        "Please update company details."
+                },
+            )
+
+            assert result.status_code == 200
+            assert (
+                result.json()["status"]
+                == "changes_requested"
+            )
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_admin_reject_application(
+    tmp_path,
+):
+    app, engine, sessions = await open_app(
+        tmp_path / "reject.db"
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+
+            await signup_verify(
+                client,
+                "reject@example.com",
+            )
+
+            listed = await client.get(
+                "/api/admin/tenant-applications"
+            )
+
+            application_id = listed.json()[0]["id"]
+
+            result = await client.post(
+                "/api/admin/tenant-applications/"
+                f"{application_id}/reject",
+                json={
+                    "review_note":
+                        "Application rejected."
+                },
+            )
+
+            assert result.status_code == 200
+            assert (
+                result.json()["status"]
+                == "rejected"
+            )
+            assert (
+                result.json()[
+                    "approved_tenant_id"
+                ]
+                is None
+            )
+
+    finally:
+        await engine.dispose()

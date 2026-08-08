@@ -68,3 +68,47 @@ class TenantApplicationResponse(BaseModel):
     approved_tenant_id: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class ResendVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        value = value.strip()
+
+        if value.count("@") != 1 or " " in value:
+            raise ValueError(
+                "A valid email address is required."
+            )
+
+        return value
+
+
+class ResendVerificationResponse(BaseModel):
+    accepted: bool = True
+    verification_token: str | None = None
+
+
+class ReviewNoteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    review_note: str = Field(
+        min_length=1,
+        max_length=2000,
+    )
+
+    @field_validator("review_note")
+    @classmethod
+    def validate_review_note(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError(
+                "Review note must not be blank."
+            )
+
+        return value

@@ -1,4 +1,4 @@
-﻿import hashlib
+import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -110,6 +110,75 @@ async def signup_customer(
     await session.flush()
     return application, raw_token
 
+
+async def resend_verification(
+    session: AsyncSession,
+    *,
+    email: str,
+) -> str | None:
+    """Create a new verification token without leaking account existence."""
+
+    normalized = normalize_email(email)
+
+    user = await session.scalar(
+        select(User).where(
+            User.normalized_email == normalized
+        )
+    )
+
+    if (
+        user is None
+        or not user.is_active
+        or user.email_verified_at is not None
+    ):
+        return None
+
+    application = await session.scalar(
+        select(TenantApplication).where(
+            TenantApplication.user_id == user.id,
+            TenantApplication.status == "email_pending",
+        )
+    )
+
+    if application is None:
+        return None
+
+    now = datetime.now(timezone.utc)
+
+    outstanding_tokens = list(
+        (
+            await session.scalars(
+                select(EmailVerificationToken).where(
+                    EmailVerificationToken.user_id == user.id,
+                    EmailVerificationToken.used_at.is_(None),
+                )
+            )
+        ).all()
+    )
+
+    for token in outstanding_tokens:
+        token.used_at = now
+
+    raw_token = (
+        "athka_verify_"
+        + secrets.token_urlsafe(32)
+    )
+
+    session.add(
+        EmailVerificationToken(
+            id=str(uuid4()),
+            user_id=user.id,
+            token_hash=hash_token(raw_token),
+            expires_at=now + timedelta(hours=24),
+            created_at=now,
+        )
+    )
+
+    await session.flush()
+
+    return raw_token
+
+
 async def verify_email(session: AsyncSession, *, raw_token: str) -> TenantApplication:
     now = datetime.now(timezone.utc)
     token = await session.scalar(
@@ -165,6 +234,114 @@ async def get_application(session: AsyncSession, application_id: str) -> tuple[T
     if row is None:
         raise ApplicationNotFoundError("Tenant application not found.")
     return row
+
+
+async def request_application_changes(
+    session: AsyncSession,
+    *,
+    application_id: str,
+    admin_id: str | None,
+    review_note: str,
+    client_ip: str | None,
+) -> TenantApplication:
+
+    application = await session.scalar(
+        select(TenantApplication)
+        .where(
+            TenantApplication.id == application_id
+        )
+        .with_for_update()
+    )
+
+    if application is None:
+        raise ApplicationNotFoundError(
+            "Tenant application not found."
+        )
+
+    if application.status != "under_review":
+        raise ApplicationStateConflictError(
+            "Application cannot request changes "
+            "in its current state."
+        )
+
+    application.status = "changes_requested"
+    application.reviewed_at = datetime.now(timezone.utc)
+    application.reviewed_by = admin_id
+    application.review_note = review_note.strip()
+
+    await AuditService.write(
+        session,
+        event_type=(
+            "tenant_application_changes_requested"
+        ),
+        outcome="success",
+        admin_id=admin_id,
+        target_type="tenant_application",
+        target_id=application.id,
+        client_ip=client_ip,
+        detail={
+            "user_id": application.user_id,
+        },
+    )
+
+    await session.flush()
+
+    return application
+
+
+async def reject_application(
+    session: AsyncSession,
+    *,
+    application_id: str,
+    admin_id: str | None,
+    review_note: str,
+    client_ip: str | None,
+) -> TenantApplication:
+
+    application = await session.scalar(
+        select(TenantApplication)
+        .where(
+            TenantApplication.id == application_id
+        )
+        .with_for_update()
+    )
+
+    if application is None:
+        raise ApplicationNotFoundError(
+            "Tenant application not found."
+        )
+
+    if application.status not in {
+        "under_review",
+        "changes_requested",
+    }:
+        raise ApplicationStateConflictError(
+            "Application cannot be rejected "
+            "in its current state."
+        )
+
+    application.status = "rejected"
+    application.reviewed_at = datetime.now(timezone.utc)
+    application.reviewed_by = admin_id
+    application.review_note = review_note.strip()
+
+    await AuditService.write(
+        session,
+        event_type="tenant_application_rejected",
+        outcome="success",
+        admin_id=admin_id,
+        target_type="tenant_application",
+        target_id=application.id,
+        client_ip=client_ip,
+        detail={
+            "user_id": application.user_id,
+        },
+    )
+
+    await session.flush()
+
+    return application
+
 
 async def approve_application(
     session: AsyncSession,
