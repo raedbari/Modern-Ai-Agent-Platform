@@ -55,6 +55,16 @@ Implement customer-facing authentication equivalent to:
 - POST /api/v1/tenant-auth/logout
 - GET /api/v1/tenant-auth/me
 
+`/me` must support both pre-approval and approved users.
+
+It should return the authenticated user plus:
+
+- current tenant application status when present
+- active membership/tenant information when present
+
+A verified user with an application in `under_review` may use `/me`
+but must not receive TenantUserContext until an active membership exists.
+
 Follow the repository's existing FastAPI routing conventions if the common API prefix is already applied elsewhere.
 
 ## Login
@@ -256,3 +266,4 @@ When finished provide:
 8. any known limitations
 
 Athka team will review the branch before merge.
+
