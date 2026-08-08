@@ -14,6 +14,7 @@ from backend.app.api.routes.admin_widget import router as admin_widget_router
 from backend.app.api.routes.chat import router as chat_router
 from backend.app.api.routes.health import router as health_router
 from backend.app.api.routes.knowledge import router as knowledge_router
+from backend.app.api.routes.saas_onboarding import router as saas_onboarding_router
 from backend.app.api.routes.widget import router as widget_router
 from backend.app.core.config import get_settings
 from backend.app.core.widget_cors import WidgetCORSMiddleware
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     application.include_router(widget_router)
     application.include_router(chat_router)
     application.include_router(knowledge_router)
+    application.include_router(saas_onboarding_router)
 
     return application
 
