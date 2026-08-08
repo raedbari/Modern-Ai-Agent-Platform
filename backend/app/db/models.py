@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlalchemy as athka_sa
+
 from datetime import datetime
 from typing import Any
 
@@ -339,6 +341,208 @@ class EmailVerificationToken(Base):
 
     user: Mapped["User"] = relationship(
         back_populates="email_verification_tokens",
+    )
+
+
+
+class TenantApplication(Base):
+    """Customer application awaiting Athka approval."""
+
+    __tablename__ = "tenant_applications"
+    __table_args__ = (
+        athka_sa.CheckConstraint(
+            "status IN ('email_pending','under_review','changes_requested','approved','rejected')",
+            name="ck_tenant_applications_status",
+        ),
+        athka_sa.UniqueConstraint(
+            "approved_tenant_id",
+            name="uq_tenant_applications_approved_tenant_id",
+        ),
+        athka_sa.Index(
+            "ix_tenant_applications_user_id",
+            "user_id",
+        ),
+        athka_sa.Index(
+            "ix_tenant_applications_status",
+            "status",
+        ),
+        athka_sa.Index(
+            "uq_tenant_applications_active_user",
+            "user_id",
+            unique=True,
+            postgresql_where=athka_sa.text(
+                "status IN ('email_pending','under_review','changes_requested')"
+            ),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        athka_sa.String(128),
+        primary_key=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        athka_sa.String(128),
+        athka_sa.ForeignKey("users.id"),
+        nullable=False,
+    )
+    company_name: Mapped[str] = mapped_column(
+        athka_sa.String(255),
+        nullable=False,
+    )
+    requested_plan: Mapped[str] = mapped_column(
+        athka_sa.String(64),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        athka_sa.String(32),
+        nullable=False,
+        default="email_pending",
+        server_default=athka_sa.text("'email_pending'"),
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        athka_sa.DateTime(timezone=True),
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        athka_sa.DateTime(timezone=True),
+    )
+    reviewed_by: Mapped[str | None] = mapped_column(
+        athka_sa.String(128),
+        athka_sa.ForeignKey(
+            "admin_users.id",
+            ondelete="SET NULL",
+        ),
+    )
+    review_note: Mapped[str | None] = mapped_column(
+        athka_sa.String(2000),
+    )
+    approved_tenant_id: Mapped[str | None] = mapped_column(
+        athka_sa.String(128),
+        athka_sa.ForeignKey(
+            "tenants.id",
+            ondelete="SET NULL",
+        ),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        athka_sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=athka_sa.func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        athka_sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=athka_sa.func.now(),
+        onupdate=athka_sa.func.now(),
+    )
+
+
+class LegalAcceptance(Base):
+    """Versioned legal acceptance attached to a tenant application."""
+
+    __tablename__ = "legal_acceptances"
+    __table_args__ = (
+        athka_sa.UniqueConstraint(
+            "application_id",
+            "document_type",
+            "document_version",
+            name="uq_legal_acceptance_document_version",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        athka_sa.String(128),
+        primary_key=True,
+    )
+    application_id: Mapped[str] = mapped_column(
+        athka_sa.String(128),
+        athka_sa.ForeignKey("tenant_applications.id"),
+        nullable=False,
+    )
+    document_type: Mapped[str] = mapped_column(
+        athka_sa.String(64),
+        nullable=False,
+    )
+    document_version: Mapped[str] = mapped_column(
+        athka_sa.String(64),
+        nullable=False,
+    )
+    accepted_at: Mapped[datetime] = mapped_column(
+        athka_sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=athka_sa.func.now(),
+    )
+    client_ip: Mapped[str | None] = mapped_column(
+        athka_sa.String(45),
+    )
+    user_agent: Mapped[str | None] = mapped_column(
+        athka_sa.String(512),
+    )
+
+
+class TenantMembership(Base):
+    """Links a customer user to a tenant with a current role."""
+
+    __tablename__ = "tenant_memberships"
+    __table_args__ = (
+        athka_sa.CheckConstraint(
+            "role IN ('tenant_owner','tenant_admin','knowledge_editor','conversation_viewer','billing_manager')",
+            name="ck_tenant_memberships_role",
+        ),
+        athka_sa.CheckConstraint(
+            "status IN ('active','suspended','revoked')",
+            name="ck_tenant_memberships_status",
+        ),
+        athka_sa.UniqueConstraint(
+            "user_id",
+            "tenant_id",
+            name="uq_tenant_memberships_user_tenant",
+        ),
+        athka_sa.Index(
+            "ix_tenant_memberships_tenant_status",
+            "tenant_id",
+            "status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        athka_sa.String(128),
+        primary_key=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        athka_sa.String(128),
+        athka_sa.ForeignKey(
+            "users.id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        athka_sa.String(128),
+        athka_sa.ForeignKey(
+            "tenants.id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(
+        athka_sa.String(32),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        athka_sa.String(32),
+        nullable=False,
+        default="active",
+        server_default=athka_sa.text("'active'"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        athka_sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=athka_sa.func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        athka_sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=athka_sa.func.now(),
+        onupdate=athka_sa.func.now(),
     )
 
 
