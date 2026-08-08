@@ -1,4 +1,4 @@
-import hashlib
+﻿import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -78,7 +78,10 @@ async def signup_customer(
         status="email_pending",
         submitted_at=now,
     )
-    session.add_all([user, application])
+    session.add(user)
+    await session.flush()
+
+    session.add(application)
     await session.flush()
 
     for document_type, version in LEGAL_DOCUMENT_VERSIONS.items():
