@@ -183,6 +183,165 @@ class AdminAuditLog(Base):
     detail: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
+class User(Base):
+    """A customer human identity account."""
+
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint(
+            "normalized_email",
+            name="uq_users_normalized_email",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    normalized_email: Mapped[str] = mapped_column(
+        String(320),
+        nullable=False,
+    )
+    hashed_password: Mapped[str] = mapped_column(
+        String(512),
+        nullable=False,
+    )
+    display_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    refresh_sessions: Mapped[list["UserRefreshSession"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    email_verification_tokens: Mapped[
+        list["EmailVerificationToken"]
+    ] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class UserRefreshSession(Base):
+    """Database-backed refresh-token session for a customer user."""
+
+    __tablename__ = "user_refresh_sessions"
+    __table_args__ = (
+        UniqueConstraint(
+            "token_hash",
+            name="uq_user_refresh_sessions_token_hash",
+        ),
+        Index(
+            "ix_user_refresh_sessions_user_id",
+            "user_id",
+        ),
+        Index(
+            "ix_user_refresh_sessions_family_id",
+            "family_id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+    family_id: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+    )
+    issued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+    client_ip: Mapped[str | None] = mapped_column(String(45))
+    user_agent: Mapped[str | None] = mapped_column(String(512))
+
+    user: Mapped["User"] = relationship(
+        back_populates="refresh_sessions",
+    )
+
+
+class EmailVerificationToken(Base):
+    """One-time token used to verify a customer email address."""
+
+    __tablename__ = "email_verification_tokens"
+    __table_args__ = (
+        UniqueConstraint(
+            "token_hash",
+            name="uq_email_verification_tokens_token_hash",
+        ),
+        Index(
+            "ix_email_verification_tokens_user_id",
+            "user_id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    user: Mapped["User"] = relationship(
+        back_populates="email_verification_tokens",
+    )
+
+
 class Tenant(Base):
     """A tenant using the platform."""
 
