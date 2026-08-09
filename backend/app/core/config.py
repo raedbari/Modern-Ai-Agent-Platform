@@ -166,6 +166,26 @@ class Settings(BaseSettings):
         le=86400,
     )
 
+    # Tenant user login rate limits
+    tenant_login_rate_limit_per_account: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+        description="Maximum login attempts per user account within the time window",
+    )
+    tenant_login_rate_limit_per_ip: int = Field(
+        default=20,
+        ge=1,
+        le=10000,
+        description="Maximum login attempts per IP address within the time window",
+    )
+    tenant_login_rate_limit_window_seconds: int = Field(
+        default=900,
+        ge=1,
+        le=86400,
+        description="Rate limit time window in seconds (default: 15 minutes)",
+    )
+
     # Browser Widget sessions use a separate signing key and short lifetime.
     widget_jwt_secret_key: SecretStr | None = None
     widget_jwt_issuer: str = Field(

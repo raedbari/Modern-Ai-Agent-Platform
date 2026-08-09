@@ -73,6 +73,16 @@ widget_bearer = HTTPBearer(
     auto_error=False,
 )
 
+tenant_bearer = HTTPBearer(
+    scheme_name="TenantUserJWT",
+    bearerFormat="JWT",
+    description=(
+        "Short-lived tenant user access token issued by "
+        "POST /api/v1/tenant-auth/login."
+    ),
+    auto_error=False,
+)
+
 # ---------------------------------------------------------------------------
 # RBAC: role → permission mapping  (T-13)
 # ---------------------------------------------------------------------------
@@ -605,3 +615,88 @@ def get_embedding_provider() -> EmbeddingProvider:
     from backend.app.ai.providers.ollama import OllamaEmbeddingProvider
 
     return OllamaEmbeddingProvider(get_settings())
+
+
+
+async def require_user_jwt(
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(tenant_bearer),
+    ],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> "UserContext":
+    """Require an active customer identity/session, not tenant membership."""
+    from backend.app.auth.tenant_context import (
+        TenantAuthError,
+        UserContext,
+        validate_user_context,
+    )
+
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing customer access token",
+        )
+
+    token = credentials.credentials.strip()
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid customer access token",
+        )
+
+    try:
+        return await validate_user_context(token, session, settings)
+    except TenantAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+
+async def require_tenant_user_jwt(
+    request: Request,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(tenant_bearer),
+    ],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> "TenantUserContext":
+    """Require a live database-backed tenant user JWT session.
+    
+    This dependency validates the tenant user access token and returns
+    a TenantUserContext with user_id, tenant_id, and role.
+    
+    Raises:
+        HTTPException(401): If token is missing, invalid, or session is revoked
+    
+    Requirements: 7.1-7.12
+    """
+    from backend.app.auth.tenant_context import (
+        TenantUserContext,
+        validate_tenant_user_context,
+        TenantAuthError,
+    )
+    
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing tenant user access token",
+        )
+    
+    token = credentials.credentials.strip()
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid tenant user access token",
+        )
+    
+    try:
+        context = await validate_tenant_user_context(token, session, settings)
+        return context
+    except TenantAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc

@@ -21,6 +21,11 @@ from backend.app.db.models import (
 )
 from backend.app.main import create_app
 
+from backend.app.auth.tenant_context import (
+    TenantAuthError,
+    validate_tenant_user_context,
+)
+
 PASSWORD = "StrongSignup99!"
 
 async def open_app(path: Path):
@@ -37,6 +42,11 @@ async def open_app(path: Path):
             yield session
     settings = Settings(
         environment="test",
+        jwt_secret_key=(
+            "athka-test-only-jwt-secret-"
+            "0123456789abcdef0123456789abcdef"
+            "0123456789abcdef0123456789abcdef"
+        ),
         argon2_time_cost=1,
         argon2_memory_cost=8192,
         argon2_parallelism=1,
@@ -353,5 +363,576 @@ async def test_signup_uses_email_delivery_adapter(tmp_path, monkeypatch):
         assert response.status_code == 201, response.text
         assert sent["recipient"] == "mail@example.com"
         assert sent["raw_token"].startswith("athka_verify_")
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_verified_pending_user_can_login_and_read_me(
+    tmp_path,
+):
+    app, engine, _sessions = await open_app(
+        tmp_path / "pending-login.db"
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            await signup_verify(
+                client,
+                "pending-login@example.com",
+            )
+
+            login = await client.post(
+                "/api/v1/tenant-auth/login",
+                json={
+                    "email": "pending-login@example.com",
+                    "password": PASSWORD,
+                },
+            )
+
+            assert login.status_code == 200, login.text
+
+            login_body = login.json()
+
+            assert login_body["user_id"]
+            assert login_body["tenant_id"] is None
+            assert login_body["role"] is None
+            assert login_body["access_token"]
+            assert login_body["refresh_token"]
+
+            me = await client.get(
+                "/api/v1/tenant-auth/me",
+                headers={
+                    "Authorization": (
+                        f"Bearer {login_body['access_token']}"
+                    )
+                },
+            )
+
+            assert me.status_code == 200, me.text
+
+            profile = me.json()
+
+            assert profile["email"] == (
+                "pending-login@example.com"
+            )
+
+            assert profile["application"] is not None
+            assert (
+                profile["application"]["status"]
+                == "under_review"
+            )
+
+            assert profile["membership"] is None
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_approved_user_login_resolves_tenant_owner(
+    tmp_path,
+):
+    app, engine, _sessions = await open_app(
+        tmp_path / "approved-login.db"
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            await signup_verify(
+                client,
+                "approved-login@example.com",
+            )
+
+            applications = await client.get(
+                "/api/admin/tenant-applications"
+            )
+
+            assert applications.status_code == 200
+            assert len(applications.json()) == 1
+
+            application_id = applications.json()[0]["id"]
+
+            approved = await client.post(
+                (
+                    "/api/admin/tenant-applications/"
+                    f"{application_id}/approve"
+                ),
+                json={
+                    "review_note": "Approved for tenant access."
+                },
+            )
+
+            assert approved.status_code == 200, approved.text
+            assert approved.json()["status"] == "approved"
+
+            login = await client.post(
+                "/api/v1/tenant-auth/login",
+                json={
+                    "email": "approved-login@example.com",
+                    "password": PASSWORD,
+                },
+            )
+
+            assert login.status_code == 200, login.text
+
+            login_body = login.json()
+
+            assert login_body["tenant_id"]
+            assert login_body["role"] == "tenant_owner"
+
+            me = await client.get(
+                "/api/v1/tenant-auth/me",
+                headers={
+                    "Authorization": (
+                        f"Bearer {login_body['access_token']}"
+                    )
+                },
+            )
+
+            assert me.status_code == 200, me.text
+
+            profile = me.json()
+
+            assert profile["application"] is not None
+            assert (
+                profile["application"]["status"]
+                == "approved"
+            )
+
+            assert profile["membership"] is not None
+            assert (
+                profile["membership"]["tenant_id"]
+                == login_body["tenant_id"]
+            )
+            assert (
+                profile["membership"]["role"]
+                == "tenant_owner"
+            )
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_pending_user_has_no_tenant_authorization(
+    tmp_path,
+):
+    app, engine, sessions = await open_app(
+        tmp_path / "pending-tenant-auth.db"
+    )
+
+    settings = Settings(
+        environment="test",
+        jwt_secret_key=(
+            "athka-test-only-jwt-secret-"
+            "0123456789abcdef0123456789abcdef"
+            "0123456789abcdef0123456789abcdef"
+        ),
+        argon2_time_cost=1,
+        argon2_memory_cost=8192,
+        argon2_parallelism=1,
+        _env_file=None,
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            await signup_verify(
+                client,
+                "pending-authz@example.com",
+            )
+
+            login = await client.post(
+                "/api/v1/tenant-auth/login",
+                json={
+                    "email": "pending-authz@example.com",
+                    "password": PASSWORD,
+                },
+            )
+
+            assert login.status_code == 200, login.text
+            token = login.json()["access_token"]
+
+        async with sessions() as session:
+            with pytest.raises(TenantAuthError):
+                await validate_tenant_user_context(
+                    token,
+                    session,
+                    settings,
+                )
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_tenant_authorization_uses_current_db_membership(
+    tmp_path,
+):
+    app, engine, sessions = await open_app(
+        tmp_path / "current-membership.db"
+    )
+
+    settings = Settings(
+        environment="test",
+        jwt_secret_key=(
+            "athka-test-only-jwt-secret-"
+            "0123456789abcdef0123456789abcdef"
+            "0123456789abcdef0123456789abcdef"
+        ),
+        argon2_time_cost=1,
+        argon2_memory_cost=8192,
+        argon2_parallelism=1,
+        _env_file=None,
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            await signup_verify(
+                client,
+                "current-role@example.com",
+            )
+
+            applications = await client.get(
+                "/api/admin/tenant-applications"
+            )
+
+            application_id = applications.json()[0]["id"]
+
+            approved = await client.post(
+                (
+                    "/api/admin/tenant-applications/"
+                    f"{application_id}/approve"
+                ),
+                json={
+                    "review_note": "Approved."
+                },
+            )
+
+            assert approved.status_code == 200, approved.text
+
+            login = await client.post(
+                "/api/v1/tenant-auth/login",
+                json={
+                    "email": "current-role@example.com",
+                    "password": PASSWORD,
+                },
+            )
+
+            assert login.status_code == 200, login.text
+            token = login.json()["access_token"]
+
+        async with sessions() as session:
+            context = await validate_tenant_user_context(
+                token,
+                session,
+                settings,
+            )
+
+            assert context.role == "tenant_owner"
+
+            membership = await session.get(
+                TenantMembership,
+                context.membership_id,
+            )
+
+            assert membership is not None
+
+            membership.role = "tenant_admin"
+            await session.commit()
+
+        # Same JWT ? role must now come from current DB state.
+        async with sessions() as session:
+            context = await validate_tenant_user_context(
+                token,
+                session,
+                settings,
+            )
+
+            assert context.role == "tenant_admin"
+
+            membership = await session.get(
+                TenantMembership,
+                context.membership_id,
+            )
+
+            membership.status = "revoked"
+            await session.commit()
+
+        # Same JWT must immediately lose tenant authorization.
+        async with sessions() as session:
+            with pytest.raises(TenantAuthError):
+                await validate_tenant_user_context(
+                    token,
+                    session,
+                    settings,
+                )
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_pending_user_refresh_and_logout(
+    tmp_path,
+):
+    app, engine, _sessions = await open_app(
+        tmp_path / "pending-session.db"
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            await signup_verify(
+                client,
+                "pending-session@example.com",
+            )
+
+            login = await client.post(
+                "/api/v1/tenant-auth/login",
+                json={
+                    "email": "pending-session@example.com",
+                    "password": PASSWORD,
+                },
+            )
+
+            assert login.status_code == 200, login.text
+
+            first = login.json()
+
+            refresh = await client.post(
+                "/api/v1/tenant-auth/refresh",
+                json={
+                    "refresh_token": first["refresh_token"],
+                },
+            )
+
+            assert refresh.status_code == 200, refresh.text
+
+            second = refresh.json()
+
+            assert (
+                second["refresh_token"]
+                != first["refresh_token"]
+            )
+            assert second["tenant_id"] is None
+            assert second["role"] is None
+
+            logout = await client.post(
+                "/api/v1/tenant-auth/logout",
+                headers={
+                    "Authorization": (
+                        f"Bearer {second['access_token']}"
+                    )
+                },
+                json={
+                    "refresh_token": second["refresh_token"],
+                },
+            )
+
+            assert logout.status_code == 200, logout.text
+
+            after_logout = await client.post(
+                "/api/v1/tenant-auth/refresh",
+                json={
+                    "refresh_token": second["refresh_token"],
+                },
+            )
+
+            assert after_logout.status_code == 401
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_refresh_replay_revokes_session_family(
+    tmp_path,
+):
+    app, engine, _sessions = await open_app(
+        tmp_path / "refresh-replay.db"
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            await signup_verify(
+                client,
+                "replay@example.com",
+            )
+
+            login = await client.post(
+                "/api/v1/tenant-auth/login",
+                json={
+                    "email": "replay@example.com",
+                    "password": PASSWORD,
+                },
+            )
+
+            assert login.status_code == 200, login.text
+
+            first_refresh = login.json()["refresh_token"]
+
+            rotated = await client.post(
+                "/api/v1/tenant-auth/refresh",
+                json={
+                    "refresh_token": first_refresh,
+                },
+            )
+
+            assert rotated.status_code == 200, rotated.text
+
+            second_refresh = rotated.json()["refresh_token"]
+
+            replay = await client.post(
+                "/api/v1/tenant-auth/refresh",
+                json={
+                    "refresh_token": first_refresh,
+                },
+            )
+
+            assert replay.status_code == 401
+
+            family_after_replay = await client.post(
+                "/api/v1/tenant-auth/refresh",
+                json={
+                    "refresh_token": second_refresh,
+                },
+            )
+
+            assert family_after_replay.status_code == 401
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+
+@pytest.mark.asyncio
+async def test_multiple_memberships_do_not_break_customer_auth(
+    tmp_path,
+):
+    from uuid import uuid4
+
+    app, engine, sessions = await open_app(
+        tmp_path / "multi-membership.db"
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            await signup_verify(
+                client,
+                "multi@example.com",
+            )
+
+            applications = await client.get(
+                "/api/admin/tenant-applications"
+            )
+
+            application_id = applications.json()[0]["id"]
+
+            approved = await client.post(
+                (
+                    "/api/admin/tenant-applications/"
+                    f"{application_id}/approve"
+                ),
+                json={
+                    "review_note": "First tenant."
+                },
+            )
+
+            assert approved.status_code == 200, approved.text
+
+            first_login = await client.post(
+                "/api/v1/tenant-auth/login",
+                json={
+                    "email": "multi@example.com",
+                    "password": PASSWORD,
+                },
+            )
+
+            assert first_login.status_code == 200
+            user_id = first_login.json()["user_id"]
+
+        # Seed a second tenant membership directly.
+        # We are testing multi-membership authentication,
+        # not a second onboarding application.
+        second_tenant_id = str(uuid4())
+
+        async with sessions() as session:
+            session.add(
+                Tenant(
+                    id=second_tenant_id,
+                    name="Athka Customer Two",
+                    is_active=True,
+                )
+            )
+
+            await session.flush()
+
+            session.add(
+                TenantMembership(
+                    id=str(uuid4()),
+                    user_id=user_id,
+                    tenant_id=second_tenant_id,
+                    role="tenant_admin",
+                    status="active",
+                )
+            )
+
+            await session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            login = await client.post(
+                "/api/v1/tenant-auth/login",
+                json={
+                    "email": "multi@example.com",
+                    "password": PASSWORD,
+                },
+            )
+
+            assert login.status_code == 200, login.text
+
+            # Identity login must not guess which tenant to use.
+            assert login.json()["tenant_id"] is None
+            assert login.json()["role"] is None
+
+            me = await client.get(
+                "/api/v1/tenant-auth/me",
+                headers={
+                    "Authorization": (
+                        f"Bearer {login.json()['access_token']}"
+                    )
+                },
+            )
+
+            assert me.status_code == 200, me.text
+
+            # Multiple memberships require explicit tenant
+            # selection later; /me must not choose arbitrarily.
+            assert me.json()["membership"] is None
+
     finally:
         await engine.dispose()
