@@ -17,7 +17,7 @@ def build_verification_url(raw_token: str) -> str:
         "ATHKA_PUBLIC_APP_URL",
         "http://localhost:3000",
     ).rstrip("/")
-    return f"{app_url}/verify-email?token={quote(raw_token, safe='')}"
+    return f"{app_url}/saas/verify-email?token={quote(raw_token, safe='')}"
 
 
 def _smtp_send(*, recipient: str, verification_url: str) -> None:

@@ -23,6 +23,7 @@ import {
   BookOpenCheck,
   ChevronLeft,
   CircleAlert,
+  ClipboardList,
   Database,
   KeyRound,
   LayoutDashboard,
@@ -128,6 +129,11 @@ const platformNavigation: NavigationItem[] = [
     label: copy.tenants,
     href: "/dashboard/tenants",
     icon: UsersRound,
+  },
+  {
+    label: "طلبات الاشتراك",
+    href: "/dashboard/applications",
+    icon: ClipboardList,
   },
   {
     label: copy.agents,

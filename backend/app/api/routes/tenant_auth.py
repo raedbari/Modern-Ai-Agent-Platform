@@ -225,6 +225,7 @@ async def me(
             company_name=app_record.company_name,
             status=app_record.status,
             submitted_at=app_record.created_at,
+            review_note=app_record.review_note,
         )
 
     membership_context = None

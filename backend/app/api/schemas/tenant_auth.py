@@ -49,6 +49,7 @@ class TenantApplicationStatus(BaseModel):
         "rejected",
     ] = Field(..., description="Application status")
     submitted_at: datetime = Field(..., description="Application submission timestamp")
+    review_note: str | None = Field(None, description="Latest Athka review note")
 
 class TenantMembershipContext(BaseModel):
     """Active tenant membership information."""
