@@ -1,245 +1,96 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Bot,
-  Brain,
-  Check,
-  Code2,
-  Eye,
-  MessageSquareText,
-  Palette,
-  Rocket,
-  SlidersHorizontal,
-} from "lucide-react";
-
+import { ArrowLeft, ArrowRight, Bot, BookOpen, Check, Code2, MessageSquareText, Palette, Play, Rocket, Sparkles } from "lucide-react";
 import styles from "./chatbot-wizard.module.css";
 
-const steps = [
-  {
-    id: 1,
-    title: "?????????",
-    description: "??? Chatbot ?????? ???",
-    icon: Bot,
-  },
-  {
-    id: 2,
-    title: "???????",
-    description: "????????? ?????? ???????",
-    icon: Brain,
-  },
-  {
-    id: 3,
-    title: "??????",
-    description: "????? ???? ??????????",
-    icon: SlidersHorizontal,
-  },
-  {
-    id: 4,
-    title: "??????",
-    description: "??????? ??????",
-    icon: Palette,
-  },
-  {
-    id: 5,
-    title: "???????",
-    description: "???? Chatbot ??? ????",
-    icon: MessageSquareText,
-  },
-  {
-    id: 6,
-    title: "?????",
-    description: "????? Chatbot",
-    icon: Rocket,
-  },
-  {
-    id: 7,
-    title: "?????",
-    description: "??? ?? ?????",
-    icon: Code2,
-  },
-] as const;
+const STEPS = [
+  { title: "المعلومات", description: "اسم Chatbot والهدف الأساسي منه.", icon: Bot },
+  { title: "المعرفة", description: "المصادر التي سيعتمد عليها Chatbot.", icon: BookOpen },
+  { title: "طريقة الرد", description: "النبرة والتعليمات وطريقة التعامل مع الأسئلة.", icon: MessageSquareText },
+  { title: "المظهر", description: "الاسم والألوان ورسالة الترحيب.", icon: Palette },
+  { title: "التجربة", description: "اختبر Chatbot قبل نشره.", icon: Play },
+  { title: "النشر", description: "راجع الإعدادات واجعل Chatbot جاهزًا.", icon: Rocket },
+  { title: "الدمج", description: "أضف Chatbot إلى موقعك بخطوات بسيطة.", icon: Code2 },
+];
 
 export function ChatbotWizard() {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
+  const canContinue = useMemo(() => step !== 0 || name.trim().length >= 2, [name, step]);
+  const current = STEPS[step];
+  const CurrentIcon = current.icon;
 
-  const current = steps[step - 1];
-
-  function nextStep() {
-    setStep((value) => Math.min(7, value + 1));
+  function goNext() {
+    if (canContinue) setStep((value) => Math.min(value + 1, STEPS.length - 1));
   }
 
-  function previousStep() {
-    setStep((value) => Math.max(1, value - 1));
+  function goBack() {
+    setStep((value) => Math.max(value - 1, 0));
   }
 
   return (
     <main className={styles.page} dir="rtl">
-      <header className={styles.header}>
+      <div className={styles.topBar}>
         <div>
-          <Link
-            href="/app/chatbots"
-            className={styles.backLink}
-          >
-            <ArrowRight aria-hidden="true" />
-            ?????? ??? Chatbots
-          </Link>
-
-          <h2>????? Chatbot ????</h2>
-
-          <p>
-            ????? ??????? ??? ???? ?????.
-          </p>
+          <div className={styles.eyebrow}><Sparkles size={15} />إنشاء Chatbot</div>
+          <h1>أنشئ Chatbot خطوة بخطوة</h1>
+          <p>إعداد سريع ومرئي بدون شاشات معقدة.</p>
         </div>
-
-        <div className={styles.progressText}>
-          ?????? {step} ?? {steps.length}
-        </div>
-      </header>
+        <Link className={styles.closeLink} href="/app/chatbots">العودة إلى Chatbots</Link>
+      </div>
 
       <div className={styles.layout}>
-        <aside className={styles.steps}>
-          {steps.map((item) => {
-            const Icon = item.icon;
-            const active = item.id === step;
-            const complete = item.id < step;
-
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={[
-                  styles.step,
-                  active ? styles.active : "",
-                  complete ? styles.complete : "",
-                ].join(" ")}
-                onClick={() => {
-                  if (item.id <= step) {
-                    setStep(item.id);
-                  }
-                }}
-              >
-                <span className={styles.stepIcon}>
-                  {complete ? (
-                    <Check aria-hidden="true" />
-                  ) : (
-                    <Icon aria-hidden="true" />
-                  )}
-                </span>
-
-                <span>
-                  <strong>{item.title}</strong>
-                  <small>{item.description}</small>
-                </span>
-              </button>
-            );
-          })}
+        <aside className={styles.stepsPanel}>
+          <div className={styles.progressText}>الخطوة {step + 1} من {STEPS.length}</div>
+          <div className={styles.progressTrack}><span style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} /></div>
+          <nav className={styles.steps}>
+            {STEPS.map(({ title, icon: Icon }, index) => {
+              const isActive = index === step;
+              const isDone = index < step;
+              return (
+                <button className={`${styles.stepButton} ${isActive ? styles.stepActive : ""} ${isDone ? styles.stepDone : ""}`} key={title} onClick={() => setStep(index)} type="button">
+                  <span className={styles.stepIcon}>{isDone ? <Check size={16} /> : <Icon size={16} />}</span>
+                  <span><strong>{title}</strong><small>{STEPS[index].description}</small></span>
+                </button>
+              );
+            })}
+          </nav>
         </aside>
 
-        <section className={styles.card}>
-          <div className={styles.cardHeading}>
-            <span>?????? {step}</span>
-            <h3>{current.title}</h3>
-            <p>{current.description}</p>
+        <section className={styles.stage}>
+          <div className={styles.stageHeader}>
+            <div className={styles.stageIcon}><CurrentIcon size={24} /></div>
+            <div><span>الخطوة {step + 1}</span><h2>{current.title}</h2><p>{current.description}</p></div>
           </div>
 
-          {step === 1 ? (
+          {step === 0 ? (
             <div className={styles.form}>
-              <label>
-                <span>??? Chatbot</span>
-
-                <input
-                  value={name}
-                  onChange={(event) =>
-                    setName(event.target.value)
-                  }
-                  placeholder="????: ????? ???? ???????"
-                  maxLength={120}
-                  autoFocus
-                />
-
-                <small>
-                  ????? ???? ????? ?? ???? ???? ??????.
-                </small>
+              <label className={styles.field}>
+                <span>اسم Chatbot</span>
+                <input autoFocus onChange={(event) => setName(event.target.value)} placeholder="مثال: مساعد TravelX" value={name} />
+                <small>هذا الاسم سيظهر لك داخل المنصة ويمكن تغييره لاحقًا.</small>
               </label>
-
-              <label>
-                <span>?? ????? ?? Chatbot?</span>
-
-                <textarea
-                  value={purpose}
-                  onChange={(event) =>
-                    setPurpose(event.target.value)
-                  }
-                  placeholder={
-                    "????: ??????? ?? ????? ??????? " +
-                    "??? ????? ?????? ????????."
-                  }
-                  rows={5}
-                  maxLength={1000}
-                />
+              <label className={styles.field}>
+                <span>ما الهدف من Chatbot؟</span>
+                <textarea onChange={(event) => setPurpose(event.target.value)} placeholder="مثال: الرد على أسئلة العملاء ومساعدتهم في معرفة الخدمات." rows={5} value={purpose} />
+                <small>اكتب وصفًا بسيطًا. سنستخدمه لاحقًا عند إعداد طريقة الرد.</small>
               </label>
-
-              <div className={styles.notice}>
-                <Eye aria-hidden="true" />
-                <div>
-                  <strong>???? ????? ???? ??????? ??????</strong>
-                  <p>
-                    ????? ????? ??? ???????? ???????? Chatbot
-                    ??? ?????? ???????.
-                  </p>
-                </div>
-              </div>
             </div>
           ) : (
             <div className={styles.placeholder}>
-              <current.icon aria-hidden="true" />
-              <h4>{current.title}</h4>
-              <p>
-                ???? ??? ??? ?????? ??????? ??????? ??
-                ?????? ?? ???Milestone ??????.
-              </p>
+              <div className={styles.placeholderIcon}><CurrentIcon size={30} /></div>
+              <h3>{current.title}</h3>
+              <p>واجهة هذه الخطوة جاهزة ضمن مسار الـWizard، وسيتم ربطها بخدمات المنصة الحالية في الوحدة التالية.</p>
             </div>
           )}
 
           <footer className={styles.actions}>
-            <button
-              type="button"
-              className={styles.secondary}
-              disabled={step === 1}
-              onClick={previousStep}
-            >
-              <ArrowRight aria-hidden="true" />
-              ??????
-            </button>
-
-            {step < 7 ? (
-              <button
-                type="button"
-                className={styles.primary}
-                disabled={
-                  step === 1 &&
-                  name.trim().length < 2
-                }
-                onClick={nextStep}
-              >
-                ??????
-                <ArrowLeft aria-hidden="true" />
-              </button>
-            ) : (
-              <Link
-                href="/app/chatbots"
-                className={styles.primary}
-              >
-                ?????
-                <Check aria-hidden="true" />
-              </Link>
-            )}
+            <button className={styles.backButton} disabled={step === 0} onClick={goBack} type="button"><ArrowRight size={17} />السابق</button>
+            <div className={styles.actionHint}>{step === 0 && !canContinue ? "اكتب اسمًا للـChatbot للمتابعة." : "يمكنك الرجوع وتعديل الإعدادات في أي وقت."}</div>
+            <button className={styles.nextButton} disabled={!canContinue} onClick={goNext} type="button">{step === STEPS.length - 1 ? "إنهاء الإعداد" : "حفظ ومتابعة"}<ArrowLeft size={17} /></button>
           </footer>
         </section>
       </div>

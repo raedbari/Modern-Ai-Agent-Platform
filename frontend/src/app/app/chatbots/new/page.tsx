@@ -1,9 +1,4 @@
-import { ChatbotWizard } from
-  "@/components/app/chatbots/chatbot-wizard";
-
-export const metadata = {
-  title: "????? Chatbot | Athkachatbots",
-};
+import { ChatbotWizard } from "@/components/app/chatbots/chatbot-wizard";
 
 export default function NewChatbotPage() {
   return <ChatbotWizard />;
