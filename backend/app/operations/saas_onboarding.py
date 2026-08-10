@@ -266,7 +266,7 @@ async def request_application_changes(
 
     application.status = "changes_requested"
     application.reviewed_at = datetime.now(timezone.utc)
-    application.reviewed_by = admin_id
+    application.reviewed_by = None if admin_id == "legacy" else admin_id
     application.review_note = review_note.strip()
 
     await AuditService.write(
@@ -322,7 +322,7 @@ async def reject_application(
 
     application.status = "rejected"
     application.reviewed_at = datetime.now(timezone.utc)
-    application.reviewed_by = admin_id
+    application.reviewed_by = None if admin_id == "legacy" else admin_id
     application.review_note = review_note.strip()
 
     await AuditService.write(
@@ -385,7 +385,7 @@ async def approve_application(
     application.status = "approved"
     application.approved_tenant_id = tenant_id
     application.reviewed_at = datetime.now(timezone.utc)
-    application.reviewed_by = admin_id
+    application.reviewed_by = None if admin_id == "legacy" else admin_id
     application.review_note = review_note.strip() if review_note else None
 
     await session.flush()
