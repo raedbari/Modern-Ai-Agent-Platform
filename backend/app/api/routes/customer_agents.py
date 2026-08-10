@@ -107,11 +107,11 @@ async def create_agent(
 ) -> AgentResponse:
     """
     Create a new agent for the authenticated tenant.
-    
+
     Requires: knowledge_editor, tenant_admin, or tenant_owner role
     """
     repo = TenantScopedAgentRepository(session)
-    
+
     agent = await repo.create(
         tenant_id=context.tenant_id,
         name=request.name,
@@ -130,7 +130,7 @@ async def create_agent(
             "user_id": context.user_id,
         },
     )
-    
+
     return response
 
 
@@ -145,13 +145,13 @@ async def list_agents(
 ) -> list[AgentResponse]:
     """
     List all agents for the authenticated tenant.
-    
+
     Requires: Any approved role (tenant_owner, tenant_admin, knowledge_editor, conversation_viewer)
     """
     repo = TenantScopedAgentRepository(session)
-    
+
     agents = await repo.list_by_tenant(context.tenant_id)
-    
+
     return [_agent_response(agent) for agent in agents]
 
 
@@ -167,20 +167,20 @@ async def get_agent(
 ) -> AgentResponse:
     """
     Get a specific agent by ID.
-    
+
     Returns 404 if the agent doesn't exist or belongs to another tenant.
     Requires: Any approved role
     """
     repo = TenantScopedAgentRepository(session)
-    
+
     agent = await repo.get_by_id(agent_id, context.tenant_id)
-    
+
     if agent is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Agent not found",
         )
-    
+
     return _agent_response(agent)
 
 
@@ -197,12 +197,12 @@ async def update_agent(
 ) -> AgentResponse:
     """
     Update an existing agent.
-    
+
     Returns 404 if the agent doesn't exist or belongs to another tenant.
     Requires: knowledge_editor, tenant_admin, or tenant_owner role
     """
     repo = TenantScopedAgentRepository(session)
-    
+
     # Build updates dict (only include fields that were provided)
     updates = {}
     if request.name is not None:
@@ -213,9 +213,9 @@ async def update_agent(
         updates["knowledge_mode"] = request.knowledge_mode
     if request.contact_message is not None:
         updates["contact_message"] = request.contact_message
-    
+
     agent = await repo.update(agent_id, context.tenant_id, updates)
-    
+
     if agent is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -234,7 +234,7 @@ async def update_agent(
             "updates": list(updates.keys()),
         },
     )
-    
+
     return response
 
 
@@ -250,14 +250,14 @@ async def delete_agent(
 ) -> Response:
     """
     Delete an agent.
-    
+
     Returns 404 if the agent doesn't exist or belongs to another tenant.
     Requires: knowledge_editor, tenant_admin, or tenant_owner role
     """
     repo = TenantScopedAgentRepository(session)
-    
+
     deleted = await repo.delete(agent_id, context.tenant_id)
-    
+
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -274,5 +274,5 @@ async def delete_agent(
             "user_id": context.user_id,
         },
     )
-    
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)
