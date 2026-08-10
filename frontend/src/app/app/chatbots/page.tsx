@@ -1,23 +1,74 @@
-import { Bot, Clock } from "lucide-react";
+import Link from "next/link";
+import {
+  Bot,
+  CirclePlus,
+  MessageSquareText,
+  Sparkles,
+} from "lucide-react";
+
+import styles from "./chatbots.module.css";
 
 export const metadata = {
-  title: "الوكلاء الذكية | بوابة العميل",
+  title: "Chatbots | Athkachatbots",
 };
 
 export default function ChatbotsPage() {
   return (
-    <div className="coming-soon-card">
-      <div className="coming-soon-card__icon">
-        <Bot aria-hidden="true" />
-      </div>
-      <h2>إدارة الوكلاء الذكية</h2>
-      <p>
-        ستتمكن قريباً من بناء وتخصيص وكلاء محادثة ذكية متخصصة لنشاطك التجاري.
-      </p>
-      <div className="coming-soon-card__badge">
-        <Clock aria-hidden="true" />
-        <span>قريباً في المرحلة القادمة</span>
-      </div>
-    </div>
+    <main className={styles.page} dir="rtl">
+      <section className={styles.hero}>
+        <div>
+          <span className={styles.eyebrow}>
+            <Sparkles aria-hidden="true" />
+            ????? Chatbots
+          </span>
+
+          <h2>?????? ??????</h2>
+
+          <p>
+            ???? Chatbot ?????? ?????? ?????? ?? ?????
+            ?????? ??????? ???? ????? ?????? ?? ?????.
+          </p>
+        </div>
+
+        <Link
+          href="/app/chatbots/new"
+          className={styles.createButton}
+        >
+          <CirclePlus aria-hidden="true" />
+          ????? Chatbot
+        </Link>
+      </section>
+
+      <section className={styles.emptyState}>
+        <div className={styles.botIcon}>
+          <Bot aria-hidden="true" />
+        </div>
+
+        <h3>???? ???? Chatbot</h3>
+
+        <p>
+          ?? ??? ????? ?? Chatbot ???. ?????? ???????
+          ???? ????? ??? ???? ?????? ??????.
+        </p>
+
+        <div className={styles.flow}>
+          <span>?????????</span>
+          <span>???????</span>
+          <span>??????</span>
+          <span>??????</span>
+          <span>???????</span>
+          <span>?????</span>
+          <span>?????</span>
+        </div>
+
+        <Link
+          href="/app/chatbots/new"
+          className={styles.secondaryButton}
+        >
+          <MessageSquareText aria-hidden="true" />
+          ???? ???????
+        </Link>
+      </section>
+    </main>
   );
 }

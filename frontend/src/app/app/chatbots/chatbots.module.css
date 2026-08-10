@@ -1,0 +1,136 @@
+.page {
+  display: grid;
+  gap: 24px;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 24px;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.hero h2 {
+  margin: 10px 0 8px;
+  font-size: clamp(26px, 4vw, 38px);
+}
+
+.hero p {
+  max-width: 680px;
+  margin: 0;
+  line-height: 1.8;
+  color: #94a3b8;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #c4b5fd;
+}
+
+.eyebrow svg {
+  width: 17px;
+}
+
+.createButton,
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 14px;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.createButton {
+  color: white;
+  background: linear-gradient(
+    135deg,
+    #7c3aed,
+    #4f46e5
+  );
+}
+
+.secondaryButton {
+  color: #e9d5ff;
+  border: 1px solid rgba(167, 139, 250, 0.32);
+  background: rgba(124, 58, 237, 0.12);
+}
+
+.createButton svg,
+.secondaryButton svg {
+  width: 19px;
+}
+
+.emptyState {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 56px 28px;
+  text-align: center;
+  border: 1px dashed rgba(148, 163, 184, 0.24);
+  border-radius: 24px;
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.botIcon {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  color: #c4b5fd;
+  background: rgba(124, 58, 237, 0.13);
+}
+
+.botIcon svg {
+  width: 34px;
+  height: 34px;
+}
+
+.emptyState h3 {
+  margin: 8px 0 0;
+  font-size: 22px;
+}
+
+.emptyState p {
+  max-width: 600px;
+  margin: 0;
+  line-height: 1.8;
+  color: #94a3b8;
+}
+
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  margin: 10px 0;
+}
+
+.flow span {
+  padding: 7px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #cbd5e1;
+  background: rgba(30, 41, 59, 0.65);
+}
+
+@media (max-width: 760px) {
+  .hero {
+    flex-direction: column;
+  }
+
+  .createButton {
+    width: 100%;
+  }
+}
