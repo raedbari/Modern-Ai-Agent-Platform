@@ -17,8 +17,11 @@ const STEPS = [
 
 type WizardDraft = {
   agentId: string | null;
+  knowledgeBaseId: string | null;
   name: string;
   purpose: string;
+  knowledgeName: string;
+  knowledgeDescription: string;
   step: number;
 };
 
@@ -64,16 +67,29 @@ export function ChatbotWizard() {
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
   const [agentId, setAgentId] = useState<string | null>(null);
+  const [knowledgeBaseId, setKnowledgeBaseId] = useState<string | null>(null);
+  const [knowledgeName, setKnowledgeName] = useState("");
+  const [knowledgeDescription, setKnowledgeDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
-  const canContinue = useMemo(
-    () =>
-      step !== 0 ||
-      name.trim().length >= 2,
-    [name, step],
-  );
+  const canContinue = useMemo(() => {
+    if (step === 0) {
+      return name.trim().length >= 2;
+    }
+
+    if (step === 1) {
+      return knowledgeName.trim().length >= 2;
+    }
+
+    return true;
+  }, [
+    knowledgeName,
+    name,
+    step,
+  ]);
+
   const current = STEPS[step];
   const CurrentIcon = current.icon;
 
@@ -116,6 +132,31 @@ export function ChatbotWizard() {
         );
 
         if (
+          typeof draft.knowledgeBaseId === "string" &&
+          draft.knowledgeBaseId
+        ) {
+          setKnowledgeBaseId(
+            draft.knowledgeBaseId,
+          );
+        }
+
+        if (
+          typeof draft.knowledgeName === "string"
+        ) {
+          setKnowledgeName(
+            draft.knowledgeName,
+          );
+        }
+
+        if (
+          typeof draft.knowledgeDescription === "string"
+        ) {
+          setKnowledgeDescription(
+            draft.knowledgeDescription,
+          );
+        }
+
+        if (
           restoredAgentId &&
           typeof draft.step === "number"
         ) {
@@ -146,8 +187,11 @@ export function ChatbotWizard() {
 
     const draft: WizardDraft = {
       agentId,
+      knowledgeBaseId,
       name,
       purpose,
+      knowledgeName,
+      knowledgeDescription,
       step,
     };
 
@@ -158,6 +202,9 @@ export function ChatbotWizard() {
   }, [
     agentId,
     hydrated,
+    knowledgeBaseId,
+    knowledgeDescription,
+    knowledgeName,
     name,
     purpose,
     step,
@@ -168,6 +215,135 @@ export function ChatbotWizard() {
       !canContinue ||
       saving
     ) {
+      return;
+    }
+
+    if (step === 1) {
+      if (!agentId) {
+        setSaveError(
+          "???? ????? Chatbot. ???? ??? ?????? ??????.",
+        );
+        return;
+      }
+
+      const normalizedName =
+        knowledgeName.trim();
+
+      if (normalizedName.length < 2) {
+        setSaveError(
+          "???? ????? ?????? ???????.",
+        );
+        return;
+      }
+
+      setSaving(true);
+      setSaveError(null);
+
+      try {
+        const endpoint =
+          knowledgeBaseId
+            ? `/api/customer/knowledge-bases/${
+                encodeURIComponent(
+                  knowledgeBaseId,
+                )
+              }`
+            : "/api/customer/knowledge-bases";
+
+        const response = await fetch(
+          endpoint,
+          {
+            method:
+              knowledgeBaseId
+                ? "PATCH"
+                : "POST",
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: {
+              Accept:
+                "application/json",
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              agentId,
+              name: normalizedName,
+              description:
+                knowledgeDescription.trim(),
+            }),
+          },
+        );
+
+        let body: unknown;
+
+        try {
+          body =
+            await response.json();
+        } catch {
+          body = undefined;
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            apiErrorMessage(
+              body,
+              response.status,
+            ),
+          );
+        }
+
+        if (
+          body === null ||
+          typeof body !== "object" ||
+          !("id" in body) ||
+          typeof (
+            body as {
+              id?: unknown;
+            }
+          ).id !== "string"
+        ) {
+          throw new Error(
+            "???? ??? ????? ???????.",
+          );
+        }
+
+        const saved =
+          body as {
+            id: string;
+            name?: string;
+            description?: string;
+          };
+
+        setKnowledgeBaseId(
+          saved.id,
+        );
+
+        if (
+          typeof saved.name === "string"
+        ) {
+          setKnowledgeName(
+            saved.name,
+          );
+        }
+
+        if (
+          typeof saved.description === "string"
+        ) {
+          setKnowledgeDescription(
+            saved.description,
+          );
+        }
+
+        setStep(2);
+      } catch (error) {
+        setSaveError(
+          error instanceof Error
+            ? error.message
+            : "???? ??? ????? ???????.",
+        );
+      } finally {
+        setSaving(false);
+      }
+
       return;
     }
 
@@ -294,8 +470,22 @@ export function ChatbotWizard() {
               const isActive = index === step;
               const isDone = index < step;
               return (
-                <button className={`${styles.stepButton} ${isActive ? styles.stepActive : ""} ${isDone ? styles.stepDone : ""}`} key={title} disabled={index > 0 && !agentId} onClick={() => {
-                    if (index === 0 || agentId) setStep(index);
+                <button className={`${styles.stepButton} ${isActive ? styles.stepActive : ""} ${isDone ? styles.stepDone : ""}`} key={title} disabled={
+                    (index > 0 && !agentId) ||
+                    (index > 1 && !knowledgeBaseId)
+                  }
+                  onClick={() => {
+                    if (
+                      index === 0 ||
+                      (index === 1 && agentId) ||
+                      (
+                        index > 1 &&
+                        agentId &&
+                        knowledgeBaseId
+                      )
+                    ) {
+                      setStep(index);
+                    }
                   }} type="button">
                   <span className={styles.stepIcon}>{isDone ? <Check size={16} /> : <Icon size={16} />}</span>
                   <span><strong>{title}</strong><small>{STEPS[index].description}</small></span>

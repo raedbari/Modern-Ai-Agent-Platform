@@ -33,6 +33,25 @@ export type CustomerAgentUpdate = {
   contact_message?: string | null;
 };
 
+
+export type CustomerKnowledgeBase = {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+};
+
+export type CustomerKnowledgeBaseCreate = {
+  name: string;
+  description?: string;
+};
+
+export type CustomerKnowledgeBaseUpdate = {
+  name?: string;
+  description?: string;
+  status?: "active" | "inactive";
+};
+
 type ErrorPayload = {
   detail?: unknown;
 };
@@ -149,6 +168,45 @@ export async function updateCustomerAgent(
     accessToken,
     {
       method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function createCustomerKnowledgeBase(
+  accessToken: string,
+  agentId: string,
+  payload: CustomerKnowledgeBaseCreate,
+): Promise<CustomerKnowledgeBase> {
+  return requestCustomerResource<CustomerKnowledgeBase>(
+    "/api/knowledge-bases",
+    accessToken,
+    {
+      method: "POST",
+      headers: {
+        "X-Agent-ID": agentId,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function updateCustomerKnowledgeBase(
+  accessToken: string,
+  agentId: string,
+  knowledgeBaseId: string,
+  payload: CustomerKnowledgeBaseUpdate,
+): Promise<CustomerKnowledgeBase> {
+  return requestCustomerResource<CustomerKnowledgeBase>(
+    `/api/knowledge-bases/${
+      encodeURIComponent(knowledgeBaseId)
+    }`,
+    accessToken,
+    {
+      method: "PATCH",
+      headers: {
+        "X-Agent-ID": agentId,
+      },
       body: JSON.stringify(payload),
     },
   );
