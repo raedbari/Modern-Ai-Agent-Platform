@@ -12,6 +12,7 @@ from backend.app.api.routes.admin_users import router as admin_users_router
 from backend.app.api.routes.admin_knowledge import router as admin_knowledge_router
 from backend.app.api.routes.admin_widget import router as admin_widget_router
 from backend.app.api.routes.customer_agents import router as customer_agents_router
+from backend.app.api.routes.customer_conversations import router as customer_conversations_router
 from backend.app.api.routes.customer_widgets import router as customer_widgets_router
 from backend.app.api.routes.chat import router as chat_router
 from backend.app.api.routes.health import router as health_router
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     application.include_router(admin_knowledge_router)
     application.include_router(admin_widget_router)
     application.include_router(customer_agents_router)
+    application.include_router(customer_conversations_router)
     application.include_router(customer_widgets_router)
     application.include_router(widget_router)
     application.include_router(chat_router)
