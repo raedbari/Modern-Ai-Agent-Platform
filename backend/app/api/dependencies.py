@@ -591,6 +591,130 @@ async def require_chat_context(
     )
 
 
+async def require_knowledge_context(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    raw_api_key: Annotated[
+        str | None,
+        Security(api_key_header),
+    ],
+    settings: Annotated[
+        Settings,
+        Depends(get_settings),
+    ],
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(tenant_bearer),
+    ] = None,
+    agent_id: Annotated[
+        str | None,
+        Header(
+            alias="X-Agent-ID",
+            description=(
+                "Agent selected for the knowledge operation."
+            ),
+        ),
+    ] = None,
+) -> ChatExecutionContext:
+    """Allow existing tenant API keys or live tenant-user JWTs.
+
+    JWT authorization remains database-authoritative. X-Agent-ID is
+    verified against the authenticated tenant before a knowledge
+    execution context is produced.
+    """
+
+    if credentials is None:
+        return await require_tenant_api_key_context(
+            session=session,
+            raw_api_key=raw_api_key,
+            agent_id=agent_id,
+        )
+
+    from backend.app.auth.tenant_context import (
+        InactiveTenantError,
+        NoActiveMembershipError,
+        TenantAuthError,
+        validate_tenant_user_context,
+    )
+    from backend.app.auth.tenant_rbac import (
+        TenantPermission,
+    )
+
+    token = credentials.credentials.strip()
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid tenant user access token",
+        )
+
+    try:
+        tenant_context = (
+            await validate_tenant_user_context(
+                token,
+                session,
+                settings,
+            )
+        )
+    except (
+        NoActiveMembershipError,
+        InactiveTenantError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except TenantAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+
+    if not TenantPermission.can_read_knowledge(
+        tenant_context.role
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied.",
+        )
+
+    normalized_agent_id = (
+        agent_id or ""
+    ).strip()
+
+    if (
+        not normalized_agent_id
+        or len(normalized_agent_id) > 128
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Agent-ID is required",
+        )
+
+    agent = await session.scalar(
+        select(Agent).where(
+            Agent.id == normalized_agent_id,
+            Agent.tenant_id
+            == tenant_context.tenant_id,
+            Agent.is_active.is_(True),
+        )
+    )
+
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found",
+        )
+
+    return ChatExecutionContext(
+        tenant_id=tenant_context.tenant_id,
+        agent_id=agent.id,
+        system_prompt=agent.system_prompt,
+        knowledge_mode=agent.knowledge_mode,
+        contact_message=agent.contact_message,
+        auth_method="tenant_jwt",  # type: ignore[arg-type]
+    )
+
+
 @lru_cache
 def get_core_ai_runtime() -> GenerationRuntime:
     """Build and cache the configured provider-independent AI runtime."""
@@ -677,6 +801,8 @@ async def require_tenant_user_jwt(
         TenantUserContext,
         validate_tenant_user_context,
         TenantAuthError,
+        InactiveTenantError,
+        NoActiveMembershipError,
     )
     
     if credentials is None or not credentials.credentials:
@@ -695,6 +821,14 @@ async def require_tenant_user_jwt(
     try:
         context = await validate_tenant_user_context(token, session, settings)
         return context
+    except (
+        NoActiveMembershipError,
+        InactiveTenantError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
     except TenantAuthError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

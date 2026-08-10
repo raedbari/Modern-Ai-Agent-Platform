@@ -13,6 +13,6 @@ class ChatExecutionContext:
     system_prompt: str | None
     knowledge_mode: Literal["required", "preferred", "disabled"] = "preferred"
     contact_message: str | None = None
-    auth_method: Literal["api_key", "widget"] = "api_key"
+    auth_method: Literal["api_key", "widget", "tenant_jwt"] = "api_key"
     session_id: str | None = None
     public_widget_id: str | None = None

@@ -354,6 +354,180 @@
         "title": "AgentConfigUpdate",
         "type": "object"
       },
+      "AgentCreateRequest": {
+        "additionalProperties": false,
+        "description": "Request schema for creating a new agent.",
+        "properties": {
+          "contact_message": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Message"
+          },
+          "knowledge_mode": {
+            "default": "preferred",
+            "pattern": "^(required|preferred|disabled)$",
+            "title": "Knowledge Mode",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "system_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Prompt"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AgentCreateRequest",
+        "type": "object"
+      },
+      "AgentResponse": {
+        "description": "Response schema for agent data.",
+        "properties": {
+          "contact_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Message"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "knowledge_mode": {
+            "title": "Knowledge Mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "system_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Prompt"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "is_active",
+          "knowledge_mode",
+          "system_prompt",
+          "contact_message",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AgentResponse",
+        "type": "object"
+      },
+      "AgentUpdateRequest": {
+        "additionalProperties": false,
+        "description": "Request schema for updating an existing agent.",
+        "properties": {
+          "contact_message": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Message"
+          },
+          "knowledge_mode": {
+            "anyOf": [
+              {
+                "pattern": "^(required|preferred|disabled)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Mode"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "system_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Prompt"
+          }
+        },
+        "title": "AgentUpdateRequest",
+        "type": "object"
+      },
       "ApiKeyAdminResponse": {
         "description": "Non-secret API-key metadata.",
         "properties": {
@@ -433,6 +607,25 @@
           "last_used_at"
         ],
         "title": "ApiKeyAdminResponse",
+        "type": "object"
+      },
+      "ApprovalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "review_note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          }
+        },
+        "title": "ApprovalRequest",
         "type": "object"
       },
       "Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post": {
@@ -1976,6 +2169,60 @@
         "title": "RefreshRequest",
         "type": "object"
       },
+      "ResendVerificationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "ResendVerificationRequest",
+        "type": "object"
+      },
+      "ResendVerificationResponse": {
+        "properties": {
+          "accepted": {
+            "default": true,
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "verification_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Token"
+          }
+        },
+        "title": "ResendVerificationResponse",
+        "type": "object"
+      },
+      "ReviewNoteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "review_note": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Review Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_note"
+        ],
+        "title": "ReviewNoteRequest",
+        "type": "object"
+      },
       "RevokeAdminSessionsResponse": {
         "description": "Returned after force-revoking all sessions for one admin.",
         "properties": {
@@ -2004,6 +2251,92 @@
           "revoked_count"
         ],
         "title": "RevokeAllApiKeysResponse",
+        "type": "object"
+      },
+      "SignupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "company_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Company Name",
+            "type": "string"
+          },
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
+          "legal_accepted": {
+            "const": true,
+            "title": "Legal Accepted",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 12,
+            "title": "Password",
+            "type": "string"
+          },
+          "requested_plan": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Requested Plan",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "company_name",
+          "password",
+          "requested_plan",
+          "legal_accepted"
+        ],
+        "title": "SignupRequest",
+        "type": "object"
+      },
+      "SignupResponse": {
+        "properties": {
+          "email_verification_required": {
+            "default": true,
+            "title": "Email Verification Required",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "email_pending",
+              "under_review",
+              "changes_requested",
+              "approved",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "verification_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Token"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SignupResponse",
         "type": "object"
       },
       "TenantAdminResponse": {
@@ -2040,6 +2373,474 @@
           "updated_at"
         ],
         "title": "TenantAdminResponse",
+        "type": "object"
+      },
+      "TenantApplicationResponse": {
+        "properties": {
+          "applicant_email": {
+            "title": "Applicant Email",
+            "type": "string"
+          },
+          "applicant_name": {
+            "title": "Applicant Name",
+            "type": "string"
+          },
+          "approved_tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Tenant Id"
+          },
+          "company_name": {
+            "title": "Company Name",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email_verified": {
+            "title": "Email Verified",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "requested_plan": {
+            "title": "Requested Plan",
+            "type": "string"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "status": {
+            "enum": [
+              "email_pending",
+              "under_review",
+              "changes_requested",
+              "approved",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "applicant_name",
+          "applicant_email",
+          "email_verified",
+          "company_name",
+          "requested_plan",
+          "status",
+          "submitted_at",
+          "reviewed_at",
+          "reviewed_by",
+          "review_note",
+          "approved_tenant_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TenantApplicationResponse",
+        "type": "object"
+      },
+      "TenantApplicationStatus": {
+        "description": "Latest tenant application visible to the customer.",
+        "properties": {
+          "application_id": {
+            "description": "Application ID",
+            "title": "Application Id",
+            "type": "string"
+          },
+          "company_name": {
+            "description": "Company name from application",
+            "title": "Company Name",
+            "type": "string"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest Athka review note",
+            "title": "Review Note"
+          },
+          "status": {
+            "description": "Application status",
+            "enum": [
+              "under_review",
+              "changes_requested",
+              "approved",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "description": "Application submission timestamp",
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "application_id",
+          "company_name",
+          "status",
+          "submitted_at"
+        ],
+        "title": "TenantApplicationStatus",
+        "type": "object"
+      },
+      "TenantAuthErrorResponse": {
+        "description": "Error response for authentication failures.",
+        "properties": {
+          "detail": {
+            "description": "Error message",
+            "title": "Detail",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional error code for client handling",
+            "title": "Error Code"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "TenantAuthErrorResponse",
+        "type": "object"
+      },
+      "TenantLoginRequest": {
+        "description": "Login request for tenant users.",
+        "properties": {
+          "email": {
+            "description": "User email address",
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "description": "User password",
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "TenantLoginRequest",
+        "type": "object"
+      },
+      "TenantLoginResponse": {
+        "description": "Login response for customer identity; tenant context may be absent.",
+        "properties": {
+          "access_token": {
+            "description": "JWT access token",
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "description": "Access token expiry in seconds",
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "refresh_token": {
+            "description": "Opaque refresh token",
+            "title": "Refresh Token",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Current role when one tenant is selected",
+            "title": "Role"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Selected tenant ID when unambiguous",
+            "title": "Tenant Id"
+          },
+          "token_type": {
+            "const": "Bearer",
+            "default": "Bearer",
+            "description": "Token type",
+            "title": "Token Type",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "User ID",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token",
+          "expires_in",
+          "user_id"
+        ],
+        "title": "TenantLoginResponse",
+        "type": "object"
+      },
+      "TenantLogoutRequest": {
+        "description": "Logout request to revoke session.",
+        "properties": {
+          "refresh_token": {
+            "description": "Refresh token to revoke",
+            "minLength": 1,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "TenantLogoutRequest",
+        "type": "object"
+      },
+      "TenantMembershipContext": {
+        "description": "Active tenant membership information.",
+        "properties": {
+          "created_at": {
+            "description": "Membership creation timestamp",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "membership_id": {
+            "description": "Membership ID",
+            "title": "Membership Id",
+            "type": "string"
+          },
+          "role": {
+            "description": "User role in tenant",
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "const": "active",
+            "description": "Membership status",
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "description": "Tenant ID",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "tenant_name": {
+            "description": "Tenant name",
+            "title": "Tenant Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "tenant_name",
+          "membership_id",
+          "role",
+          "status",
+          "created_at"
+        ],
+        "title": "TenantMembershipContext",
+        "type": "object"
+      },
+      "TenantRefreshRequest": {
+        "description": "Refresh token rotation request.",
+        "properties": {
+          "refresh_token": {
+            "description": "Current refresh token",
+            "minLength": 1,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "TenantRefreshRequest",
+        "type": "object"
+      },
+      "TenantUserProfileResponse": {
+        "description": "User profile response with optional application and membership.",
+        "properties": {
+          "application": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TenantApplicationStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pending application if exists"
+          },
+          "created_at": {
+            "description": "Account creation timestamp",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User display name",
+            "title": "Display Name"
+          },
+          "email": {
+            "description": "User email",
+            "title": "Email",
+            "type": "string"
+          },
+          "email_verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Email verification timestamp",
+            "title": "Email Verified At"
+          },
+          "is_active": {
+            "description": "User active status",
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last login timestamp",
+            "title": "Last Login At"
+          },
+          "membership": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TenantMembershipContext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Active membership if exists"
+          },
+          "user_id": {
+            "description": "User ID",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "is_active",
+          "created_at"
+        ],
+        "title": "TenantUserProfileResponse",
         "type": "object"
       },
       "TokenUsage": {
@@ -2094,6 +2895,47 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyEmailRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "maxLength": 512,
+            "minLength": 20,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "VerifyEmailRequest",
+        "type": "object"
+      },
+      "VerifyEmailResponse": {
+        "properties": {
+          "email_verified": {
+            "title": "Email Verified",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "email_pending",
+              "under_review",
+              "changes_requested",
+              "approved",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email_verified",
+          "status"
+        ],
+        "title": "VerifyEmailResponse",
         "type": "object"
       },
       "WidgetBootstrapRequest": {
@@ -2181,7 +3023,348 @@
         "title": "WidgetPublicConfig",
         "type": "object"
       },
-      "WidgetSettingsResponse": {
+      "WidgetSettingsUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_origins": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Allowed Origins",
+            "type": "array"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "greeting": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeting"
+          },
+          "is_enabled": {
+            "default": false,
+            "title": "Is Enabled",
+            "type": "boolean"
+          },
+          "theme": {
+            "$ref": "#/components/schemas/WidgetTheme"
+          }
+        },
+        "title": "WidgetSettingsUpdate",
+        "type": "object"
+      },
+      "WidgetSettingsUpdateRequest": {
+        "additionalProperties": false,
+        "description": "Request schema for updating widget settings.",
+        "properties": {
+          "allowed_origins": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Origins"
+          },
+          "appearance": {
+            "anyOf": [
+              {
+                "pattern": "^(light|dark)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appearance"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "greeting": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeting"
+          },
+          "header_color": {
+            "anyOf": [
+              {
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Header Color"
+          },
+          "is_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Enabled"
+          },
+          "launcher_color": {
+            "anyOf": [
+              {
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Launcher Color"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "pattern": "^(left|right)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "primary_color": {
+            "anyOf": [
+              {
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Color"
+          },
+          "text_color": {
+            "anyOf": [
+              {
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Color"
+          },
+          "user_message_color": {
+            "anyOf": [
+              {
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Message Color"
+          }
+        },
+        "title": "WidgetSettingsUpdateRequest",
+        "type": "object"
+      },
+      "WidgetTheme": {
+        "additionalProperties": false,
+        "properties": {
+          "appearance": {
+            "default": "light",
+            "enum": [
+              "light",
+              "dark"
+            ],
+            "title": "Appearance",
+            "type": "string"
+          },
+          "headerColor": {
+            "default": "#2563EB",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Headercolor",
+            "type": "string"
+          },
+          "launcherColor": {
+            "default": "#2563EB",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Launchercolor",
+            "type": "string"
+          },
+          "position": {
+            "default": "right",
+            "enum": [
+              "left",
+              "right"
+            ],
+            "title": "Position",
+            "type": "string"
+          },
+          "primaryColor": {
+            "default": "#2563EB",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Primarycolor",
+            "type": "string"
+          },
+          "textColor": {
+            "default": "#FFFFFF",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Textcolor",
+            "type": "string"
+          },
+          "userMessageColor": {
+            "default": "#2563EB",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Usermessagecolor",
+            "type": "string"
+          }
+        },
+        "title": "WidgetTheme",
+        "type": "object"
+      },
+      "backend__app__api__routes__customer_widgets__WidgetSettingsResponse": {
+        "description": "Response schema for widget settings.",
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "allowed_origins": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Origins",
+            "type": "array"
+          },
+          "appearance": {
+            "title": "Appearance",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "greeting": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeting"
+          },
+          "header_color": {
+            "title": "Header Color",
+            "type": "string"
+          },
+          "is_enabled": {
+            "title": "Is Enabled",
+            "type": "boolean"
+          },
+          "launcher_color": {
+            "title": "Launcher Color",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "primary_color": {
+            "title": "Primary Color",
+            "type": "string"
+          },
+          "public_widget_id": {
+            "title": "Public Widget Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "text_color": {
+            "title": "Text Color",
+            "type": "string"
+          },
+          "user_message_color": {
+            "title": "User Message Color",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "agent_id",
+          "public_widget_id",
+          "is_enabled",
+          "display_name",
+          "greeting",
+          "primary_color",
+          "text_color",
+          "launcher_color",
+          "header_color",
+          "user_message_color",
+          "position",
+          "appearance",
+          "allowed_origins"
+        ],
+        "title": "WidgetSettingsResponse",
+        "type": "object"
+      },
+      "backend__app__api__schemas__widget__WidgetSettingsResponse": {
         "properties": {
           "agent_id": {
             "title": "Agent Id",
@@ -2244,110 +3427,6 @@
         ],
         "title": "WidgetSettingsResponse",
         "type": "object"
-      },
-      "WidgetSettingsUpdate": {
-        "additionalProperties": false,
-        "properties": {
-          "allowed_origins": {
-            "items": {
-              "maxLength": 255,
-              "minLength": 1,
-              "type": "string"
-            },
-            "maxItems": 50,
-            "title": "Allowed Origins",
-            "type": "array"
-          },
-          "display_name": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Display Name"
-          },
-          "greeting": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Greeting"
-          },
-          "is_enabled": {
-            "default": false,
-            "title": "Is Enabled",
-            "type": "boolean"
-          },
-          "theme": {
-            "$ref": "#/components/schemas/WidgetTheme"
-          }
-        },
-        "title": "WidgetSettingsUpdate",
-        "type": "object"
-      },
-      "WidgetTheme": {
-        "additionalProperties": false,
-        "properties": {
-          "appearance": {
-            "default": "light",
-            "enum": [
-              "light",
-              "dark"
-            ],
-            "title": "Appearance",
-            "type": "string"
-          },
-          "headerColor": {
-            "default": "#2563EB",
-            "pattern": "^#[0-9A-Fa-f]{6}$",
-            "title": "Headercolor",
-            "type": "string"
-          },
-          "launcherColor": {
-            "default": "#2563EB",
-            "pattern": "^#[0-9A-Fa-f]{6}$",
-            "title": "Launchercolor",
-            "type": "string"
-          },
-          "position": {
-            "default": "right",
-            "enum": [
-              "left",
-              "right"
-            ],
-            "title": "Position",
-            "type": "string"
-          },
-          "primaryColor": {
-            "default": "#2563EB",
-            "pattern": "^#[0-9A-Fa-f]{6}$",
-            "title": "Primarycolor",
-            "type": "string"
-          },
-          "textColor": {
-            "default": "#FFFFFF",
-            "pattern": "^#[0-9A-Fa-f]{6}$",
-            "title": "Textcolor",
-            "type": "string"
-          },
-          "userMessageColor": {
-            "default": "#2563EB",
-            "pattern": "^#[0-9A-Fa-f]{6}$",
-            "title": "Usermessagecolor",
-            "type": "string"
-          }
-        },
-        "title": "WidgetTheme",
-        "type": "object"
       }
     },
     "securitySchemes": {
@@ -2368,6 +3447,12 @@
         "in": "header",
         "name": "X-API-Key",
         "type": "apiKey"
+      },
+      "TenantUserJWT": {
+        "bearerFormat": "JWT",
+        "description": "Short-lived tenant user access token issued by POST /api/v1/tenant-auth/login.",
+        "scheme": "bearer",
+        "type": "http"
       },
       "WidgetToken": {
         "bearerFormat": "JWT",
@@ -2910,6 +3995,219 @@
         ]
       }
     },
+    "/api/admin/tenant-applications": {
+      "get": {
+        "operationId": "admin_list_applications_api_admin_tenant_applications_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TenantApplicationResponse"
+                  },
+                  "title": "Response Admin List Applications Api Admin Tenant Applications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Admin List Applications",
+        "tags": [
+          "saas-onboarding"
+        ]
+      }
+    },
+    "/api/admin/tenant-applications/{application_id}/approve": {
+      "post": {
+        "operationId": "admin_approve_application_api_admin_tenant_applications__application_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Admin Approve Application",
+        "tags": [
+          "saas-onboarding"
+        ]
+      }
+    },
+    "/api/admin/tenant-applications/{application_id}/reject": {
+      "post": {
+        "operationId": "admin_reject_application_api_admin_tenant_applications__application_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewNoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Admin Reject Application",
+        "tags": [
+          "saas-onboarding"
+        ]
+      }
+    },
+    "/api/admin/tenant-applications/{application_id}/request-changes": {
+      "post": {
+        "operationId": "admin_request_changes_api_admin_tenant_applications__application_id__request_changes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewNoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Admin Request Changes",
+        "tags": [
+          "saas-onboarding"
+        ]
+      }
+    },
     "/api/admin/tenants": {
       "get": {
         "operationId": "get_tenants_api_admin_tenants_get",
@@ -3329,7 +4627,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WidgetSettingsResponse"
+                  "$ref": "#/components/schemas/backend__app__api__schemas__widget__WidgetSettingsResponse"
                 }
               }
             },
@@ -3396,7 +4694,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WidgetSettingsResponse"
+                  "$ref": "#/components/schemas/backend__app__api__schemas__widget__WidgetSettingsResponse"
                 }
               }
             },
@@ -4612,12 +5910,335 @@
         ]
       }
     },
+    "/api/customer/agents": {
+      "get": {
+        "description": "List all agents for the authenticated tenant.\n\nRequires: Any approved role (tenant_owner, tenant_admin, knowledge_editor, conversation_viewer)",
+        "operationId": "list_agents_api_customer_agents_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentResponse"
+                  },
+                  "title": "Response List Agents Api Customer Agents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "List Agents",
+        "tags": [
+          "customer-agents"
+        ]
+      },
+      "post": {
+        "description": "Create a new agent for the authenticated tenant.\n\nRequires: knowledge_editor, tenant_admin, or tenant_owner role",
+        "operationId": "create_agent_api_customer_agents_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Create Agent",
+        "tags": [
+          "customer-agents"
+        ]
+      }
+    },
+    "/api/customer/agents/{agent_id}": {
+      "delete": {
+        "description": "Delete an agent.\n\nReturns 404 if the agent doesn't exist or belongs to another tenant.\nRequires: knowledge_editor, tenant_admin, or tenant_owner role",
+        "operationId": "delete_agent_api_customer_agents__agent_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Delete Agent",
+        "tags": [
+          "customer-agents"
+        ]
+      },
+      "get": {
+        "description": "Get a specific agent by ID.\n\nReturns 404 if the agent doesn't exist or belongs to another tenant.\nRequires: Any approved role",
+        "operationId": "get_agent_api_customer_agents__agent_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Get Agent",
+        "tags": [
+          "customer-agents"
+        ]
+      },
+      "patch": {
+        "description": "Update an existing agent.\n\nReturns 404 if the agent doesn't exist or belongs to another tenant.\nRequires: knowledge_editor, tenant_admin, or tenant_owner role",
+        "operationId": "update_agent_api_customer_agents__agent_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Update Agent",
+        "tags": [
+          "customer-agents"
+        ]
+      }
+    },
+    "/api/customer/agents/{agent_id}/widget-settings": {
+      "get": {
+        "description": "Get widget settings for a specific agent.\n\nReturns 404 if the agent doesn't exist or belongs to another tenant.\nRequires: Any approved role",
+        "operationId": "get_widget_settings_api_customer_agents__agent_id__widget_settings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__app__api__routes__customer_widgets__WidgetSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Get Widget Settings",
+        "tags": [
+          "customer-widgets"
+        ]
+      },
+      "put": {
+        "description": "Update widget settings for a specific agent.\n\nReturns 404 if the agent doesn't exist or belongs to another tenant.\nRequires: knowledge_editor, tenant_admin, or tenant_owner role",
+        "operationId": "update_widget_settings_api_customer_agents__agent_id__widget_settings_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetSettingsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__app__api__routes__customer_widgets__WidgetSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Update Widget Settings",
+        "tags": [
+          "customer-widgets"
+        ]
+      }
+    },
     "/api/knowledge-bases": {
       "get": {
         "operationId": "list_knowledge_bases_api_knowledge_bases_get",
         "parameters": [
           {
-            "description": "Agent selector authorized against the API-key tenant.",
+            "description": "Agent selected for the knowledge operation.",
             "in": "header",
             "name": "X-Agent-ID",
             "required": false,
@@ -4630,7 +6251,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Agent selector authorized against the API-key tenant.",
+              "description": "Agent selected for the knowledge operation.",
               "title": "X-Agent-Id"
             }
           }
@@ -4664,6 +6285,9 @@
         "security": [
           {
             "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "List Knowledge Bases",
@@ -4675,7 +6299,7 @@
         "operationId": "create_knowledge_base_api_knowledge_bases_post",
         "parameters": [
           {
-            "description": "Agent selector authorized against the API-key tenant.",
+            "description": "Agent selected for the knowledge operation.",
             "in": "header",
             "name": "X-Agent-ID",
             "required": false,
@@ -4688,7 +6312,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Agent selector authorized against the API-key tenant.",
+              "description": "Agent selected for the knowledge operation.",
               "title": "X-Agent-Id"
             }
           }
@@ -4728,6 +6352,9 @@
         "security": [
           {
             "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "Create Knowledge Base",
@@ -4750,7 +6377,7 @@
             }
           },
           {
-            "description": "Agent selector authorized against the API-key tenant.",
+            "description": "Agent selected for the knowledge operation.",
             "in": "header",
             "name": "X-Agent-ID",
             "required": false,
@@ -4763,7 +6390,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Agent selector authorized against the API-key tenant.",
+              "description": "Agent selected for the knowledge operation.",
               "title": "X-Agent-Id"
             }
           }
@@ -4786,6 +6413,9 @@
         "security": [
           {
             "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "Delete Knowledge Base",
@@ -4806,7 +6436,7 @@
             }
           },
           {
-            "description": "Agent selector authorized against the API-key tenant.",
+            "description": "Agent selected for the knowledge operation.",
             "in": "header",
             "name": "X-Agent-ID",
             "required": false,
@@ -4819,7 +6449,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Agent selector authorized against the API-key tenant.",
+              "description": "Agent selected for the knowledge operation.",
               "title": "X-Agent-Id"
             }
           }
@@ -4849,6 +6479,9 @@
         "security": [
           {
             "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "Get Knowledge Base",
@@ -4869,7 +6502,7 @@
             }
           },
           {
-            "description": "Agent selector authorized against the API-key tenant.",
+            "description": "Agent selected for the knowledge operation.",
             "in": "header",
             "name": "X-Agent-ID",
             "required": false,
@@ -4882,7 +6515,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Agent selector authorized against the API-key tenant.",
+              "description": "Agent selected for the knowledge operation.",
               "title": "X-Agent-Id"
             }
           }
@@ -4922,6 +6555,9 @@
         "security": [
           {
             "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "Update Knowledge Base",
@@ -4945,7 +6581,7 @@
             }
           },
           {
-            "description": "Agent selector authorized against the API-key tenant.",
+            "description": "Agent selected for the knowledge operation.",
             "in": "header",
             "name": "X-Agent-ID",
             "required": false,
@@ -4958,7 +6594,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Agent selector authorized against the API-key tenant.",
+              "description": "Agent selected for the knowledge operation.",
               "title": "X-Agent-Id"
             }
           }
@@ -4998,6 +6634,9 @@
         "security": [
           {
             "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "Queue Document",
@@ -5030,7 +6669,7 @@
             }
           },
           {
-            "description": "Agent selector authorized against the API-key tenant.",
+            "description": "Agent selected for the knowledge operation.",
             "in": "header",
             "name": "X-Agent-ID",
             "required": false,
@@ -5043,7 +6682,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Agent selector authorized against the API-key tenant.",
+              "description": "Agent selected for the knowledge operation.",
               "title": "X-Agent-Id"
             }
           }
@@ -5073,6 +6712,9 @@
         "security": [
           {
             "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "Get Document Job",
@@ -5095,7 +6737,7 @@
             }
           },
           {
-            "description": "Agent selector authorized against the API-key tenant.",
+            "description": "Agent selected for the knowledge operation.",
             "in": "header",
             "name": "X-Agent-ID",
             "required": false,
@@ -5108,7 +6750,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Agent selector authorized against the API-key tenant.",
+              "description": "Agent selected for the knowledge operation.",
               "title": "X-Agent-Id"
             }
           }
@@ -5142,6 +6784,9 @@
         "security": [
           {
             "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "List Documents",
@@ -5162,7 +6807,7 @@
             }
           },
           {
-            "description": "Agent selector authorized against the API-key tenant.",
+            "description": "Agent selected for the knowledge operation.",
             "in": "header",
             "name": "X-Agent-ID",
             "required": false,
@@ -5175,7 +6820,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Agent selector authorized against the API-key tenant.",
+              "description": "Agent selected for the knowledge operation.",
               "title": "X-Agent-Id"
             }
           }
@@ -5215,6 +6860,9 @@
         "security": [
           {
             "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "Upload Document",
@@ -5246,7 +6894,7 @@
             }
           },
           {
-            "description": "Agent selector authorized against the API-key tenant.",
+            "description": "Agent selected for the knowledge operation.",
             "in": "header",
             "name": "X-Agent-ID",
             "required": false,
@@ -5259,7 +6907,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Agent selector authorized against the API-key tenant.",
+              "description": "Agent selected for the knowledge operation.",
               "title": "X-Agent-Id"
             }
           }
@@ -5282,6 +6930,9 @@
         "security": [
           {
             "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "Delete Document",
@@ -5311,7 +6962,7 @@
             }
           },
           {
-            "description": "Agent selector authorized against the API-key tenant.",
+            "description": "Agent selected for the knowledge operation.",
             "in": "header",
             "name": "X-Agent-ID",
             "required": false,
@@ -5324,7 +6975,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Agent selector authorized against the API-key tenant.",
+              "description": "Agent selected for the knowledge operation.",
               "title": "X-Agent-Id"
             }
           }
@@ -5354,6 +7005,9 @@
         "security": [
           {
             "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "Get Document",
@@ -5385,7 +7039,7 @@
             }
           },
           {
-            "description": "Agent selector authorized against the API-key tenant.",
+            "description": "Agent selected for the knowledge operation.",
             "in": "header",
             "name": "X-Agent-ID",
             "required": false,
@@ -5398,7 +7052,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Agent selector authorized against the API-key tenant.",
+              "description": "Agent selected for the knowledge operation.",
               "title": "X-Agent-Id"
             }
           }
@@ -5438,11 +7092,327 @@
         "security": [
           {
             "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "Reindex Document",
         "tags": [
           "knowledge"
+        ]
+      }
+    },
+    "/api/saas/resend-verification": {
+      "post": {
+        "operationId": "resend_verification_route_api_saas_resend_verification_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendVerificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResendVerificationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resend Verification Route",
+        "tags": [
+          "saas-onboarding"
+        ]
+      }
+    },
+    "/api/saas/signup": {
+      "post": {
+        "operationId": "signup_api_saas_signup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Signup",
+        "tags": [
+          "saas-onboarding"
+        ]
+      }
+    },
+    "/api/saas/verify-email": {
+      "post": {
+        "operationId": "verify_email_route_api_saas_verify_email_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyEmailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Email Route",
+        "tags": [
+          "saas-onboarding"
+        ]
+      }
+    },
+    "/api/v1/tenant-auth/login": {
+      "post": {
+        "description": "Authenticate a verified customer, even while approval is pending.",
+        "operationId": "login_api_v1_tenant_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantLoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "Tenant Authentication"
+        ]
+      }
+    },
+    "/api/v1/tenant-auth/logout": {
+      "post": {
+        "description": "Revoke the current customer refresh session.",
+        "operationId": "logout_api_v1_tenant_auth_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantLogoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Logout Api V1 Tenant Auth Logout Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Logout",
+        "tags": [
+          "Tenant Authentication"
+        ]
+      }
+    },
+    "/api/v1/tenant-auth/me": {
+      "get": {
+        "description": "Return customer identity plus current application/membership state.",
+        "operationId": "me_api_v1_tenant_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantUserProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Me",
+        "tags": [
+          "Tenant Authentication"
+        ]
+      }
+    },
+    "/api/v1/tenant-auth/refresh": {
+      "post": {
+        "description": "Rotate refresh token for customer identity sessions.",
+        "operationId": "refresh_api_v1_tenant_auth_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantLoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh",
+        "tags": [
+          "Tenant Authentication"
         ]
       }
     },

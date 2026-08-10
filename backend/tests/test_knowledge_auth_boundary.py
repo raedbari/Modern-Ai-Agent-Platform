@@ -12,14 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.dependencies import (
     require_chat_context,
-    require_tenant_api_key_context,
+    require_knowledge_context,
 )
 from backend.app.auth.context import ChatExecutionContext
 from backend.app.db.base import get_db
 from backend.app.main import create_app
 
 
-def test_knowledge_routes_use_tenant_api_key_dependency() -> None:
+def test_knowledge_routes_use_dual_auth_dependency() -> None:
     app = create_app()
 
     routes = [
@@ -37,11 +37,11 @@ def test_knowledge_routes_use_tenant_api_key_dependency() -> None:
             for dependency in route.dependant.dependencies
         }
 
-        assert require_tenant_api_key_context in dependency_calls
+        assert require_knowledge_context in dependency_calls
         assert require_chat_context not in dependency_calls
 
 
-def test_knowledge_openapi_allows_only_tenant_api_key() -> None:
+def test_knowledge_openapi_allows_api_key_or_tenant_jwt() -> None:
     schema = create_app().openapi()
 
     operations = {
@@ -66,7 +66,8 @@ def test_knowledge_openapi_allows_only_tenant_api_key() -> None:
 
             found += 1
             assert operation["security"] == [
-                {"TenantApiKey": []}
+                {"TenantApiKey": []},
+                {"TenantUserJWT": []},
             ]
 
     assert found > 0
@@ -93,7 +94,7 @@ def test_bearer_only_request_cannot_use_tenant_key_dependency() -> None:
     async def probe(
         context: Annotated[
             ChatExecutionContext,
-            Depends(require_tenant_api_key_context),
+            Depends(require_knowledge_context),
         ],
     ) -> dict[str, str]:
         return {"auth_method": context.auth_method}
