@@ -4246,6 +4246,56 @@
         ]
       }
     },
+    "/api/admin/tenant-applications/{application_id}": {
+      "get": {
+        "operationId": "admin_get_application_api_admin_tenant_applications__application_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Admin Get Application",
+        "tags": [
+          "saas-onboarding"
+        ]
+      }
+    },
     "/api/admin/tenant-applications/{application_id}/approve": {
       "post": {
         "operationId": "admin_approve_application_api_admin_tenant_applications__application_id__approve_post",

@@ -135,6 +135,32 @@ async def admin_list_applications(
 ) -> list[TenantApplicationResponse]:
     return [response_row(row) for row in await list_applications(session)]
 
+
+@router.get(
+    "/api/admin/tenant-applications/{application_id}",
+    response_model=TenantApplicationResponse,
+    dependencies=[
+        Depends(require_admin_access),
+        Depends(require_permission("tenants:read")),
+    ],
+)
+async def admin_get_application(
+    application_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> TenantApplicationResponse:
+    try:
+        row = await get_application(
+            session,
+            application_id,
+        )
+    except ApplicationNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    return response_row(row)
+
 @router.post(
     "/api/admin/tenant-applications/{application_id}/approve",
     response_model=TenantApplicationResponse,
