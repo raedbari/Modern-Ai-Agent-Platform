@@ -166,11 +166,15 @@ export async function approveTenantApplication(
   accessToken: string,
   id: string,
 ): Promise<TenantApplication> {
-  return requestTenantApplicationsApi<TenantApplication>(
+  return requestTenantApplicationsApi(
     `/api/admin/tenant-applications/${encodeURIComponent(id)}/approve`,
     {
       method: "POST",
-      headers: bearerHeaders(accessToken),
+      headers: {
+        ...bearerHeaders(accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
     },
   );
 }
