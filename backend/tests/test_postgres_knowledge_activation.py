@@ -1428,3 +1428,114 @@ async def test_postgres_active_document_replacement_is_atomic_and_audited(
         != "knowledge_document_activated"
         for item in audits
     )
+
+
+@pytest.mark.asyncio
+async def test_voyage_embeddings_produce_1024_dimensions(
+    postgres_context,
+    tmp_path: Path,
+) -> None:
+    """Voyage embeddings are persisted with exactly 1024 dimensions."""
+    from backend.app.ai.providers.voyage import (
+        VoyageEmbeddingProvider,
+        VOYAGE_EMBEDDING_DIMENSION,
+    )
+    from backend.app.operations.ingestion_runtime import build_ingestion_service
+    from backend.app.services.knowledge.ingestion_service import IngestionRequest
+    from unittest.mock import AsyncMock
+    import httpx
+    import json
+
+    # Mock Voyage HTTP transport
+    transport = AsyncMock(spec=httpx.AsyncBaseTransport)
+
+    def make_voyage_response(num_texts: int) -> bytes:
+        return json.dumps({
+            "data": [
+                {"embedding": [0.1 * (i + 1)] * VOYAGE_EMBEDDING_DIMENSION}
+                for i in range(num_texts)
+            ],
+            "model": "voyage-4-large",
+            "usage": {"total_tokens": num_texts * 10}
+        }).encode()
+
+    async def mock_handle(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        num_texts = len(payload["input"])
+        return httpx.Response(
+            status_code=200,
+            content=make_voyage_response(num_texts),
+            headers={"content-type": "application/json"},
+        )
+
+    transport.handle_async_request = mock_handle
+
+    prefix, sessions = postgres_context
+
+    tenant_id = f"{prefix}-tenant"
+    agent_id = f"{prefix}-agent"
+    knowledge_base_id = f"{prefix}-kb"
+
+    settings = Settings(
+        voyage_api_key="test_key",
+        embedding_dimension=1024,
+        _env_file=None,
+    )
+
+    voyage_provider = VoyageEmbeddingProvider(
+        settings,
+        transport=transport,
+    )
+
+    content = b"Test document for Voyage embeddings. " * 50
+
+    async with sessions() as session:
+        await _seed_scope(
+            session,
+            tenant_id=tenant_id,
+            agent_ids=[agent_id],
+            knowledge_base_ids=[knowledge_base_id],
+            assignments=[(agent_id, knowledge_base_id)],
+        )
+
+        await session.commit()
+
+        service = build_ingestion_service(
+            session=session,
+            runtime=voyage_provider,
+            settings=settings,
+        )
+
+        request = IngestionRequest(
+            content=content,
+            filename="test.txt",
+            mime_type="text/plain",
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            knowledge_base_id=knowledge_base_id,
+            source_name="upload",
+        )
+
+        result = await service.ingest(request)
+        await session.commit()
+
+        # Verify chunks were persisted
+        assert result.chunks_persisted > 0
+
+        # Verify embeddings have exactly 1024 dimensions
+        chunks = list(
+            (
+                await session.scalars(
+                    select(ChunkModel).where(
+                        ChunkModel.document_id == result.document.id
+                    )
+                )
+            ).all()
+        )
+
+        assert len(chunks) == result.chunks_persisted
+
+        for chunk in chunks:
+            assert len(chunk.embedding) == VOYAGE_EMBEDDING_DIMENSION
+            # Verify embedding values are non-zero (from Voyage mock)
+            assert chunk.embedding[0] > 0

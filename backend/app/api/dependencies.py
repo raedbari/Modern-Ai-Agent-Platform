@@ -736,9 +736,9 @@ def get_core_ai_runtime() -> GenerationRuntime:
 def get_embedding_provider() -> EmbeddingProvider:
     """Build embeddings without requiring a generation-provider API key."""
 
-    from backend.app.ai.providers.ollama import OllamaEmbeddingProvider
+    from backend.app.ai.providers.voyage import VoyageEmbeddingProvider
 
-    return OllamaEmbeddingProvider(get_settings())
+    return VoyageEmbeddingProvider(get_settings())
 
 
 
