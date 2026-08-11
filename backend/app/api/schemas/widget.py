@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from typing import Annotated, Literal
 
 from pydantic import (
@@ -146,3 +148,49 @@ class WidgetSettingsResponse(BaseModel):
     greeting: str | None
     theme: WidgetTheme
     allowed_origins: list[str]
+
+ConnectorType = Literal[
+    "wordpress",
+    "react_next",
+    "managed",
+]
+
+
+class WidgetConnectorPairingCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    origin: AllowedOrigin
+    connector_type: ConnectorType
+
+
+class WidgetConnectorPairingCreated(BaseModel):
+    pairing_id: str
+    pairing_code: str
+    origin: str
+    connector_type: ConnectorType
+    expires_at: datetime
+    expires_in: int = Field(gt=0)
+
+
+class WidgetConnectorPairingRedeem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pairing_code: str = Field(
+        min_length=8,
+        max_length=64,
+    )
+
+    @field_validator("pairing_code")
+    @classmethod
+    def normalize_pairing_code(
+        cls,
+        value: str,
+    ) -> str:
+        return value.strip().upper()
+
+
+class WidgetConnectorPairingConnected(BaseModel):
+    connected: Literal[True] = True
+    widget_id: PublicWidgetId
+    origin: str
+    connector_type: ConnectorType

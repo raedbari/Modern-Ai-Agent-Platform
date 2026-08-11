@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.dependencies import require_admin_access, require_permission
 from backend.app.api.schemas.widget import (
+    WidgetConnectorPairingCreate,
+    WidgetConnectorPairingCreated,
     WidgetSettingsResponse,
     WidgetSettingsUpdate,
     WidgetTheme,
@@ -23,6 +25,12 @@ from backend.app.operations.widget import (
     WidgetSettingsNotFoundError,
     get_widget_settings,
     upsert_widget_settings,
+)
+from backend.app.operations.widget_pairing import (
+    PAIRING_TTL_SECONDS,
+    WidgetPairingDisabledError,
+    WidgetPairingOriginNotAllowedError,
+    create_widget_connector_pairing,
 )
 from backend.app.services.audit import AuditService
 
@@ -130,3 +138,84 @@ async def configure_widget(
             detail=str(exc),
         ) from exc
     return _response(widget, origins)
+
+@router.post(
+    "/pairings",
+    response_model=WidgetConnectorPairingCreated,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("widgets:write"))],
+)
+async def create_connector_pairing(
+    tenant_id: str,
+    agent_id: str,
+    payload: WidgetConnectorPairingCreate,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[AdminContext, Depends(require_admin_access)],
+) -> WidgetConnectorPairingCreated:
+    try:
+        pairing, pairing_code = await create_widget_connector_pairing(
+            session,
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            origin=payload.origin,
+            connector_type=payload.connector_type,
+            created_by_admin_id=context.admin_id,
+            settings=settings,
+        )
+
+        await AuditService.write(
+            session,
+            event_type="widget_connector_pairing_created",
+            outcome="success",
+            admin_id=context.admin_id,
+            target_type="agent",
+            target_id=agent_id,
+            client_ip=get_client_ip(request, settings),
+            detail={
+                "tenant_id": tenant_id,
+                "origin": pairing.origin,
+                "connector_type": pairing.connector_type,
+                "pairing_id": pairing.id,
+            },
+        )
+
+        await session.commit()
+        await session.refresh(pairing)
+
+    except (
+        AdminResourceNotFoundError,
+        WidgetSettingsNotFoundError,
+    ) as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    except (
+        InvalidWidgetOriginError,
+        WidgetPairingOriginNotAllowedError,
+    ) as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+    except WidgetPairingDisabledError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    return WidgetConnectorPairingCreated(
+        pairing_id=pairing.id,
+        pairing_code=pairing_code,
+        origin=pairing.origin,
+        connector_type=pairing.connector_type,
+        expires_at=pairing.expires_at,
+        expires_in=PAIRING_TTL_SECONDS,
+    )

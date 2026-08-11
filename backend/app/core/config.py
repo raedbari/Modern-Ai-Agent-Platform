@@ -218,6 +218,22 @@ class Settings(BaseSettings):
         ge=1,
         le=86400,
     )
+    widget_pairing_rate_limit_per_code: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+    )
+    widget_pairing_rate_limit_per_ip: int = Field(
+        default=20,
+        ge=1,
+        le=10000,
+    )
+    widget_pairing_rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        le=3600,
+    )
+
     widget_chat_rate_limit_per_session: int = Field(
         default=30,
         ge=1,

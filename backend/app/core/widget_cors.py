@@ -12,6 +12,7 @@ from backend.app.auth.origin import normalize_origin
 _WIDGET_BROWSER_PATHS = {
     "/api/widget/bootstrap",
     "/api/widget/config",
+    "/api/widget/connector/pair",
     "/api/chat",
 }
 _ALLOWED_REQUEST_HEADERS = {"authorization", "content-type"}

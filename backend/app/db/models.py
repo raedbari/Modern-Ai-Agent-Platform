@@ -840,6 +840,91 @@ class WidgetAllowedOrigin(Base):
     )
 
 
+class WidgetConnectorPairing(Base):
+    """One short-lived, single-use website Connector pairing."""
+
+    __tablename__ = "widget_connector_pairings"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "agent_id"],
+            [
+                "agent_widget_settings.tenant_id",
+                "agent_widget_settings.agent_id",
+            ],
+            ondelete="CASCADE",
+            name="fk_widget_connector_pairings_widget",
+        ),
+        CheckConstraint(
+            "connector_type IN ('wordpress', 'react_next', 'managed')",
+            name="ck_widget_connector_pairings_connector_type",
+        ),
+        CheckConstraint(
+            "connected_at IS NULL OR used_at IS NOT NULL",
+            name="ck_widget_connector_pairings_connected_requires_used",
+        ),
+        UniqueConstraint(
+            "code_digest",
+            name="uq_widget_connector_pairings_code_digest",
+        ),
+        Index(
+            "ix_widget_connector_pairings_tenant_agent",
+            "tenant_id",
+            "agent_id",
+        ),
+        Index(
+            "ix_widget_connector_pairings_expires_at",
+            "expires_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+    )
+    agent_id: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+    )
+    origin: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+    connector_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+    )
+    code_digest: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+    connected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+    created_by_admin_id: Mapped[str | None] = mapped_column(
+        String(128),
+        ForeignKey(
+            "admin_users.id",
+            ondelete="SET NULL",
+        ),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class Conversation(Base):
     """A conversation belonging to one tenant and agent."""
 

@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.api.schemas.widget import (
     WidgetBootstrapRequest,
     WidgetBootstrapResponse,
+    WidgetConnectorPairingConnected,
+    WidgetConnectorPairingRedeem,
     WidgetPublicConfig,
     WidgetTheme,
 )
@@ -23,6 +25,12 @@ from backend.app.db.base import get_db
 from backend.app.operations.widget import (
     is_widget_origin_allowed,
     resolve_public_widget,
+)
+from backend.app.operations.widget_pairing import (
+    WidgetPairingCodeUnavailableError,
+    WidgetPairingOriginMismatchError,
+    WidgetPairingTargetUnavailableError,
+    redeem_widget_connector_pairing,
 )
 
 
@@ -206,4 +214,109 @@ async def bootstrap_widget(
                 appearance=widget.appearance,
             ),
         ),
+    )
+
+
+@router.post(
+    "/connector/pair",
+    response_model=WidgetConnectorPairingConnected,
+    status_code=status.HTTP_200_OK,
+)
+async def pair_widget_connector(
+    payload: WidgetConnectorPairingRedeem,
+    request: Request,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+    origin_header: Annotated[str | None, Header(alias="Origin")] = None,
+) -> WidgetConnectorPairingConnected:
+    origin = normalize_origin(origin_header)
+
+    if origin is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A valid Origin header is required.",
+        )
+
+    client_ip = get_client_ip(request, settings)
+
+    try:
+        code_limit = await rate_limiter.check(
+            bucket="widget-pairing-code",
+            identity=payload.pairing_code,
+            limit=settings.widget_pairing_rate_limit_per_code,
+            window_seconds=(
+                settings.widget_pairing_rate_limit_window_seconds
+            ),
+        )
+
+        ip_limit = await rate_limiter.check(
+            bucket="widget-pairing-ip",
+            identity=client_ip or "unknown",
+            limit=settings.widget_pairing_rate_limit_per_ip,
+            window_seconds=(
+                settings.widget_pairing_rate_limit_window_seconds
+            ),
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Widget pairing service is temporarily unavailable.",
+        ) from exc
+
+    if not code_limit.allowed or not ip_limit.allowed:
+        retry_after = max(
+            code_limit.retry_after_seconds,
+            ip_limit.retry_after_seconds,
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many Widget pairing attempts.",
+            headers={
+                "Retry-After": str(retry_after)
+            },
+        )
+
+    try:
+        pairing, widget = await redeem_widget_connector_pairing(
+            session,
+            pairing_code=payload.pairing_code,
+            origin=origin,
+        )
+
+        await session.commit()
+        await session.refresh(pairing)
+
+    except WidgetPairingCodeUnavailableError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    except WidgetPairingOriginMismatchError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+
+    except WidgetPairingTargetUnavailableError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    request.state.widget_cors_origin = origin
+    response.headers["Cache-Control"] = "no-store"
+
+    return WidgetConnectorPairingConnected(
+        connected=True,
+        widget_id=widget.public_widget_id,
+        origin=pairing.origin,
+        connector_type=pairing.connector_type,
     )
