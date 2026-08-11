@@ -153,6 +153,7 @@ ConnectorType = Literal[
     "wordpress",
     "react_next",
     "managed",
+    "custom",
 ]
 
 

@@ -50,6 +50,22 @@ type OriginValidation = {
   error: string | null;
 };
 
+
+type WidgetConnectorType =
+  | "wordpress"
+  | "react_next"
+  | "managed"
+  | "custom";
+
+type WidgetConnectorPairing = {
+  pairing_id: string;
+  pairing_code: string;
+  origin: string;
+  connector_type: WidgetConnectorType;
+  expires_at: string;
+  expires_in: number;
+};
+
 const copy = {
   title:
     "\u0625\u0639\u062f\u0627\u062f\u0627\u062a \u0627\u0644\u0648\u064a\u062f\u062c\u062a",
@@ -683,6 +699,41 @@ export function WidgetSettingsView() {
     setCopied,
   ] = useState(false);
 
+
+  const [
+    pairingOrigin,
+    setPairingOrigin,
+  ] = useState("");
+
+  const [
+    pairingConnectorType,
+    setPairingConnectorType,
+  ] = useState<WidgetConnectorType>(
+    "wordpress",
+  );
+
+  const [
+    pairingResult,
+    setPairingResult,
+  ] = useState<WidgetConnectorPairing | null>(
+    null,
+  );
+
+  const [
+    pairingLoading,
+    setPairingLoading,
+  ] = useState(false);
+
+  const [
+    pairingError,
+    setPairingError,
+  ] = useState<string | null>(null);
+
+  const [
+    copiedPairing,
+    setCopiedPairing,
+  ] = useState(false);
+
   const [
     reloadVersion,
     setReloadVersion,
@@ -954,6 +1005,36 @@ export function WidgetSettingsView() {
       ({ ratio }) => ratio < 4.5,
     );
 
+  const effectivePairingOrigin =
+    originValidation.origins.includes(
+      pairingOrigin,
+    )
+      ? pairingOrigin
+      : (
+          originValidation.origins[0]
+          ?? ""
+        );
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(
+      () => {
+        setPairingOrigin("");
+        setPairingConnectorType("wordpress");
+        setPairingResult(null);
+        setPairingError(null);
+        setCopiedPairing(false);
+      },
+      0,
+    );
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    selectedAgent?.tenant_id,
+    selectedAgent?.id,
+  ]);
+
   const dirty = useMemo(
     () =>
       draft !== null &&
@@ -1206,6 +1287,134 @@ export function WidgetSettingsView() {
       );
     } catch {
       setCopied(false);
+    }
+  }
+
+  async function createPairingCode() {
+    if (
+      !selectedAgent
+      || !effectivePairingOrigin
+      || !embedReady
+    ) {
+      return;
+    }
+
+    setPairingLoading(true);
+    setPairingError(null);
+    setPairingResult(null);
+    setCopiedPairing(false);
+
+    try {
+      const response = await fetch(
+        `/api/widget-settings/${
+          encodeURIComponent(
+            selectedAgent.tenant_id,
+          )
+        }/${
+          encodeURIComponent(
+            selectedAgent.id,
+          )
+        }/pairings`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            origin:
+              effectivePairingOrigin,
+            connector_type:
+              pairingConnectorType,
+          }),
+        },
+      );
+
+      const body = await readBody(response);
+
+      if (!response.ok) {
+        throw new Error(
+          detailFromBody(
+            body,
+            "تعذر إنشاء رمز الربط.",
+          ),
+        );
+      }
+
+      if (
+        body === null
+        || typeof body !== "object"
+        || Array.isArray(body)
+      ) {
+        throw new Error(
+          "استجابة رمز الربط غير صالحة.",
+        );
+      }
+
+      const value =
+        body as Record<string, unknown>;
+
+      if (
+        typeof value.pairing_id !== "string"
+        || typeof value.pairing_code !== "string"
+        || typeof value.origin !== "string"
+        || (
+          value.connector_type
+            !== "wordpress"
+          && value.connector_type
+            !== "react_next"
+          && value.connector_type
+            !== "managed"
+          && value.connector_type
+            !== "custom"
+        )
+        || typeof value.expires_at !== "string"
+        || typeof value.expires_in !== "number"
+      ) {
+        throw new Error(
+          "استجابة رمز الربط غير مكتملة.",
+        );
+      }
+
+      setPairingResult({
+        pairing_id: value.pairing_id,
+        pairing_code:
+          value.pairing_code,
+        origin: value.origin,
+        connector_type:
+          value.connector_type,
+        expires_at: value.expires_at,
+        expires_in: value.expires_in,
+      });
+    } catch (error) {
+      setPairingError(
+        error instanceof Error
+          ? error.message
+          : "تعذر إنشاء رمز الربط.",
+      );
+    } finally {
+      setPairingLoading(false);
+    }
+  }
+
+  async function copyPairingCode() {
+    if (!pairingResult) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        pairingResult.pairing_code,
+      );
+
+      setCopiedPairing(true);
+
+      window.setTimeout(
+        () => setCopiedPairing(false),
+        1800,
+      );
+    } catch {
+      setCopiedPairing(false);
     }
   }
 
@@ -2022,7 +2231,7 @@ export function WidgetSettingsView() {
             ) : null}
           </section>
 
-          <section className="widget-settings-card">
+                    <section className="widget-settings-card">
             <div className="widget-settings-card__title">
               <ShieldCheck aria-hidden="true" />
               <h3>ربط الموقع</h3>
@@ -2046,15 +2255,241 @@ export function WidgetSettingsView() {
 
               <span>
                 {embedReady
-                  ? "الـChatbot جاهز لإعداد Connector الموقع"
-                  : "فعّل الـChatbot وأضف موقعًا واحدًا على الأقل"}
+                  ? "الـChatbot جاهز للربط بالموقع"
+                  : "احفظ الإعدادات وفعّل الـChatbot وأضف موقعًا"}
               </span>
             </div>
 
             <p className="widget-settings-help">
-              لن يحتاج العميل إلى نسخ Script.
-              سنربط الموقع من خلال Athkachatbots Connector.
+              اختر الموقع وطريقة التكامل، ثم أنشئ
+              رمز ربط مؤقت يستخدمه Athkachatbots
+              Connector مرة واحدة فقط أثناء التثبيت.
             </p>
+
+            {embedReady ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 18,
+                  marginTop: 20,
+                }}
+              >
+                <label
+                  style={{
+                    display: "grid",
+                    gap: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontWeight: 700,
+                    }}
+                  >
+                    الموقع
+                  </span>
+
+                  <select
+                    value={
+                      effectivePairingOrigin
+                    }
+                    onChange={(event) => {
+                      setPairingOrigin(
+                        event.target.value,
+                      );
+                      setPairingResult(null);
+                      setPairingError(null);
+                    }}
+                    style={{
+                      width: "100%",
+                      minHeight: 44,
+                      borderRadius: 10,
+                      padding: "0 12px",
+                    }}
+                  >
+                    {originValidation.origins.map(
+                      (origin) => (
+                        <option
+                          key={origin}
+                          value={origin}
+                        >
+                          {origin}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </label>
+
+                <div>
+                  <span
+                    style={{
+                      display: "block",
+                      marginBottom: 10,
+                      fontWeight: 700,
+                    }}
+                  >
+                    طريقة الربط
+                  </span>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(150px, 1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    {[
+                      {
+                        value: "wordpress",
+                        label: "WordPress",
+                      },
+                      {
+                        value: "react_next",
+                        label: "React / Next.js",
+                      },
+                      {
+                        value: "custom",
+                        label: "موقع مخصص",
+                      },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={
+                          "widget-settings-button "
+                          + (
+                            pairingConnectorType
+                              === option.value
+                              ? "widget-settings-button--primary"
+                              : "widget-settings-button--secondary"
+                          )
+                        }
+                        onClick={() => {
+                          setPairingConnectorType(
+                            option.value as WidgetConnectorType,
+                          );
+                          setPairingResult(null);
+                          setPairingError(null);
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className={
+                    "widget-settings-button "
+                    + "widget-settings-button--primary"
+                  }
+                  disabled={pairingLoading}
+                  onClick={() =>
+                    void createPairingCode()
+                  }
+                >
+                  {pairingLoading ? (
+                    <Loader2
+                      className="widget-settings-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <ShieldCheck
+                      aria-hidden="true"
+                    />
+                  )}
+
+                  {pairingLoading
+                    ? "جاري إنشاء رمز الربط..."
+                    : "إنشاء رمز الربط"}
+                </button>
+
+                {pairingError ? (
+                  <p className="widget-settings-field-error">
+                    {pairingError}
+                  </p>
+                ) : null}
+
+                {pairingResult ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 12,
+                      padding: 16,
+                      border:
+                        "1px solid rgba(34,197,94,.28)",
+                      borderRadius: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontWeight: 700,
+                      }}
+                    >
+                      <Check aria-hidden="true" />
+                      رمز الربط جاهز
+                    </div>
+
+                    <div
+                      className="widget-settings-public-id"
+                    >
+                      <code
+                        dir="ltr"
+                        style={{
+                          fontSize: 16,
+                          letterSpacing: 1,
+                        }}
+                      >
+                        {
+                          pairingResult.pairing_code
+                        }
+                      </code>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void copyPairingCode()
+                        }
+                      >
+                        {copiedPairing ? (
+                          <Check
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <Clipboard
+                            aria-hidden="true"
+                          />
+                        )}
+
+                        {copiedPairing
+                          ? "تم النسخ"
+                          : "نسخ الرمز"}
+                      </button>
+                    </div>
+
+                    <p className="widget-settings-help">
+                      الرمز صالح لمدة{" "}
+                      {Math.ceil(
+                        pairingResult.expires_in
+                          / 60,
+                      )}{" "}
+                      دقائق ويستخدم مرة واحدة فقط.
+                    </p>
+
+                    <p className="widget-settings-help">
+                      الموقع:{" "}
+                      <strong dir="ltr">
+                        {pairingResult.origin}
+                      </strong>
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <details
               style={{
@@ -2121,7 +2556,7 @@ export function WidgetSettingsView() {
             </details>
           </section>
 
-              <footer className="widget-settings-actions">
+          <footer className="widget-settings-actions">
                 <button
                   className="widget-settings-button widget-settings-button--secondary"
                   type="button"

@@ -476,7 +476,7 @@ async def test_connector_pairing_requires_enabled_widget(
                 f"{_WIDGET_PATH}/pairings",
                 json={
                     "origin": "https://example.com",
-                    "connector_type": "managed",
+                    "connector_type": "custom",
                 },
                 headers={
                     "Authorization": f"Bearer {token}"

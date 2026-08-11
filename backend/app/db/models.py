@@ -855,7 +855,7 @@ class WidgetConnectorPairing(Base):
             name="fk_widget_connector_pairings_widget",
         ),
         CheckConstraint(
-            "connector_type IN ('wordpress', 'react_next', 'managed')",
+            "connector_type IN ('wordpress', 'react_next', 'managed', 'custom')",
             name="ck_widget_connector_pairings_connector_type",
         ),
         CheckConstraint(

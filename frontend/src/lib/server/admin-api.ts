@@ -857,3 +857,42 @@ export async function queueAdminKnowledgeDocumentReplacement(
     },
   );
 }
+
+
+export type WidgetConnectorType =
+  | "wordpress"
+  | "react_next"
+  | "managed"
+  | "custom";
+
+export type WidgetConnectorPairingCreated = {
+  pairing_id: string;
+  pairing_code: string;
+  origin: string;
+  connector_type: WidgetConnectorType;
+  expires_at: string;
+  expires_in: number;
+};
+
+export async function createAdminWidgetConnectorPairing(
+  accessToken: string,
+  tenantId: string,
+  agentId: string,
+  payload: {
+    origin: string;
+    connector_type: WidgetConnectorType;
+  },
+): Promise<WidgetConnectorPairingCreated> {
+  return requestAdminApi<WidgetConnectorPairingCreated>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/agents/${
+      encodeURIComponent(agentId)
+    }/widget/pairings`,
+    {
+      method: "POST",
+      headers: bearerHeaders(accessToken),
+      body: JSON.stringify(payload),
+    },
+  );
+}
