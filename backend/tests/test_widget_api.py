@@ -612,3 +612,124 @@ async def test_invalid_widget_bearer_never_falls_back_to_api_key(
         runtime.generate.assert_not_awaited()
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_public_widget_config_reflects_saved_runtime_changes(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path / "public-config.sqlite3"
+    )
+    await _seed_widget(sessions)
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            preflight = await client.options(
+                "/api/widget/config",
+                headers={
+                    "Origin": _ORIGIN,
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "content-type",
+                },
+            )
+
+            assert preflight.status_code == 204
+            assert (
+                preflight.headers["Access-Control-Allow-Origin"]
+                == _ORIGIN
+            )
+
+            first = await client.post(
+                "/api/widget/config",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": _ORIGIN},
+            )
+
+            assert first.status_code == 200, first.text
+            first_body = first.json()
+
+            assert first_body["widget_id"] == _WIDGET_ID
+            assert first_body["display_name"] == "Public Support"
+            assert first_body["theme"]["primaryColor"] == "#112233"
+            assert "session_token" not in first_body
+            assert "session_id" not in first_body
+            assert "tenant_id" not in first.text
+            assert "agent_id" not in first.text
+            assert first.headers["Cache-Control"] == "no-store"
+            assert (
+                first.headers["Access-Control-Allow-Origin"]
+                == _ORIGIN
+            )
+
+            async with sessions() as session:
+                widget = await session.get(
+                    AgentWidgetSettings,
+                    {
+                        "tenant_id": "tenant-a",
+                        "agent_id": "agent-a",
+                    },
+                )
+                assert widget is not None
+
+                widget.display_name = "Updated Public Support"
+                widget.primary_color = "#000000"
+
+                await session.commit()
+
+            updated = await client.post(
+                "/api/widget/config",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": _ORIGIN},
+            )
+
+            assert updated.status_code == 200
+            assert (
+                updated.json()["display_name"]
+                == "Updated Public Support"
+            )
+            assert (
+                updated.json()["theme"]["primaryColor"]
+                == "#000000"
+            )
+
+            attacker = await client.post(
+                "/api/widget/config",
+                json={"widget_id": _WIDGET_ID},
+                headers={
+                    "Origin": "https://attacker.example",
+                },
+            )
+
+            assert attacker.status_code == 403
+            assert (
+                "Access-Control-Allow-Origin"
+                not in attacker.headers
+            )
+
+            async with sessions() as session:
+                widget = await session.get(
+                    AgentWidgetSettings,
+                    {
+                        "tenant_id": "tenant-a",
+                        "agent_id": "agent-a",
+                    },
+                )
+                assert widget is not None
+
+                widget.is_enabled = False
+                await session.commit()
+
+            disabled = await client.post(
+                "/api/widget/config",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": _ORIGIN},
+            )
+
+            assert disabled.status_code == 404
+
+    finally:
+        await engine.dispose()

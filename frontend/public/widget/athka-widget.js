@@ -667,6 +667,9 @@
   let conversationId = null;
   let bootstrapPromise = null;
   let busy = false;
+  let configRefreshTimer = null;
+
+  const CONFIG_REFRESH_MS = 15000;
 
   try {
     conversationId =
@@ -920,6 +923,159 @@
     }
   }
 
+  function applyWidgetConfig(widget) {
+    if (!widget || typeof widget !== "object") {
+      return;
+    }
+
+    name.textContent =
+      typeof widget.display_name === "string" &&
+      widget.display_name.trim()
+        ? widget.display_name
+        : "Athkachatbots";
+
+    applyTheme(widget.theme);
+
+    const greeting =
+      typeof widget.greeting === "string" &&
+      widget.greeting.trim()
+        ? widget.greeting
+        : "??????? ??? ?????? ??????? ??????";
+
+    const hasUserMessage =
+      messages.querySelector(
+        ".athka-message.is-user",
+      );
+
+    if (!hasUserMessage) {
+      const first =
+        messages.firstElementChild;
+
+      if (
+        first &&
+        messages.children.length === 1 &&
+        first.classList.contains(
+          "is-assistant",
+        )
+      ) {
+        first.textContent = greeting;
+      } else if (!messages.children.length) {
+        addMessage(
+          "assistant",
+          greeting,
+        );
+      }
+    }
+  }
+
+  function stopConfigRefresh() {
+    if (configRefreshTimer !== null) {
+      window.clearInterval(
+        configRefreshTimer,
+      );
+      configRefreshTimer = null;
+    }
+  }
+
+  function startConfigRefresh() {
+    stopConfigRefresh();
+
+    if (
+      document.visibilityState === "hidden"
+    ) {
+      return;
+    }
+
+    configRefreshTimer =
+      window.setInterval(
+        () => {
+          void refreshPublicConfig();
+        },
+        CONFIG_REFRESH_MS,
+      );
+  }
+
+  function disableWidgetRuntime() {
+    sessionToken = null;
+
+    launcher.classList.remove(
+      "is-ready",
+    );
+
+    panel.classList.remove(
+      "is-open",
+    );
+
+    launcher.setAttribute(
+      "aria-expanded",
+      "false",
+    );
+
+    input.disabled = true;
+    send.disabled = true;
+
+    status.textContent =
+      "??? ????";
+  }
+
+  async function refreshPublicConfig() {
+    if (
+      document.visibilityState === "hidden"
+    ) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${apiBase}/api/widget/config`,
+        {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "Content-Type":
+              "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            widget_id: widgetId,
+          }),
+        },
+      );
+
+      if (response.status === 403) {
+        disableWidgetRuntime();
+        stopConfigRefresh();
+        return;
+      }
+
+      if (response.status === 404) {
+        disableWidgetRuntime();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          await readError(response),
+        );
+      }
+
+      const widget =
+        await response.json();
+
+      applyWidgetConfig(widget);
+    } catch (error) {
+      const debug =
+        script.dataset.debug === "true";
+
+      if (debug) {
+        console.warn(
+          "[Athkachatbots] Config refresh failed.",
+          error,
+        );
+      }
+    }
+  }
+
   async function bootstrap(force = false) {
     if (sessionToken && !force) {
       return sessionToken;
@@ -1000,6 +1156,8 @@
         );
         input.disabled = false;
         send.disabled = false;
+
+        startConfigRefresh();
 
         return sessionToken;
       })
@@ -1184,6 +1342,21 @@
       } finally {
         setBusy(false);
       }
+    },
+  );
+
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      if (
+        document.visibilityState === "hidden"
+      ) {
+        stopConfigRefresh();
+        return;
+      }
+
+      void refreshPublicConfig();
+      startConfigRefresh();
     },
   );
 
