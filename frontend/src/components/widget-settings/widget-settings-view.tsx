@@ -191,17 +191,6 @@ const copy = {
     "\u0625\u0639\u0627\u062f\u0629 \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629",
 } as const;
 
-const widgetScriptUrl = (
-  process.env.NEXT_PUBLIC_WIDGET_SCRIPT_URL ??
-  "http://127.0.0.1:3000/widget/athka-widget.js"
-).trim();
-
-const widgetApiBaseUrl = (
-  process.env.NEXT_PUBLIC_WIDGET_API_BASE_URL ??
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  "http://127.0.0.1:8000"
-).replace(/\/+$/, "");
-
 const hexColorPattern =
   /^#[0-9A-Fa-f]{6}$/;
 
@@ -695,11 +684,6 @@ export function WidgetSettingsView() {
   ] = useState(false);
 
   const [
-    copiedEmbed,
-    setCopiedEmbed,
-  ] = useState(false);
-
-  const [
     reloadVersion,
     setReloadVersion,
   ] = useState(0);
@@ -809,7 +793,6 @@ export function WidgetSettingsView() {
       setActionError(null);
       setNotice(null);
       setCopied(false);
-      setCopiedEmbed(false);
 
       try {
         const response = await fetch(
@@ -1232,42 +1215,6 @@ export function WidgetSettingsView() {
     baseline?.is_enabled === true &&
     baseline.allowed_origins.length > 0 &&
     !dirty;
-
-  const embedCode = useMemo(
-    () =>
-      publicWidgetId
-        ? [
-            "<script",
-            `  src="${widgetScriptUrl}"`,
-            `  data-widget-id="${publicWidgetId}"`,
-            `  data-api-base="${widgetApiBaseUrl}"`,
-            "  defer",
-            "></script>",
-          ].join("\n")
-        : "",
-    [publicWidgetId],
-  );
-
-  async function copyEmbedCode() {
-    if (!embedReady || !embedCode) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(
-        embedCode,
-      );
-
-      setCopiedEmbed(true);
-
-      window.setTimeout(
-        () => setCopiedEmbed(false),
-        1800,
-      );
-    } catch {
-      setCopiedEmbed(false);
-    }
-  }
 
   const previewName =
     draft?.display_name?.trim() ||
@@ -1815,61 +1762,332 @@ export function WidgetSettingsView() {
                 </div>
               </section>
 
-              <section className="widget-settings-card">
-                <div className="widget-settings-card__title">
-                  <Globe2 aria-hidden="true" />
-                  <h3>{copy.origins}</h3>
+          <section className="widget-settings-card">
+            <div className="widget-settings-card__title">
+              <Globe2 aria-hidden="true" />
+              <h3>مواقع تثبيت الـChatbot</h3>
+            </div>
+
+            <p className="widget-settings-help">
+              أضف المواقع التي تريد أن يظهر فيها هذا الـChatbot.
+              يكفي إدخال عنوان الموقع، ولا تحتاج إلى كتابة مسار صفحة.
+            </p>
+
+            <form
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginTop: 14,
+              }}
+              onSubmit={(event) => {
+                event.preventDefault();
+
+                const form = event.currentTarget;
+                const formData = new FormData(form);
+
+                const raw = String(
+                  formData.get("site") ?? "",
+                ).trim();
+
+                if (!raw) {
+                  return;
+                }
+
+                try {
+                  const candidate =
+                    /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)
+                      ? raw
+                      : `https://${raw}`;
+
+                  const parsed = new URL(candidate);
+
+                  if (
+                    parsed.protocol !== "https:" &&
+                    parsed.protocol !== "http:"
+                  ) {
+                    throw new Error(
+                      "Unsupported protocol",
+                    );
+                  }
+
+                  const origin = parsed.origin;
+
+                  const currentOrigins =
+                    originsText
+                      .split(/\r?\n/)
+                      .map((value) =>
+                        value.trim()
+                      )
+                      .filter(Boolean);
+
+                  if (
+                    !currentOrigins.includes(origin)
+                  ) {
+                    setOriginsText(
+                      [
+                        ...currentOrigins,
+                        origin,
+                      ].join("\n"),
+                    );
+                  }
+
+                  setActionError(null);
+                  setNotice(null);
+
+                  form.reset();
+                } catch {
+                  setActionError(
+                    "أدخل عنوان موقع صالحًا مثل example.com",
+                  );
+                }
+              }}
+            >
+              <input
+                name="site"
+                type="text"
+                dir="ltr"
+                autoComplete="url"
+                placeholder="example.com"
+                style={{
+                  flex: "1 1 auto",
+                  minWidth: 0,
+                  height: 46,
+                  border:
+                    "1px solid rgba(148,163,184,.22)",
+                  borderRadius: 12,
+                  padding: "0 14px",
+                  color: "inherit",
+                  background:
+                    "rgba(10,12,20,.62)",
+                  outline: 0,
+                }}
+              />
+
+              <button
+                type="submit"
+                className="widget-settings-button widget-settings-button--primary"
+              >
+                + إضافة الموقع
+              </button>
+            </form>
+
+            <div
+              style={{
+                display: "grid",
+                gap: 10,
+                marginTop: 16,
+              }}
+            >
+              {originValidation.origins.length === 0 ? (
+                <div className="widget-settings-notice">
+                  لم تتم إضافة أي موقع بعد.
                 </div>
+              ) : (
+                originValidation.origins.map(
+                  (origin) => {
+                    let hostname = origin;
 
-                <label className="widget-settings-origins">
-                  <textarea
-                    value={originsText}
-                    rows={6}
-                    dir="ltr"
-                    placeholder={
-                      "https://example.com\nhttps://app.example.com"
+                    try {
+                      hostname =
+                        new URL(origin).hostname;
+                    } catch {
+                      // Keep the origin as fallback.
                     }
-                    onChange={(event) => {
-                      setOriginsText(
-                        event.target.value,
-                      );
-                      setActionError(null);
-                      setNotice(null);
-                    }}
-                  />
 
-                  <span>
-                    {
-                      originsText
-                        .split(/\r?\n/)
-                        .filter(
-                          (row) =>
-                            row.trim().length >
-                            0,
-                        ).length
-                    }
-                    /50
-                  </span>
-                </label>
+                    return (
+                      <div
+                        key={origin}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent:
+                            "space-between",
+                          gap: 14,
+                          border:
+                            "1px solid rgba(148,163,184,.16)",
+                          borderRadius: 14,
+                          padding: "13px 14px",
+                          background:
+                            "rgba(255,255,255,.025)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 11,
+                            minWidth: 0,
+                          }}
+                        >
+                          <Globe2
+                            aria-hidden="true"
+                            style={{
+                              width: 20,
+                              height: 20,
+                              flex: "0 0 auto",
+                            }}
+                          />
 
-                <p className="widget-settings-help">
-                  {copy.originsHint}
-                </p>
+                          <div
+                            style={{
+                              minWidth: 0,
+                            }}
+                          >
+                            <strong
+                              style={{
+                                display: "block",
+                              }}
+                            >
+                              {hostname}
+                            </strong>
 
-                {originValidation.error ? (
-                  <p className="widget-settings-field-error">
-                    {originValidation.error}
-                  </p>
-                ) : null}
-              </section>
+                            <small
+                              dir="ltr"
+                              style={{
+                                display: "block",
+                                marginTop: 4,
+                                opacity: 0.72,
+                                overflow: "hidden",
+                                textOverflow:
+                                  "ellipsis",
+                                whiteSpace:
+                                  "nowrap",
+                              }}
+                            >
+                              {origin}
+                            </small>
+                          </div>
+                        </div>
 
-              <section className="widget-settings-card">
-                <div className="widget-settings-card__title">
-                  <ShieldCheck
-                    aria-hidden="true"
-                  />
-                  <h3>{copy.publicId}</h3>
-                </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                          }}
+                        >
+                          <span
+                            style={{
+                              color: "#6FF1C2",
+                              fontSize: 12,
+                            }}
+                          >
+                            ● مسموح
+                          </span>
+
+                          <button
+                            type="button"
+                            className="widget-settings-button widget-settings-button--secondary"
+                            onClick={() => {
+                              const remaining =
+                                originValidation
+                                  .origins
+                                  .filter(
+                                    (item) =>
+                                      item !== origin,
+                                  );
+
+                              setOriginsText(
+                                remaining.join(
+                                  "\n",
+                                ),
+                              );
+
+                              setActionError(
+                                null,
+                              );
+                              setNotice(null);
+                            }}
+                          >
+                            إزالة
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  },
+                )
+              )}
+            </div>
+
+            <p className="widget-settings-help">
+              تستخدم Athkachatbots هذه المواقع لمنع تشغيل
+              الـChatbot على مواقع غير مصرح بها.
+            </p>
+
+            {originValidation.error ? (
+              <p className="widget-settings-field-error">
+                {originValidation.error}
+              </p>
+            ) : null}
+          </section>
+
+          <section className="widget-settings-card">
+            <div className="widget-settings-card__title">
+              <ShieldCheck aria-hidden="true" />
+              <h3>ربط الموقع</h3>
+            </div>
+
+            <div
+              className={
+                "widget-settings-embed-status"
+                + (
+                  embedReady
+                    ? " is-ready"
+                    : " is-blocked"
+                )
+              }
+            >
+              {embedReady ? (
+                <Check aria-hidden="true" />
+              ) : (
+                <ShieldCheck aria-hidden="true" />
+              )}
+
+              <span>
+                {embedReady
+                  ? "الـChatbot جاهز لإعداد Connector الموقع"
+                  : "فعّل الـChatbot وأضف موقعًا واحدًا على الأقل"}
+              </span>
+            </div>
+
+            <p className="widget-settings-help">
+              لن يحتاج العميل إلى نسخ Script.
+              سنربط الموقع من خلال Athkachatbots Connector.
+            </p>
+
+            <details
+              style={{
+                marginTop: 18,
+                paddingTop: 14,
+                borderTop:
+                  "1px solid rgba(148,163,184,.14)",
+              }}
+            >
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                معلومات تقنية متقدمة
+              </summary>
+
+              <div
+                style={{
+                  marginTop: 14,
+                }}
+              >
+                <span
+                  style={{
+                    display: "block",
+                    marginBottom: 8,
+                    opacity: 0.72,
+                    fontSize: 12,
+                  }}
+                >
+                  معرف الـWidget العام
+                </span>
 
                 <div className="widget-settings-public-id">
                   <code dir="ltr">
@@ -1899,88 +2117,9 @@ export function WidgetSettingsView() {
                       : copy.copyId}
                   </button>
                 </div>
-
-                <p className="widget-settings-help">
-                  {copy.publicIdHint}
-                </p>
-
-                <div className="widget-settings-install">
-                  <div className="widget-settings-card__title">
-                    <Clipboard
-                      aria-hidden="true"
-                    />
-                    <h3>{copy.installTitle}</h3>
-                  </div>
-
-                  <label className="widget-settings-embed-code">
-                    <span>{copy.embedCode}</span>
-
-                    <textarea
-                      dir="ltr"
-                      rows={7}
-                      readOnly
-                      value={
-                        embedCode ||
-                        copy.notCreated
-                      }
-                    />
-                  </label>
-
-                  <div
-                    className={
-                      "widget-settings-embed-status"
-                      + (
-                        embedReady
-                          ? " is-ready"
-                          : " is-blocked"
-                      )
-                    }
-                  >
-                    {embedReady ? (
-                      <Check
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <ShieldCheck
-                        aria-hidden="true"
-                      />
-                    )}
-
-                    <span>
-                      {embedReady
-                        ? copy.embedReady
-                        : copy.embedNotReady}
-                    </span>
-                  </div>
-
-                  <button
-                    className="widget-settings-button widget-settings-button--primary"
-                    type="button"
-                    disabled={!embedReady}
-                    onClick={() =>
-                      void copyEmbedCode()
-                    }
-                  >
-                    {copiedEmbed ? (
-                      <Check
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <Clipboard
-                        aria-hidden="true"
-                      />
-                    )}
-
-                    {copiedEmbed
-                      ? copy.embedCopied
-                      : copy.copyEmbed}
-                  </button>
-
-                  <p className="widget-settings-help">
-                    {copy.embedHint}
-                  </p>
-                </div>
-              </section>
+              </div>
+            </details>
+          </section>
 
               <footer className="widget-settings-actions">
                 <button
