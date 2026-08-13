@@ -1,6 +1,7 @@
 import {
   AdminApiError,
   adminApiErrorResponse,
+  createAdminAgent,
   listAdminTenants,
   listTenantAgents,
   type AgentAdmin,
@@ -195,6 +196,89 @@ export async function GET(): Promise<Response> {
     return Response.json(
       directory,
       {
+        headers: {
+          "Cache-Control":
+            "private, no-store, max-age=0",
+        },
+      },
+    );
+  } catch (error) {
+    return adminApiErrorResponse(error);
+  }
+}
+
+export async function POST(
+  request: Request,
+): Promise<Response> {
+  const payload = await request
+    .json()
+    .catch(() => null) as {
+      tenant_id?: unknown;
+      name?: unknown;
+      system_prompt?: unknown;
+      knowledge_mode?: unknown;
+      contact_message?: unknown;
+    } | null;
+
+  const tenantId =
+    typeof payload?.tenant_id === "string"
+      ? payload.tenant_id.trim()
+      : "";
+  const name =
+    typeof payload?.name === "string"
+      ? payload.name.trim()
+      : "";
+  const mode = payload?.knowledge_mode;
+
+  if (!tenantId || !name) {
+    return Response.json(
+      { detail: "tenant_id and name are required." },
+      { status: 422 },
+    );
+  }
+
+  if (
+    mode !== undefined &&
+    mode !== "required" &&
+    mode !== "preferred" &&
+    mode !== "disabled"
+  ) {
+    return Response.json(
+      { detail: "Invalid knowledge_mode." },
+      { status: 422 },
+    );
+  }
+
+  try {
+    const agent =
+      await withAdminAccessToken(
+        (accessToken) =>
+          createAdminAgent(
+            accessToken,
+            tenantId,
+            {
+              name,
+              system_prompt:
+                typeof payload?.system_prompt === "string"
+                  ? payload.system_prompt
+                  : null,
+              knowledge_mode:
+                mode === "required" ||
+                mode === "disabled"
+                  ? mode
+                  : "preferred",
+              contact_message:
+                typeof payload?.contact_message === "string"
+                  ? payload.contact_message
+                  : null,
+            },
+          ),
+      );
+
+    return Response.json(
+      agent,
+      {
+        status: 201,
         headers: {
           "Cache-Control":
             "private, no-store, max-age=0",

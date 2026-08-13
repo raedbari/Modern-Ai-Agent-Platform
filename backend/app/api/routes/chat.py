@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.dependencies import (
     get_core_ai_runtime,
+    get_rerank_provider,
     require_chat_context,
 )
 from backend.app.api.schemas.chat import (
@@ -46,6 +47,7 @@ async def chat(
         Depends(get_core_ai_runtime),
     ],
     settings: Annotated[Settings, Depends(get_settings)],
+    rerank_provider=Depends(get_rerank_provider),
 ) -> ChatResponse:
     """Generate and persist one authenticated chat turn."""
 
@@ -57,6 +59,10 @@ async def chat(
                 embedding_dimension=settings.embedding_dimension,
             ),
             kb_repository=SQLAlchemyKnowledgeBaseRepository(session),
+            rerank_provider=rerank_provider,
+            retrieval_candidate_count=(
+                settings.retrieval_candidate_count
+            ),
         )
         result = await ChatService(
             runtime,

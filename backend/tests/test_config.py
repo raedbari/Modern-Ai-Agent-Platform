@@ -115,6 +115,7 @@ def test_production_requires_admin_api_key():
         Settings(
             environment="production",
             deepseek_api_key="test-deepseek-key",
+            voyage_api_key="test-voyage-key",
             admin_api_key=None,
             _env_file=None,
         )
@@ -164,6 +165,7 @@ def test_production_requires_admin_jwt_secret():
         Settings(
             environment="production",
             deepseek_api_key="test-deepseek-key",
+            voyage_api_key="test-voyage-key",
             admin_api_key="test-admin-key",
             jwt_secret_key=None,
             _env_file=None,
@@ -175,6 +177,7 @@ def test_production_requires_shared_redis():
         Settings(
             environment="production",
             deepseek_api_key="test-deepseek-key",
+            voyage_api_key="test-voyage-key",
             admin_api_key="test-admin-key",
             jwt_secret_key="x" * 32,
             redis_url=None,
@@ -195,6 +198,7 @@ def test_production_requires_widget_jwt_secret():
         Settings(
             environment="production",
             deepseek_api_key="test-deepseek-key",
+            voyage_api_key="test-voyage-key",
             admin_api_key="test-admin-key",
             jwt_secret_key="x" * 32,
             redis_url="redis://redis:6379/0",

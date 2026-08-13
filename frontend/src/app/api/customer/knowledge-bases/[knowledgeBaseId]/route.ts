@@ -1,4 +1,5 @@
 import {
+  deleteCustomerKnowledgeBase,
   updateCustomerKnowledgeBase,
 } from "@/lib/server/customer-resources-api";
 
@@ -101,6 +102,53 @@ export async function PATCH(
         },
       },
     );
+  } catch (error) {
+    return tenantApiErrorResponse(error);
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  context: RouteContext,
+): Promise<Response> {
+  const {
+    knowledgeBaseId,
+  } = await context.params;
+
+  const agentId =
+    new URL(request.url)
+      .searchParams
+      .get("agentId")
+      ?.trim() ?? "";
+
+  if (!agentId) {
+    return Response.json(
+      {
+        detail: "Agent ID is required.",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
+
+  try {
+    await withTenantAccessToken(
+      (accessToken) =>
+        deleteCustomerKnowledgeBase(
+          accessToken,
+          agentId,
+          knowledgeBaseId,
+        ),
+    );
+
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Cache-Control":
+          "private, no-store, max-age=0",
+      },
+    });
   } catch (error) {
     return tenantApiErrorResponse(error);
   }

@@ -191,6 +191,25 @@ export async function createCustomerKnowledgeBase(
   );
 }
 
+export async function deleteCustomerKnowledgeBase(
+  accessToken: string,
+  agentId: string,
+  knowledgeBaseId: string,
+): Promise<void> {
+  await requestCustomerResource<void>(
+    `/api/knowledge-bases/${
+      encodeURIComponent(knowledgeBaseId)
+    }`,
+    accessToken,
+    {
+      method: "DELETE",
+      headers: {
+        "X-Agent-ID": agentId,
+      },
+    },
+  );
+}
+
 export async function updateCustomerKnowledgeBase(
   accessToken: string,
   agentId: string,

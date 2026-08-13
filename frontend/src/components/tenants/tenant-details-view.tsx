@@ -476,6 +476,142 @@ export function TenantDetailsView({
     }
   }
 
+  async function toggleAgentStatus(
+    agent: TenantDetailsResponse["agents"][number],
+  ): Promise<void> {
+    const actionKey =
+      `agent-status:${agent.id}`;
+
+    setBusyAction(actionKey);
+    setActionError(null);
+
+    try {
+      const response = await fetch(
+        `/api/agents/${
+          encodeURIComponent(tenantId)
+        }/${
+          encodeURIComponent(agent.id)
+        }/status`,
+        {
+          method: "PATCH",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type":
+              "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            is_active: !agent.is_active,
+          }),
+        },
+      );
+
+      if (response.status === 401) {
+        window.location.assign(
+          `/?next=${
+            encodeURIComponent(
+              `/dashboard/tenants/${tenantId}`,
+            )
+          }`,
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        setActionError(
+          await readError(response),
+        );
+        return;
+      }
+
+      await refreshDetails();
+    } catch {
+      setActionError(copy.actionFailed);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function permanentlyDeleteAgent(
+    agent: TenantDetailsResponse["agents"][number],
+  ): Promise<void> {
+    if (agent.is_active) {
+      setActionError(
+        "يجب تعطيل الوكيل قبل الحذف النهائي.",
+      );
+      return;
+    }
+
+    const confirmation = window.prompt(
+      `حذف الوكيل "${agent.name}" نهائيًا.\n\n` +
+      "اكتب معرف الوكيل للتأكيد:\n" +
+      agent.id,
+      "",
+    );
+
+    if (confirmation === null) {
+      return;
+    }
+
+    if (confirmation.trim() !== agent.id) {
+      setActionError(
+        "معرف التأكيد لا يطابق معرف الوكيل.",
+      );
+      return;
+    }
+
+    const actionKey =
+      `agent-delete:${agent.id}`;
+
+    setBusyAction(actionKey);
+    setActionError(null);
+
+    try {
+      const response = await fetch(
+        `/api/agents/${
+          encodeURIComponent(tenantId)
+        }/${
+          encodeURIComponent(agent.id)
+        }?confirm=${
+          encodeURIComponent(agent.id)
+        }`,
+        {
+          method: "DELETE",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+          },
+        },
+      );
+
+      if (response.status === 401) {
+        window.location.assign(
+          `/?next=${
+            encodeURIComponent(
+              `/dashboard/tenants/${tenantId}`,
+            )
+          }`,
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        setActionError(
+          await readError(response),
+        );
+        return;
+      }
+
+      await refreshDetails();
+    } catch {
+      setActionError(copy.actionFailed);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function revokeOneKey(): Promise<void> {
     if (revokeKeyTarget === null) {
       return;
@@ -909,6 +1045,78 @@ export function TenantDetailsView({
                         ? copy.preferred
                         : copy.disabled}
                   </span>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={
+                    busyAction !== null
+                  }
+                  onClick={() => {
+                    void toggleAgentStatus(
+                      agent,
+                    );
+                  }}
+                >
+                  {busyAction ===
+                  `agent-status:${agent.id}` ? (
+                    <LoaderCircle
+                      aria-hidden="true"
+                    />
+                  ) : agent.is_active ? (
+                    <PowerOff
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <Power
+                      aria-hidden="true"
+                    />
+                  )}
+
+                  {agent.is_active
+                    ? "تعطيل"
+                    : "تفعيل"}
+                </button>
+
+                <button
+                  type="button"
+                  className="revoke-all-button"
+                  disabled={
+                    busyAction !== null ||
+                    agent.is_active
+                  }
+                  title={
+                    agent.is_active
+                      ? "عطّل الوكيل أولًا قبل الحذف."
+                      : "حذف الوكيل نهائيًا."
+                  }
+                  onClick={() => {
+                    void permanentlyDeleteAgent(
+                      agent,
+                    );
+                  }}
+                >
+                  {busyAction ===
+                  `agent-delete:${agent.id}` ? (
+                    <LoaderCircle
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <Trash2
+                      aria-hidden="true"
+                    />
+                  )}
+
+                  حذف
+                </button>
+              </div>
                 </div>
               ))}
             </div>

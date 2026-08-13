@@ -53,6 +53,20 @@ class Settings(BaseSettings):
         ge=0,
         le=10,
     )
+
+    voyage_api_key: SecretStr | None = None
+    voyage_base_url: AnyHttpUrl = "https://api.voyageai.com/v1"
+    voyage_model: str = "voyage-4-large"
+    voyage_rerank_model: str = "rerank-2.5"
+    retrieval_candidate_count: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+    )
+    voyage_timeout_seconds: float = Field(default=30.0, gt=0)
+    voyage_max_retries: int = Field(default=2, ge=0, le=5)
+    voyage_retry_base_seconds: float = Field(default=0.5, ge=0, le=10)
+
     database_url: str = (
         "postgresql+asyncpg://postgres:postgres@localhost:5432/maap"
     )
@@ -277,6 +291,15 @@ class Settings(BaseSettings):
         if requires_api_key and api_key_missing:
             raise ValueError(
                 "MAAP_DEEPSEEK_API_KEY is required in staging and production"
+            )
+
+        voyage_key_missing = (
+            self.voyage_api_key is None
+            or not self.voyage_api_key.get_secret_value().strip()
+        )
+        if requires_api_key and voyage_key_missing:
+            raise ValueError(
+                "MAAP_VOYAGE_API_KEY is required in staging and production"
             )
 
         admin_key_missing = (

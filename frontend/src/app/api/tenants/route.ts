@@ -1,6 +1,7 @@
 import {
   AdminApiError,
   adminApiErrorResponse,
+  createAdminTenant,
   listAdminTenants,
   listTenantAgents,
   listTenantApiKeys,
@@ -253,6 +254,59 @@ export async function GET(): Promise<Response> {
     return Response.json(
       directory,
       {
+        headers: {
+          "Cache-Control":
+            "private, no-store, max-age=0",
+        },
+      },
+    );
+  } catch (error) {
+    return adminApiErrorResponse(error);
+  }
+}
+
+export async function POST(
+  request: Request,
+): Promise<Response> {
+  const payload = await request
+    .json()
+    .catch(() => null) as {
+      name?: unknown;
+      is_active?: unknown;
+    } | null;
+
+  const name =
+    typeof payload?.name === "string"
+      ? payload.name.trim()
+      : "";
+
+  if (!name) {
+    return Response.json(
+      { detail: "Tenant name is required." },
+      { status: 422 },
+    );
+  }
+
+  try {
+    const tenant =
+      await withAdminAccessToken(
+        (accessToken) =>
+          createAdminTenant(
+            accessToken,
+            {
+              name,
+              is_active:
+                typeof payload?.is_active === "boolean"
+                  ? payload.is_active
+                  : true,
+            },
+          ),
+      );
+
+    return Response.json(
+      tenant,
+      {
+        status: 201,
         headers: {
           "Cache-Control":
             "private, no-store, max-age=0",

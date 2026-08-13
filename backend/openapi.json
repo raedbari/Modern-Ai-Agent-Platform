@@ -191,6 +191,57 @@
         "title": "AdminUserResponse",
         "type": "object"
       },
+      "AgentAdminCreate": {
+        "additionalProperties": false,
+        "description": "Create a tenant-scoped chatbot from the platform admin portal.",
+        "properties": {
+          "contact_message": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Message"
+          },
+          "knowledge_mode": {
+            "default": "preferred",
+            "enum": [
+              "required",
+              "preferred",
+              "disabled"
+            ],
+            "title": "Knowledge Mode",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "system_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Prompt"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AgentAdminCreate",
+        "type": "object"
+      },
       "AgentAdminResponse": {
         "description": "Administrative agent metadata.",
         "properties": {
@@ -2557,6 +2608,28 @@
         "title": "SignupResponse",
         "type": "object"
       },
+      "TenantAdminCreate": {
+        "additionalProperties": false,
+        "description": "Create a managed tenant from the platform admin portal.",
+        "properties": {
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "TenantAdminCreate",
+        "type": "object"
+      },
       "TenantAdminResponse": {
         "description": "Administrative tenant metadata.",
         "properties": {
@@ -3205,6 +3278,133 @@
           "widget"
         ],
         "title": "WidgetBootstrapResponse",
+        "type": "object"
+      },
+      "WidgetConnectorPairingConnected": {
+        "properties": {
+          "connected": {
+            "const": true,
+            "default": true,
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "connector_type": {
+            "enum": [
+              "wordpress",
+              "react_next",
+              "managed",
+              "custom"
+            ],
+            "title": "Connector Type",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "widget_id": {
+            "maxLength": 64,
+            "minLength": 24,
+            "pattern": "^wgt_[A-Za-z0-9_-]+$",
+            "title": "Widget Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "widget_id",
+          "origin",
+          "connector_type"
+        ],
+        "title": "WidgetConnectorPairingConnected",
+        "type": "object"
+      },
+      "WidgetConnectorPairingCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "connector_type": {
+            "enum": [
+              "wordpress",
+              "react_next",
+              "managed",
+              "custom"
+            ],
+            "title": "Connector Type",
+            "type": "string"
+          },
+          "origin": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Origin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin",
+          "connector_type"
+        ],
+        "title": "WidgetConnectorPairingCreate",
+        "type": "object"
+      },
+      "WidgetConnectorPairingCreated": {
+        "properties": {
+          "connector_type": {
+            "enum": [
+              "wordpress",
+              "react_next",
+              "managed",
+              "custom"
+            ],
+            "title": "Connector Type",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "expires_in": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "pairing_code": {
+            "title": "Pairing Code",
+            "type": "string"
+          },
+          "pairing_id": {
+            "title": "Pairing Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pairing_id",
+          "pairing_code",
+          "origin",
+          "connector_type",
+          "expires_at",
+          "expires_in"
+        ],
+        "title": "WidgetConnectorPairingCreated",
+        "type": "object"
+      },
+      "WidgetConnectorPairingRedeem": {
+        "additionalProperties": false,
+        "properties": {
+          "pairing_code": {
+            "maxLength": 64,
+            "minLength": 8,
+            "title": "Pairing Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pairing_code"
+        ],
+        "title": "WidgetConnectorPairingRedeem",
         "type": "object"
       },
       "WidgetPublicConfig": {
@@ -4507,6 +4707,53 @@
         "tags": [
           "admin"
         ]
+      },
+      "post": {
+        "operationId": "create_managed_tenant_api_admin_tenants_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantAdminCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantAdminResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Create Managed Tenant",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/admin/tenants/{tenant_id}": {
@@ -4660,6 +4907,64 @@
           }
         ],
         "summary": "Get Agents",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_managed_agent_api_admin_tenants__tenant_id__agents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentAdminCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAdminResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Create Managed Agent",
         "tags": [
           "admin"
         ]
@@ -4988,6 +5293,75 @@
           }
         ],
         "summary": "Configure Widget",
+        "tags": [
+          "admin-widget"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/agents/{agent_id}/widget/pairings": {
+      "post": {
+        "operationId": "create_connector_pairing_api_admin_tenants__tenant_id__agents__agent_id__widget_pairings_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetConnectorPairingCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetConnectorPairingCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Create Connector Pairing",
         "tags": [
           "admin-widget"
         ]
@@ -7933,6 +8307,125 @@
           }
         },
         "summary": "Bootstrap Widget",
+        "tags": [
+          "widget"
+        ]
+      }
+    },
+    "/api/widget/config": {
+      "post": {
+        "description": "Return browser-safe Widget appearance without issuing a session.",
+        "operationId": "get_public_widget_config_api_widget_config_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetBootstrapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetPublicConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Public Widget Config",
+        "tags": [
+          "widget"
+        ]
+      }
+    },
+    "/api/widget/connector/pair": {
+      "post": {
+        "operationId": "pair_widget_connector_api_widget_connector_pair_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetConnectorPairingRedeem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetConnectorPairingConnected"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pair Widget Connector",
         "tags": [
           "widget"
         ]

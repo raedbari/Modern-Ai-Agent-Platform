@@ -11,6 +11,7 @@ import {
   Pencil,
   Power,
   PowerOff,
+  Plus,
   RefreshCw,
   Search,
   Trash2,
@@ -30,6 +31,10 @@ import type {
   AgentDirectoryResponse,
   AgentKnowledgeMode,
 } from "@/lib/agents/contracts";
+
+import type {
+  TenantDirectoryResponse,
+} from "@/lib/tenants/contracts";
 
 type StatusFilter =
   | "all"
@@ -125,8 +130,12 @@ const copy = {
     "\u0645\u0639\u0631\u0641 \u0627\u0644\u0648\u0643\u064a\u0644",
   confirmDelete:
     "\u062a\u0623\u0643\u064a\u062f \u0627\u0644\u062d\u0630\u0641",
-  noCreate:
-    "\u0644\u0627 \u062a\u0648\u062c\u062f \u0639\u0645\u0644\u064a\u0629 \u0625\u0646\u0634\u0627\u0621 \u0648\u0643\u064a\u0644 \u0641\u064a Admin API \u0627\u0644\u062d\u0627\u0644\u064a.",
+  noCreate: "يمكن إنشاء Chatbot جديد مباشرة من لوحة الإدارة.",
+  createAgent: "إنشاء Chatbot",
+  createAgentTitle: "إنشاء Chatbot جديد",
+  systemPrompt: "تعليمات الوكيل",
+  contactMessage: "رسالة التواصل عند عدم توفر إجابة",
+  create: "إنشاء",
 } as const;
 
 const numberFormatter =
@@ -267,6 +276,22 @@ export function AgentsView() {
     );
   const [deleteConfirmation, setDeleteConfirmation] =
     useState("");
+  const [showCreateAgent, setShowCreateAgent] =
+    useState(false);
+  const [createTenants, setCreateTenants] =
+    useState<Array<{ id: string; name: string; is_active: boolean }>>([]);
+  const [createTenantId, setCreateTenantId] =
+    useState("");
+  const [createName, setCreateName] =
+    useState("");
+  const [createSystemPrompt, setCreateSystemPrompt] =
+    useState("");
+  const [createContactMessage, setCreateContactMessage] =
+    useState("");
+  const [createKnowledgeMode, setCreateKnowledgeMode] =
+    useState<AgentKnowledgeMode>("preferred");
+  const [isCreatingAgent, setIsCreatingAgent] =
+    useState(false);
 
   const requestDirectory = useCallback(
     async (
@@ -406,6 +431,114 @@ export function AgentsView() {
     search,
     statusFilter,
   ]);
+
+  async function openCreateAgent(): Promise<void> {
+    setActionError(null);
+
+    try {
+      const response = await fetch(
+        "/api/tenants",
+        {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        },
+      );
+
+      if (response.status === 401) {
+        window.location.assign(
+          "/?next=%2Fdashboard%2Fagents",
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        setActionError(
+          await readErrorMessage(response),
+        );
+        return;
+      }
+
+      const directory =
+        await response.json() as TenantDirectoryResponse;
+      const available = directory.items.filter(
+        (tenant) => tenant.is_active,
+      );
+
+      if (available.length === 0) {
+        setActionError(
+          "أنشئ عميلاً نشطًا أولًا قبل إنشاء Chatbot.",
+        );
+        return;
+      }
+
+      setCreateTenants(available);
+      setCreateTenantId(available[0].id);
+      setCreateName("");
+      setCreateSystemPrompt("");
+      setCreateContactMessage("");
+      setCreateKnowledgeMode("preferred");
+      setShowCreateAgent(true);
+    } catch {
+      setActionError(copy.actionFailed);
+    }
+  }
+
+  async function createAgent(): Promise<void> {
+    const name = createName.trim();
+    if (!createTenantId || !name) {
+      return;
+    }
+
+    setIsCreatingAgent(true);
+    setActionError(null);
+
+    try {
+      const response = await fetch(
+        "/api/agents",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            tenant_id: createTenantId,
+            name,
+            system_prompt:
+              createSystemPrompt.trim() || null,
+            knowledge_mode: createKnowledgeMode,
+            contact_message:
+              createContactMessage.trim() || null,
+          }),
+        },
+      );
+
+      if (response.status === 401) {
+        window.location.assign(
+          "/?next=%2Fdashboard%2Fagents",
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        setActionError(
+          await readErrorMessage(response),
+        );
+        return;
+      }
+
+      setShowCreateAgent(false);
+      await refreshDirectory();
+    } catch {
+      setActionError(copy.actionFailed);
+    } finally {
+      setIsCreatingAgent(false);
+    }
+  }
 
   async function toggleAgentStatus(
     agent: AgentDirectoryItem,
@@ -761,6 +894,18 @@ export function AgentsView() {
           <p>{copy.description}</p>
         </div>
 
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+          <button
+            className="agents-refresh"
+            type="button"
+            onClick={() => {
+              void openCreateAgent();
+            }}
+          >
+            <Plus aria-hidden="true" />
+            {copy.createAgent}
+          </button>
+
         <button
           className="agents-refresh"
           type="button"
@@ -779,6 +924,7 @@ export function AgentsView() {
           />
           {copy.refresh}
         </button>
+        </div>
       </section>
 
       <section className="agents-metrics">
@@ -807,10 +953,6 @@ export function AgentsView() {
         })}
       </section>
 
-      <div className="agents-contract-note">
-        <AlertTriangle aria-hidden="true" />
-        <span>{copy.noCreate}</span>
-      </div>
 
       {data.status === "partial" && (
         <div className="tenants-warning">
@@ -1073,6 +1215,131 @@ export function AgentsView() {
           )}
         </div>
       </section>
+
+      {showCreateAgent && (
+        <div className="tenant-dialog-backdrop">
+          <section
+            className="tenant-dialog agent-edit-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="agent-create-title"
+          >
+            <header>
+              <span><Plus aria-hidden="true" /></span>
+              <button
+                type="button"
+                aria-label="إغلاق"
+                disabled={isCreatingAgent}
+                onClick={() => setShowCreateAgent(false)}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </header>
+
+            <h3 id="agent-create-title">
+              {copy.createAgentTitle}
+            </h3>
+
+            <label htmlFor="agent-create-tenant">
+              {copy.tenant}
+            </label>
+            <select
+              id="agent-create-tenant"
+              value={createTenantId}
+              onChange={(event) =>
+                setCreateTenantId(event.target.value)
+              }
+            >
+              {createTenants.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>
+                  {tenant.name}
+                </option>
+              ))}
+            </select>
+
+            <label htmlFor="agent-create-name">
+              {copy.name}
+            </label>
+            <input
+              id="agent-create-name"
+              type="text"
+              maxLength={255}
+              value={createName}
+              onChange={(event) => setCreateName(event.target.value)}
+            />
+
+            <label htmlFor="agent-create-prompt">
+              {copy.systemPrompt}
+            </label>
+            <textarea
+              id="agent-create-prompt"
+              rows={6}
+              maxLength={10000}
+              value={createSystemPrompt}
+              onChange={(event) => setCreateSystemPrompt(event.target.value)}
+              style={{ width: "100%", resize: "vertical" }}
+            />
+
+            <label htmlFor="agent-create-knowledge">
+              {copy.knowledge}
+            </label>
+            <select
+              id="agent-create-knowledge"
+              value={createKnowledgeMode}
+              onChange={(event) =>
+                setCreateKnowledgeMode(
+                  event.target.value as AgentKnowledgeMode,
+                )
+              }
+            >
+              <option value="required">{copy.required}</option>
+              <option value="preferred">{copy.preferred}</option>
+              <option value="disabled">{copy.disabled}</option>
+            </select>
+
+            <label htmlFor="agent-create-contact">
+              {copy.contactMessage}
+            </label>
+            <textarea
+              id="agent-create-contact"
+              rows={3}
+              maxLength={1000}
+              value={createContactMessage}
+              onChange={(event) => setCreateContactMessage(event.target.value)}
+              style={{ width: "100%", resize: "vertical" }}
+            />
+
+            <footer>
+              <button
+                type="button"
+                disabled={isCreatingAgent}
+                onClick={() => setShowCreateAgent(false)}
+              >
+                {copy.cancel}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  isCreatingAgent ||
+                  !createTenantId ||
+                  createName.trim().length === 0
+                }
+                onClick={() => void createAgent()}
+              >
+                {isCreatingAgent ? (
+                  <LoaderCircle
+                    className="tenants-spinner"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Plus aria-hidden="true" />
+                )}
+                {copy.create}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
 
       {editAgent && (
         <div className="tenant-dialog-backdrop">

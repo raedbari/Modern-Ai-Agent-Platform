@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import (
     APIRouter,
@@ -18,18 +19,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.dependencies import require_admin_access, require_permission
 from backend.app.api.schemas.admin import (
+    AgentAdminCreate,
     AgentAdminResponse,
     AgentConfigResponse,
     AgentConfigUpdate,
     ApiKeyAdminResponse,
     LifecycleStatusUpdate,
     RevokeAllApiKeysResponse,
+    TenantAdminCreate,
     TenantAdminResponse,
 )
 from backend.app.auth.admin_context import AdminContext
 from backend.app.core.client_ip import get_client_ip
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
+from backend.app.db.models import Tenant
+from backend.app.infrastructure.database.tenant_repositories import (
+    TenantScopedAgentRepository,
+)
 from backend.app.infrastructure.storage import LocalUploadStorage
 from backend.app.operations.admin_lifecycle import (
     AdminLifecycleConflictError,
@@ -160,6 +167,49 @@ async def _audit_mutation(
     )
 
 
+@router.post(
+    "/tenants",
+    response_model=TenantAdminResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("tenants:write"))],
+)
+async def create_managed_tenant(
+    payload: TenantAdminCreate,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> TenantAdminResponse:
+    tenant = Tenant(
+        id=str(uuid4()),
+        name=payload.name,
+        is_active=payload.is_active,
+    )
+    session.add(tenant)
+    await session.flush()
+
+    await _audit_mutation(
+        session,
+        context=context,
+        request=request,
+        settings=settings,
+        event_type="tenant_created",
+        target_type="tenant",
+        target_id=tenant.id,
+        detail={
+            "name": tenant.name,
+            "is_active": tenant.is_active,
+            "managed_by_admin": True,
+        },
+    )
+    await session.commit()
+    await session.refresh(tenant)
+    return _tenant_response(tenant)
+
+
 @router.get("/tenants", response_model=list[TenantAdminResponse],
             dependencies=[Depends(require_permission("tenants:read"))])
 async def get_tenants(
@@ -265,6 +315,56 @@ async def permanently_delete_tenant(
         raise _conflict(exc) from exc
     await _cleanup_storage(settings, result.storage_keys)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/tenants/{tenant_id}/agents",
+    response_model=AgentAdminResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("agents:write"))],
+)
+async def create_managed_agent(
+    tenant_id: str,
+    payload: AgentAdminCreate,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> AgentAdminResponse:
+    try:
+        await require_tenant(session, tenant_id)
+        repo = TenantScopedAgentRepository(session)
+        agent = await repo.create(
+            tenant_id=tenant_id,
+            name=payload.name,
+            system_prompt=payload.system_prompt,
+            knowledge_mode=payload.knowledge_mode,
+            contact_message=payload.contact_message,
+        )
+        await _audit_mutation(
+            session,
+            context=context,
+            request=request,
+            settings=settings,
+            event_type="agent_created",
+            target_type="agent",
+            target_id=agent.id,
+            detail={
+                "tenant_id": tenant_id,
+                "knowledge_mode": payload.knowledge_mode,
+                "managed_by_admin": True,
+            },
+        )
+        await session.commit()
+        await session.refresh(agent)
+    except AdminResourceNotFoundError as exc:
+        await session.rollback()
+        raise _not_found(exc) from exc
+
+    return _agent_response(agent)
 
 
 @router.get(

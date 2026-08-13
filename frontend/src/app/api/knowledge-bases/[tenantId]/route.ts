@@ -1,5 +1,6 @@
 import {
   adminApiErrorResponse,
+  createAdminKnowledgeBase,
   listAdminKnowledgeBases,
 } from "@/lib/server/admin-api";
 
@@ -71,6 +72,78 @@ export async function GET(
     return Response.json(
       items,
       {
+        headers: {
+          "Cache-Control":
+            "private, no-store, max-age=0",
+        },
+      },
+    );
+  } catch (error) {
+    return adminApiErrorResponse(error);
+  }
+}
+
+export async function POST(
+  request: Request,
+  context: RouteContext,
+): Promise<Response> {
+  const { tenantId } = await context.params;
+
+  const payload = await request
+    .json()
+    .catch(() => null) as {
+      name?: unknown;
+      description?: unknown;
+      status?: unknown;
+      assigned_agent_ids?: unknown;
+    } | null;
+
+  const name =
+    typeof payload?.name === "string"
+      ? payload.name.trim()
+      : "";
+
+  if (!name) {
+    return validationError(
+      "Knowledge base name is required.",
+    );
+  }
+
+  const assignedAgentIds =
+    Array.isArray(payload?.assigned_agent_ids)
+      ? payload.assigned_agent_ids.filter(
+          (item): item is string =>
+            typeof item === "string" &&
+            item.trim().length > 0,
+        )
+      : [];
+
+  try {
+    const item = await withAdminAccessToken(
+      (accessToken) =>
+        createAdminKnowledgeBase(
+          accessToken,
+          tenantId,
+          {
+            name,
+            description:
+              typeof payload?.description === "string"
+                ? payload.description
+                : "",
+            status:
+              payload?.status === "inactive"
+                ? "inactive"
+                : "active",
+            assigned_agent_ids:
+              assignedAgentIds,
+          },
+        ),
+    );
+
+    return Response.json(
+      item,
+      {
+        status: 201,
         headers: {
           "Cache-Control":
             "private, no-store, max-age=0",

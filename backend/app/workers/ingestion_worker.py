@@ -12,7 +12,7 @@ from uuid import uuid4
 from sqlalchemy import select
 
 from backend.app.ai.ports import EmbeddingProvider
-from backend.app.ai.providers.ollama import OllamaEmbeddingProvider
+from backend.app.ai.providers.voyage import VoyageEmbeddingProvider
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import AsyncSessionLocal
 from backend.app.db.models import DocumentModel, IngestionJob
@@ -47,7 +47,7 @@ class IngestionWorker:
             settings.upload_storage_root
         )
         self._embedding_provider = (
-            embedding_provider or OllamaEmbeddingProvider(settings)
+            embedding_provider or VoyageEmbeddingProvider(settings)
         )
 
     async def recover_stale_jobs(self) -> int:

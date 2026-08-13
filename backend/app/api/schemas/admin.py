@@ -8,6 +8,44 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+class TenantAdminCreate(BaseModel):
+    """Create a managed tenant from the platform admin portal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    is_active: bool = True
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class AgentAdminCreate(BaseModel):
+    """Create a tenant-scoped chatbot from the platform admin portal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    system_prompt: str | None = Field(default=None, max_length=10_000)
+    knowledge_mode: Literal[
+        "required",
+        "preferred",
+        "disabled",
+    ] = "preferred"
+    contact_message: str | None = Field(default=None, max_length=1_000)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
 class LifecycleStatusUpdate(BaseModel):
     """Activate or suspend one tenant or agent."""
 

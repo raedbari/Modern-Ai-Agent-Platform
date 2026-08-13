@@ -175,6 +175,21 @@ export type KnowledgeDocumentAdmin =
 export type KnowledgeIngestionJobAdmin =
   components["schemas"]["IngestionJobAdminResponse"];
 
+export type TenantAdminCreatePayload = {
+  name: string;
+  is_active?: boolean;
+};
+
+export type AgentAdminCreatePayload = {
+  name: string;
+  system_prompt?: string | null;
+  knowledge_mode?: "required" | "preferred" | "disabled";
+  contact_message?: string | null;
+};
+
+export type KnowledgeBaseAdminCreatePayload =
+  components["schemas"]["KnowledgeBaseAdminCreate"];
+
 export async function loginAdmin(
   payload: LoginRequest,
 ): Promise<LoginResponse> {
@@ -229,6 +244,20 @@ export async function logoutAdmin(
   );
 }
 
+export async function createAdminTenant(
+  accessToken: string,
+  payload: TenantAdminCreatePayload,
+): Promise<TenantAdmin> {
+  return requestAdminApi<TenantAdmin>(
+    "/api/admin/tenants",
+    {
+      method: "POST",
+      headers: bearerHeaders(accessToken),
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export async function listAdminTenants(
   accessToken: string,
 ): Promise<TenantAdmin[]> {
@@ -237,6 +266,23 @@ export async function listAdminTenants(
     {
       method: "GET",
       headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function createAdminAgent(
+  accessToken: string,
+  tenantId: string,
+  payload: AgentAdminCreatePayload,
+): Promise<AgentAdmin> {
+  return requestAdminApi<AgentAdmin>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/agents`,
+    {
+      method: "POST",
+      headers: bearerHeaders(accessToken),
+      body: JSON.stringify(payload),
     },
   );
 }
@@ -371,6 +417,23 @@ export async function putAdminWidgetSettings(
 
 
 
+export async function createAdminKnowledgeBase(
+  accessToken: string,
+  tenantId: string,
+  payload: KnowledgeBaseAdminCreatePayload,
+): Promise<KnowledgeBaseAdmin> {
+  return requestAdminApi<KnowledgeBaseAdmin>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/knowledge-bases`,
+    {
+      method: "POST",
+      headers: bearerHeaders(accessToken),
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export async function listAdminKnowledgeBases(
   accessToken: string,
   tenantId: string,
@@ -422,6 +485,31 @@ export async function getAdminKnowledgeBase(
     {
       method: "GET",
       headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function replaceAdminKnowledgeBaseAgents(
+  accessToken: string,
+  tenantId: string,
+  knowledgeBaseId: string,
+  agentIds: string[],
+): Promise<KnowledgeBaseAdmin> {
+  return requestAdminApi<KnowledgeBaseAdmin>(
+    `/api/admin/tenants/${
+      encodeURIComponent(tenantId)
+    }/knowledge-bases/${
+      encodeURIComponent(knowledgeBaseId)
+    }/agents`,
+    {
+      method: "PUT",
+      headers: {
+        ...bearerHeaders(accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        agent_ids: agentIds,
+      }),
     },
   );
 }

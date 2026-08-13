@@ -13,6 +13,12 @@ x-api-environment: &api-environment
   MAAP_OLLAMA_EMBEDDING_MAX_RETRIES: "2"
   MAAP_OLLAMA_EMBEDDING_RETRY_BASE_SECONDS: "0.5"
   MAAP_EMBEDDING_BATCH_SIZE: "8"
+
+  MAAP_VOYAGE_API_KEY: ${MAAP_VOYAGE_API_KEY:?Set MAAP_VOYAGE_API_KEY in .env.compose}
+  MAAP_VOYAGE_MODEL: voyage-4-large
+  MAAP_VOYAGE_RERANK_MODEL: rerank-2.5
+  MAAP_RETRIEVAL_CANDIDATE_COUNT: "20"
+
   MAAP_UPLOAD_STORAGE_ROOT: /var/lib/maap/uploads
   MAAP_REDIS_URL: redis://redis:6379/0
 
@@ -116,6 +122,7 @@ services:
     environment:
       <<: *api-environment
       MAAP_ADMIN_API_KEY: ${MAAP_ADMIN_API_KEY:?Set MAAP_ADMIN_API_KEY in .env.compose}
+      MAAP_DEEPSEEK_API_KEY: ${MAAP_DEEPSEEK_API_KEY:?Set MAAP_DEEPSEEK_API_KEY in .env.compose}
       MAAP_JWT_SECRET_KEY: ${MAAP_JWT_SECRET_KEY:?Set MAAP_JWT_SECRET_KEY in .env.compose}
       MAAP_WIDGET_JWT_SECRET_KEY: ${MAAP_WIDGET_JWT_SECRET_KEY:?Set MAAP_WIDGET_JWT_SECRET_KEY in .env.compose}
     ports:

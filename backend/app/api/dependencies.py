@@ -722,13 +722,16 @@ def get_core_ai_runtime() -> GenerationRuntime:
     from backend.app.ai.providers.deepseek import (
         DeepSeekGenerationProvider,
     )
-    from backend.app.ai.providers.ollama import OllamaEmbeddingProvider
+    from backend.app.ai.providers.voyage import VoyageEmbeddingProvider
     from backend.app.ai.runtime import CoreAIRuntime
 
     settings = get_settings()
     return CoreAIRuntime(
         generation_provider=DeepSeekGenerationProvider(settings),
-        embedding_provider=OllamaEmbeddingProvider(settings),
+        embedding_provider=VoyageEmbeddingProvider(
+            settings,
+            input_type="query",
+        ),
     )
 
 
@@ -736,9 +739,9 @@ def get_core_ai_runtime() -> GenerationRuntime:
 def get_embedding_provider() -> EmbeddingProvider:
     """Build embeddings without requiring a generation-provider API key."""
 
-    from backend.app.ai.providers.ollama import OllamaEmbeddingProvider
+    from backend.app.ai.providers.voyage import VoyageEmbeddingProvider
 
-    return OllamaEmbeddingProvider(get_settings())
+    return VoyageEmbeddingProvider(get_settings())
 
 
 
@@ -834,3 +837,28 @@ async def require_tenant_user_jwt(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
         ) from exc
+
+
+@lru_cache
+def get_rerank_provider():
+    """Build Voyage reranking when it is configured.
+
+    Tests and local environments without a Voyage key fall back
+    safely to pgvector ranking. Staging and production require the
+    Voyage key through Settings validation.
+    """
+
+    settings = get_settings()
+    api_key = settings.voyage_api_key
+
+    if (
+        api_key is None
+        or not api_key.get_secret_value().strip()
+    ):
+        return None
+
+    from backend.app.ai.providers.voyage import (
+        VoyageRerankProvider,
+    )
+
+    return VoyageRerankProvider(settings)

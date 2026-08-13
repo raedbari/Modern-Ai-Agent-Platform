@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   Power,
   PowerOff,
+  Plus,
   RefreshCw,
   Search,
   Trash2,
@@ -85,6 +86,10 @@ const copy = {
     "\u0645\u0648\u0642\u0641",
   refresh:
     "\u062a\u062d\u062f\u064a\u062b",
+  createTenant: "إضافة عميل",
+  createTenantTitle: "إضافة عميل جديد",
+  tenantName: "اسم العميل",
+  create: "إنشاء",
   loading:
     "\u062c\u0627\u0631\u064a \u062a\u062d\u0645\u064a\u0644 \u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0639\u0645\u0644\u0627\u0621",
   loadError:
@@ -208,6 +213,12 @@ export function TenantsView() {
     );
   const [deleteConfirmation, setDeleteConfirmation] =
     useState("");
+  const [showCreateTenant, setShowCreateTenant] =
+    useState(false);
+  const [createTenantName, setCreateTenantName] =
+    useState("");
+  const [isCreatingTenant, setIsCreatingTenant] =
+    useState(false);
 
   const requestDirectory = useCallback(
     async (
@@ -339,6 +350,58 @@ export function TenantsView() {
     search,
     statusFilter,
   ]);
+
+  async function createTenant(): Promise<void> {
+    const name = createTenantName.trim();
+
+    if (!name) {
+      return;
+    }
+
+    setIsCreatingTenant(true);
+    setActionError(null);
+
+    try {
+      const response = await fetch(
+        "/api/tenants",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            name,
+            is_active: true,
+          }),
+        },
+      );
+
+      if (response.status === 401) {
+        window.location.assign(
+          "/?next=%2Fdashboard%2Ftenants",
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        setActionError(
+          await readErrorMessage(response),
+        );
+        return;
+      }
+
+      setShowCreateTenant(false);
+      setCreateTenantName("");
+      await refreshDirectory();
+    } catch {
+      setActionError(copy.actionFailed);
+    } finally {
+      setIsCreatingTenant(false);
+    }
+  }
 
   async function changeTenantStatus(
     tenant: TenantDirectoryItem,
@@ -597,6 +660,20 @@ export function TenantsView() {
           <p>{copy.description}</p>
         </div>
 
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+          <button
+            className="tenants-refresh"
+            type="button"
+            onClick={() => {
+              setShowCreateTenant(true);
+              setCreateTenantName("");
+              setActionError(null);
+            }}
+          >
+            <Plus aria-hidden="true" />
+            {copy.createTenant}
+          </button>
+
         <button
           className="tenants-refresh"
           type="button"
@@ -615,6 +692,7 @@ export function TenantsView() {
           />
           {copy.refresh}
         </button>
+        </div>
       </section>
 
       <section className="tenants-metrics">
@@ -912,6 +990,83 @@ export function TenantsView() {
           )}
         </div>
       </section>
+
+      {showCreateTenant && (
+        <div className="tenant-dialog-backdrop">
+          <section
+            className="tenant-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tenant-create-title"
+          >
+            <header>
+              <span>
+                <Plus aria-hidden="true" />
+              </span>
+              <button
+                type="button"
+                aria-label="إغلاق"
+                disabled={isCreatingTenant}
+                onClick={() => {
+                  setShowCreateTenant(false);
+                }}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </header>
+
+            <h3 id="tenant-create-title">
+              {copy.createTenantTitle}
+            </h3>
+
+            <label htmlFor="tenant-create-name">
+              {copy.tenantName}
+            </label>
+            <input
+              id="tenant-create-name"
+              type="text"
+              maxLength={255}
+              autoFocus
+              value={createTenantName}
+              onChange={(event) => {
+                setCreateTenantName(event.target.value);
+              }}
+            />
+
+            <footer>
+              <button
+                type="button"
+                disabled={isCreatingTenant}
+                onClick={() => {
+                  setShowCreateTenant(false);
+                }}
+              >
+                {copy.cancel}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  isCreatingTenant ||
+                  createTenantName.trim().length === 0
+                }
+                onClick={() => {
+                  void createTenant();
+                }}
+              >
+                {isCreatingTenant ? (
+                  <LoaderCircle
+                    className="tenants-spinner"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Plus aria-hidden="true" />
+                )}
+                {copy.create}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
 
       {deleteTenant && (
         <div className="tenant-dialog-backdrop">

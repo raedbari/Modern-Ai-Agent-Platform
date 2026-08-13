@@ -10,8 +10,10 @@ import {
   FileText,
   Layers3,
   LoaderCircle,
+  Plus,
   RefreshCw,
   Search,
+  X,
 } from "lucide-react";
 
 import {
@@ -36,6 +38,10 @@ import type {
   TenantDirectoryItem,
   TenantDirectoryResponse,
 } from "@/lib/tenants/contracts";
+import type {
+  AgentDirectoryItem,
+  AgentDirectoryResponse,
+} from "@/lib/agents/contracts";
 
 import styles from "./knowledge-bases-view.module.css";
 
@@ -51,7 +57,15 @@ const copy = {
   description:
     "راقب قواعد المعرفة والمستندات وعمليات الفهرسة لكل عميل من مساحة إدارية واحدة.",
   readOnly:
-    "هذه المرحلة تعرض البيانات الحية فقط. الإنشاء والرفع وإعادة الفهرسة ستضاف بعد اعتماد واجهة القراءة.",
+    "أنشئ قاعدة معرفة واربطها بالوكلاء ثم ارفع المستندات وراقب الفهرسة من نفس الصفحة.",
+  createBase: "إنشاء قاعدة معرفة",
+  createBaseTitle: "إنشاء قاعدة معرفة جديدة",
+  baseName: "اسم قاعدة المعرفة",
+  baseDescription: "الوصف",
+  create: "إنشاء",
+  cancel: "إلغاء",
+  chooseAgents: "ربط الوكلاء",
+  noAgentsAvailable: "لا توجد وكلاء لهذا العميل بعد.",
   refresh:
     "تحديث البيانات",
   tenant:
@@ -385,6 +399,18 @@ export function KnowledgeBasesView() {
 
   const [detailsError, setDetailsError] =
     useState<string | null>(null);
+  const [showCreateBase, setShowCreateBase] =
+    useState(false);
+  const [createBaseName, setCreateBaseName] =
+    useState("");
+  const [createBaseDescription, setCreateBaseDescription] =
+    useState("");
+  const [createAgents, setCreateAgents] =
+    useState<AgentDirectoryItem[]>([]);
+  const [createAssignedAgentIds, setCreateAssignedAgentIds] =
+    useState<string[]>([]);
+  const [isCreatingBase, setIsCreatingBase] =
+    useState(false);
 
   const [
     refreshVersion,
@@ -395,6 +421,96 @@ export function KnowledgeBasesView() {
     detailRefreshVersion,
     setDetailRefreshVersion,
   ] = useState(0);
+
+  async function openCreateBase(): Promise<void> {
+    if (!selectedTenantId) {
+      return;
+    }
+
+    setDetailsError(null);
+
+    try {
+      const payload = await requestJson<AgentDirectoryResponse>(
+        "/api/agents",
+      );
+      const tenantAgents = payload.items.filter(
+        (agent) =>
+          agent.tenant_id === selectedTenantId &&
+          agent.is_active,
+      );
+
+      setCreateAgents(tenantAgents);
+      setCreateAssignedAgentIds(
+        tenantAgents[0] ? [tenantAgents[0].id] : [],
+      );
+      setCreateBaseName("");
+      setCreateBaseDescription("");
+      setShowCreateBase(true);
+    } catch {
+      setDetailsError(copy.detailsError);
+    }
+  }
+
+  async function createBase(): Promise<void> {
+    const name = createBaseName.trim();
+    if (!selectedTenantId || !name) {
+      return;
+    }
+
+    setIsCreatingBase(true);
+    setDetailsError(null);
+
+    try {
+      const response = await fetch(
+        `/api/knowledge-bases/${
+          encodeURIComponent(selectedTenantId)
+        }`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            name,
+            description: createBaseDescription.trim(),
+            status: "active",
+            assigned_agent_ids: createAssignedAgentIds,
+          }),
+        },
+      );
+
+      if (response.status === 401) {
+        window.location.assign(
+          "/?next=%2Fdashboard%2Fknowledge-bases",
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as {
+          detail?: unknown;
+        } | null;
+        setDetailsError(
+          typeof body?.detail === "string"
+            ? body.detail
+            : copy.detailsError,
+        );
+        return;
+      }
+
+      const created = await response.json() as KnowledgeBaseRecord;
+      setShowCreateBase(false);
+      setSelectedBaseId(created.id);
+      setRefreshVersion((current) => current + 1);
+    } catch {
+      setDetailsError(copy.detailsError);
+    } finally {
+      setIsCreatingBase(false);
+    }
+  }
 
   const loadTenants = useCallback(
     async (
@@ -828,6 +944,19 @@ export function KnowledgeBasesView() {
           <p>{copy.description}</p>
         </div>
 
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+          <button
+            className={styles.refreshButton}
+            type="button"
+            disabled={!selectedTenantId}
+            onClick={() => {
+              void openCreateBase();
+            }}
+          >
+            <Plus aria-hidden="true" />
+            {copy.createBase}
+          </button>
+
         <button
           className={styles.refreshButton}
           type="button"
@@ -848,12 +977,118 @@ export function KnowledgeBasesView() {
           />
           {copy.refresh}
         </button>
+        </div>
       </section>
 
       <div className={styles.readOnlyNote}>
         <CheckCircle2 aria-hidden="true" />
         <span>{copy.readOnly}</span>
       </div>
+
+      {showCreateBase && (
+        <div className="tenant-dialog-backdrop">
+          <section
+            className="tenant-dialog agent-edit-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="knowledge-create-title"
+          >
+            <header>
+              <span><Plus aria-hidden="true" /></span>
+              <button
+                type="button"
+                aria-label="إغلاق"
+                disabled={isCreatingBase}
+                onClick={() => setShowCreateBase(false)}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </header>
+
+            <h3 id="knowledge-create-title">
+              {copy.createBaseTitle}
+            </h3>
+
+            <label htmlFor="knowledge-create-name">
+              {copy.baseName}
+            </label>
+            <input
+              id="knowledge-create-name"
+              type="text"
+              maxLength={255}
+              value={createBaseName}
+              onChange={(event) => setCreateBaseName(event.target.value)}
+            />
+
+            <label htmlFor="knowledge-create-description">
+              {copy.baseDescription}
+            </label>
+            <textarea
+              id="knowledge-create-description"
+              rows={3}
+              maxLength={2000}
+              value={createBaseDescription}
+              onChange={(event) => setCreateBaseDescription(event.target.value)}
+              style={{ width: "100%", resize: "vertical" }}
+            />
+
+            <label>{copy.chooseAgents}</label>
+            {createAgents.length === 0 ? (
+              <p>{copy.noAgentsAvailable}</p>
+            ) : (
+              <div style={{ display: "grid", gap: "0.5rem" }}>
+                {createAgents.map((agent) => (
+                  <label
+                    key={agent.id}
+                    style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={createAssignedAgentIds.includes(agent.id)}
+                      onChange={(event) => {
+                        setCreateAssignedAgentIds((current) =>
+                          event.target.checked
+                            ? [...current, agent.id]
+                            : current.filter((id) => id !== agent.id),
+                        );
+                      }}
+                    />
+                    <span>{agent.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <footer>
+              <button
+                type="button"
+                disabled={isCreatingBase}
+                onClick={() => setShowCreateBase(false)}
+              >
+                {copy.cancel}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  isCreatingBase ||
+                  createBaseName.trim().length === 0
+                }
+                onClick={() => void createBase()}
+              >
+                {isCreatingBase ? (
+                  <LoaderCircle
+                    className={styles.spinner}
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Plus aria-hidden="true" />
+                )}
+                {copy.create}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
 
       <section className={styles.controls}>
         <label className={styles.selectField}>
