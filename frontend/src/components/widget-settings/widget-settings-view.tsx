@@ -207,6 +207,17 @@ const copy = {
     "\u0625\u0639\u0627\u062f\u0629 \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629",
 } as const;
 
+const widgetScriptUrl = (
+  process.env.NEXT_PUBLIC_WIDGET_SCRIPT_URL ??
+  "http://127.0.0.1:3000/widget/athka-widget.js"
+).trim();
+
+const widgetApiBaseUrl = (
+  process.env.NEXT_PUBLIC_WIDGET_API_BASE_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "http://127.0.0.1:8000"
+).replace(/\/+$/, "");
+
 const hexColorPattern =
   /^#[0-9A-Fa-f]{6}$/;
 
@@ -698,6 +709,12 @@ export function WidgetSettingsView() {
     copied,
     setCopied,
   ] = useState(false);
+
+  const [
+    copiedEmbed,
+    setCopiedEmbed,
+  ] = useState(false);
+
 
 
   const [
@@ -1424,6 +1441,42 @@ export function WidgetSettingsView() {
     baseline?.is_enabled === true &&
     baseline.allowed_origins.length > 0 &&
     !dirty;
+
+  const embedCode = useMemo(
+    () =>
+      publicWidgetId
+        ? [
+            "<script",
+            `  src="${widgetScriptUrl}"`,
+            `  data-widget-id="${publicWidgetId}"`,
+            `  data-api-base="${widgetApiBaseUrl}"`,
+            "  defer",
+            "></script>",
+          ].join("\\n")
+        : "",
+    [publicWidgetId],
+  );
+
+  async function copyEmbedCode() {
+    if (!embedReady || !embedCode) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        embedCode,
+      );
+
+      setCopiedEmbed(true);
+
+      window.setTimeout(
+        () => setCopiedEmbed(false),
+        1800,
+      );
+    } catch {
+      setCopiedEmbed(false);
+    }
+  }
 
   const previewName =
     draft?.display_name?.trim() ||
@@ -2259,6 +2312,73 @@ export function WidgetSettingsView() {
                   : "احفظ الإعدادات وفعّل الـChatbot وأضف موقعًا"}
               </span>
             </div>
+
+            {embedReady ? (
+              <div
+                className="widget-settings-install widget-settings-installation-code-live"
+                style={{
+                  marginTop: 20,
+                  marginBottom: 22,
+                }}
+              >
+                <div className="widget-settings-card__title">
+                  <Clipboard aria-hidden="true" />
+
+                  <h3>
+                    كود تثبيت Chatbot
+                  </h3>
+                </div>
+
+                <p className="widget-settings-help">
+                  انسخ هذا الكود وضعه قبل وسم
+                  {" </body> "}
+                  في موقع العميل.
+                </p>
+
+                <label className="widget-settings-embed-code">
+                  <span>
+                    كود التثبيت
+                  </span>
+
+                  <textarea
+                    dir="ltr"
+                    rows={7}
+                    readOnly
+                    value={embedCode}
+                  />
+                </label>
+
+                <button
+                  className="widget-settings-button widget-settings-button--primary"
+                  type="button"
+                  disabled={!embedReady}
+                  onClick={() =>
+                    void copyEmbedCode()
+                  }
+                >
+                  {copiedEmbed ? (
+                    <Check aria-hidden="true" />
+                  ) : (
+                    <Clipboard aria-hidden="true" />
+                  )}
+
+                  {copiedEmbed
+                    ? "تم نسخ كود التثبيت"
+                    : "نسخ كود التثبيت"}
+                </button>
+
+                <div
+                  className="widget-settings-embed-status is-ready"
+                >
+                  <Check aria-hidden="true" />
+
+                  <span>
+                    كود التثبيت جاهز.
+                  </span>
+                </div>
+              </div>
+            ) : null}
+
 
             <p className="widget-settings-help">
               اختر الموقع وطريقة التكامل، ثم أنشئ
