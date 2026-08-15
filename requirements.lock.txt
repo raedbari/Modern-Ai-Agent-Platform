@@ -26,7 +26,7 @@ idna==3.18
 itsdangerous==2.2.0
 jsonpatch==1.33
 jsonpointer==3.1.1
-langchain-core==1.5.1
+langchain-core==1.5.4
 langchain-protocol==0.0.18
 langgraph-checkpoint==4.1.1
 langgraph-checkpoint-postgres==3.1.0
@@ -70,7 +70,7 @@ urllib3==2.7.0
 uuid_utils==0.17.0
 uvicorn==0.51.0
 watchfiles==1.2.0
-websockets==16.1.1
+websockets==15.0.1
 wheel==0.47.0
 xxhash==3.8.1
 zstandard==0.25.0
