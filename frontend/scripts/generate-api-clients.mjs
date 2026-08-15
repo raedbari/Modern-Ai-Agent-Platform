@@ -259,7 +259,13 @@ function validateOperationSecurity(
 
       for (const requirement of security) {
         for (const name of Object.keys(requirement)) {
-          if (!allowed.has(name)) {
+          if (
+            !allowed.has(name) &&
+            !(
+                path.startsWith("/api/knowledge-bases") &&
+                name === "TenantUserJWT"
+            ) // KNOWLEDGE_DUAL_AUTH_EXCEPTION
+        ) {
             throw new Error(
               `Forbidden security scheme ${name} in ` +
               `${method.toUpperCase()} ${path}`,

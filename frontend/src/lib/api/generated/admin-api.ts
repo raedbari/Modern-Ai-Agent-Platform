@@ -177,6 +177,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/tenant-applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin List Applications */
+        get: operations["admin_list_applications_api_admin_tenant_applications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/tenant-applications/{application_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin Get Application */
+        get: operations["admin_get_application_api_admin_tenant_applications__application_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/tenant-applications/{application_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Admin Approve Application */
+        post: operations["admin_approve_application_api_admin_tenant_applications__application_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/tenant-applications/{application_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Admin Reject Application */
+        post: operations["admin_reject_application_api_admin_tenant_applications__application_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/tenant-applications/{application_id}/request-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Admin Request Changes */
+        post: operations["admin_request_changes_api_admin_tenant_applications__application_id__request_changes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/tenants": {
         parameters: {
             query?: never;
@@ -187,7 +272,8 @@ export interface paths {
         /** Get Tenants */
         get: operations["get_tenants_api_admin_tenants_get"];
         put?: never;
-        post?: never;
+        /** Create Managed Tenant */
+        post: operations["create_managed_tenant_api_admin_tenants_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -222,7 +308,8 @@ export interface paths {
         /** Get Agents */
         get: operations["get_agents_api_admin_tenants__tenant_id__agents_get"];
         put?: never;
-        post?: never;
+        /** Create Managed Agent */
+        post: operations["create_managed_agent_api_admin_tenants__tenant_id__agents_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -295,6 +382,23 @@ export interface paths {
         /** Configure Widget */
         put: operations["configure_widget_api_admin_tenants__tenant_id__agents__agent_id__widget_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/tenants/{tenant_id}/agents/{agent_id}/widget/pairings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Connector Pairing */
+        post: operations["create_connector_pairing_api_admin_tenants__tenant_id__agents__agent_id__widget_pairings_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -778,6 +882,24 @@ export interface components {
             username: string;
         };
         /**
+         * AgentAdminCreate
+         * @description Create a tenant-scoped chatbot from the platform admin portal.
+         */
+        AgentAdminCreate: {
+            /** Contact Message */
+            contact_message?: string | null;
+            /**
+             * Knowledge Mode
+             * @default preferred
+             * @enum {string}
+             */
+            knowledge_mode: "required" | "preferred" | "disabled";
+            /** Name */
+            name: string;
+            /** System Prompt */
+            system_prompt?: string | null;
+        };
+        /**
          * AgentAdminResponse
          * @description Administrative agent metadata.
          */
@@ -880,14 +1002,16 @@ export interface components {
             /** Tenant Id */
             tenant_id: string;
         };
+        /** ApprovalRequest */
+        ApprovalRequest: {
+            /** Review Note */
+            review_note?: string | null;
+        };
         /** Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post */
         Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post: {
             /** Agent Id */
             agent_id: string;
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Source Name
@@ -897,10 +1021,7 @@ export interface components {
         };
         /** Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post */
         Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Source Name
@@ -910,10 +1031,7 @@ export interface components {
         };
         /** Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post */
         Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Source Name
@@ -923,10 +1041,7 @@ export interface components {
         };
         /** Body_reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post */
         Body_reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Source Name
@@ -936,10 +1051,7 @@ export interface components {
         };
         /** Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post */
         Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Source Name
@@ -1501,6 +1613,11 @@ export interface components {
             /** Refresh Token */
             refresh_token: string;
         };
+        /** ReviewNoteRequest */
+        ReviewNoteRequest: {
+            /** Review Note */
+            review_note: string;
+        };
         /**
          * RevokeAdminSessionsResponse
          * @description Returned after force-revoking all sessions for one admin.
@@ -1516,6 +1633,19 @@ export interface components {
         RevokeAllApiKeysResponse: {
             /** Revoked Count */
             revoked_count: number;
+        };
+        /**
+         * TenantAdminCreate
+         * @description Create a managed tenant from the platform admin portal.
+         */
+        TenantAdminCreate: {
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /** Name */
+            name: string;
         };
         /**
          * TenantAdminResponse
@@ -1539,8 +1669,54 @@ export interface components {
              */
             updated_at: string;
         };
+        /** TenantApplicationResponse */
+        TenantApplicationResponse: {
+            /** Applicant Email */
+            applicant_email: string;
+            /** Applicant Name */
+            applicant_name: string;
+            /** Approved Tenant Id */
+            approved_tenant_id: string | null;
+            /** Company Name */
+            company_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Email Verified */
+            email_verified: boolean;
+            /** Id */
+            id: string;
+            /** Requested Plan */
+            requested_plan: string;
+            /** Review Note */
+            review_note: string | null;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /** Reviewed By */
+            reviewed_by: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "email_pending" | "under_review" | "changes_requested" | "approved" | "rejected";
+            /** Submitted At */
+            submitted_at: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** User Id */
+            user_id: string;
+        };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -1548,23 +1724,36 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /** WidgetSettingsResponse */
-        WidgetSettingsResponse: {
-            /** Agent Id */
-            agent_id: string;
-            /** Allowed Origins */
-            allowed_origins: string[];
-            /** Display Name */
-            display_name: string | null;
-            /** Greeting */
-            greeting: string | null;
-            /** Is Enabled */
-            is_enabled: boolean;
-            /** Public Widget Id */
-            public_widget_id: string;
-            /** Tenant Id */
-            tenant_id: string;
-            theme: components["schemas"]["WidgetTheme"];
+        /** WidgetConnectorPairingCreate */
+        WidgetConnectorPairingCreate: {
+            /**
+             * Connector Type
+             * @enum {string}
+             */
+            connector_type: "wordpress" | "react_next" | "managed" | "custom";
+            /** Origin */
+            origin: string;
+        };
+        /** WidgetConnectorPairingCreated */
+        WidgetConnectorPairingCreated: {
+            /**
+             * Connector Type
+             * @enum {string}
+             */
+            connector_type: "wordpress" | "react_next" | "managed" | "custom";
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Expires In */
+            expires_in: number;
+            /** Origin */
+            origin: string;
+            /** Pairing Code */
+            pairing_code: string;
+            /** Pairing Id */
+            pairing_id: string;
         };
         /** WidgetSettingsUpdate */
         WidgetSettingsUpdate: {
@@ -1620,6 +1809,24 @@ export interface components {
              * @default #2563EB
              */
             userMessageColor: string;
+        };
+        /** WidgetSettingsResponse */
+        backend__app__api__schemas__widget__WidgetSettingsResponse: {
+            /** Agent Id */
+            agent_id: string;
+            /** Allowed Origins */
+            allowed_origins: string[];
+            /** Display Name */
+            display_name: string | null;
+            /** Greeting */
+            greeting: string | null;
+            /** Is Enabled */
+            is_enabled: boolean;
+            /** Public Widget Id */
+            public_widget_id: string;
+            /** Tenant Id */
+            tenant_id: string;
+            theme: components["schemas"]["WidgetTheme"];
         };
     };
     responses: never;
@@ -1940,6 +2147,162 @@ export interface operations {
             };
         };
     };
+    admin_list_applications_api_admin_tenant_applications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantApplicationResponse"][];
+                };
+            };
+        };
+    };
+    admin_get_application_api_admin_tenant_applications__application_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_approve_application_api_admin_tenant_applications__application_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_reject_application_api_admin_tenant_applications__application_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_request_changes_api_admin_tenant_applications__application_id__request_changes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_tenants_api_admin_tenants_get: {
         parameters: {
             query?: never;
@@ -1956,6 +2319,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TenantAdminResponse"][];
+                };
+            };
+        };
+    };
+    create_managed_tenant_api_admin_tenants_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantAdminCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantAdminResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2040,6 +2436,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentAdminResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_managed_agent_api_admin_tenants__tenant_id__agents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAdminCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAdminResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2175,7 +2606,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WidgetSettingsResponse"];
+                    "application/json": components["schemas"]["backend__app__api__schemas__widget__WidgetSettingsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2211,7 +2642,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WidgetSettingsResponse"];
+                    "application/json": components["schemas"]["backend__app__api__schemas__widget__WidgetSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_connector_pairing_api_admin_tenants__tenant_id__agents__agent_id__widget_pairings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetConnectorPairingCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WidgetConnectorPairingCreated"];
                 };
             };
             /** @description Validation Error */
@@ -2801,7 +3268,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Agent selector authorized against the API-key tenant. */
+                /** @description Agent selected for the knowledge operation. */
                 "X-Agent-ID"?: string | null;
             };
             path?: never;
@@ -2833,7 +3300,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Agent selector authorized against the API-key tenant. */
+                /** @description Agent selected for the knowledge operation. */
                 "X-Agent-ID"?: string | null;
             };
             path?: never;
@@ -2869,7 +3336,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Agent selector authorized against the API-key tenant. */
+                /** @description Agent selected for the knowledge operation. */
                 "X-Agent-ID"?: string | null;
             };
             path: {
@@ -2903,7 +3370,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Agent selector authorized against the API-key tenant. */
+                /** @description Agent selected for the knowledge operation. */
                 "X-Agent-ID"?: string | null;
             };
             path: {
@@ -2935,7 +3402,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Agent selector authorized against the API-key tenant. */
+                /** @description Agent selected for the knowledge operation. */
                 "X-Agent-ID"?: string | null;
             };
             path: {
@@ -2973,7 +3440,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Agent selector authorized against the API-key tenant. */
+                /** @description Agent selected for the knowledge operation. */
                 "X-Agent-ID"?: string | null;
             };
             path: {
@@ -3011,7 +3478,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Agent selector authorized against the API-key tenant. */
+                /** @description Agent selected for the knowledge operation. */
                 "X-Agent-ID"?: string | null;
             };
             path: {
@@ -3046,7 +3513,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Agent selector authorized against the API-key tenant. */
+                /** @description Agent selected for the knowledge operation. */
                 "X-Agent-ID"?: string | null;
             };
             path: {
@@ -3080,7 +3547,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Agent selector authorized against the API-key tenant. */
+                /** @description Agent selected for the knowledge operation. */
                 "X-Agent-ID"?: string | null;
             };
             path: {
@@ -3118,7 +3585,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Agent selector authorized against the API-key tenant. */
+                /** @description Agent selected for the knowledge operation. */
                 "X-Agent-ID"?: string | null;
             };
             path: {
@@ -3153,7 +3620,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Agent selector authorized against the API-key tenant. */
+                /** @description Agent selected for the knowledge operation. */
                 "X-Agent-ID"?: string | null;
             };
             path: {
@@ -3186,7 +3653,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Agent selector authorized against the API-key tenant. */
+                /** @description Agent selected for the knowledge operation. */
                 "X-Agent-ID"?: string | null;
             };
             path: {

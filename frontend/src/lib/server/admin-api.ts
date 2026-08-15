@@ -161,7 +161,7 @@ export type AgentConfig =
   components["schemas"]["AgentConfigResponse"];
 
 export type WidgetSettings =
-  components["schemas"]["WidgetSettingsResponse"];
+  components["schemas"]["backend__app__api__schemas__widget__WidgetSettingsResponse"];
 
 export type WidgetSettingsUpdatePayload =
   components["schemas"]["WidgetSettingsUpdate"];
