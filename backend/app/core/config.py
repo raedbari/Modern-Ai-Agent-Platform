@@ -53,6 +53,20 @@ class Settings(BaseSettings):
         ge=0,
         le=10,
     )
+
+    voyage_api_key: SecretStr | None = None
+    voyage_base_url: AnyHttpUrl = "https://api.voyageai.com/v1"
+    voyage_model: str = "voyage-4-large"
+    voyage_rerank_model: str = "rerank-2.5"
+    retrieval_candidate_count: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+    )
+    voyage_timeout_seconds: float = Field(default=30.0, gt=0)
+    voyage_max_retries: int = Field(default=2, ge=0, le=5)
+    voyage_retry_base_seconds: float = Field(default=0.5, ge=0, le=10)
+
     database_url: str = (
         "postgresql+asyncpg://postgres:postgres@localhost:5432/maap"
     )
@@ -166,6 +180,26 @@ class Settings(BaseSettings):
         le=86400,
     )
 
+    # Tenant user login rate limits
+    tenant_login_rate_limit_per_account: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+        description="Maximum login attempts per user account within the time window",
+    )
+    tenant_login_rate_limit_per_ip: int = Field(
+        default=20,
+        ge=1,
+        le=10000,
+        description="Maximum login attempts per IP address within the time window",
+    )
+    tenant_login_rate_limit_window_seconds: int = Field(
+        default=900,
+        ge=1,
+        le=86400,
+        description="Rate limit time window in seconds (default: 15 minutes)",
+    )
+
     # Browser Widget sessions use a separate signing key and short lifetime.
     widget_jwt_secret_key: SecretStr | None = None
     widget_jwt_issuer: str = Field(
@@ -198,6 +232,22 @@ class Settings(BaseSettings):
         ge=1,
         le=86400,
     )
+    widget_pairing_rate_limit_per_code: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+    )
+    widget_pairing_rate_limit_per_ip: int = Field(
+        default=20,
+        ge=1,
+        le=10000,
+    )
+    widget_pairing_rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        le=3600,
+    )
+
     widget_chat_rate_limit_per_session: int = Field(
         default=30,
         ge=1,
@@ -241,6 +291,15 @@ class Settings(BaseSettings):
         if requires_api_key and api_key_missing:
             raise ValueError(
                 "MAAP_DEEPSEEK_API_KEY is required in staging and production"
+            )
+
+        voyage_key_missing = (
+            self.voyage_api_key is None
+            or not self.voyage_api_key.get_secret_value().strip()
+        )
+        if requires_api_key and voyage_key_missing:
+            raise ValueError(
+                "MAAP_VOYAGE_API_KEY is required in staging and production"
             )
 
         admin_key_missing = (

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -34,8 +35,10 @@ from backend.app.db.models import (
     Conversation,
     Tenant,
     WidgetAllowedOrigin,
+    WidgetConnectorPairing,
 )
 from backend.app.main import create_app
+from backend.app.operations.widget_pairing import pairing_code_digest
 
 
 _WIDGET_ID = "wgt_customer_widget_identifier_1234"
@@ -155,6 +158,43 @@ async def _seed_widget(
             )
         )
         await session.commit()
+
+
+async def _seed_pairing(
+    sessions: async_sessionmaker,
+    *,
+    pairing_code: str = "ATK-TEST-PAIR-CODE-0001",
+    origin: str = _ORIGIN,
+    connector_type: str = "wordpress",
+    expired: bool = False,
+) -> str:
+    pairing_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+
+    async with sessions() as session:
+        session.add(
+            WidgetConnectorPairing(
+                id=pairing_id,
+                tenant_id="tenant-a",
+                agent_id="agent-a",
+                origin=origin,
+                connector_type=connector_type,
+                code_digest=pairing_code_digest(
+                    pairing_code,
+                ),
+                expires_at=(
+                    now - timedelta(minutes=1)
+                    if expired
+                    else now + timedelta(minutes=10)
+                ),
+                used_at=None,
+                connected_at=None,
+                created_by_admin_id=None,
+            )
+        )
+        await session.commit()
+
+    return pairing_id
 
 
 async def _bootstrap(
@@ -610,5 +650,454 @@ async def test_invalid_widget_bearer_never_falls_back_to_api_key(
 
         assert response.status_code == 401
         runtime.generate.assert_not_awaited()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_public_widget_config_reflects_saved_runtime_changes(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path / "public-config.sqlite3"
+    )
+    await _seed_widget(sessions)
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            preflight = await client.options(
+                "/api/widget/config",
+                headers={
+                    "Origin": _ORIGIN,
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "content-type",
+                },
+            )
+
+            assert preflight.status_code == 204
+            assert (
+                preflight.headers["Access-Control-Allow-Origin"]
+                == _ORIGIN
+            )
+
+            first = await client.post(
+                "/api/widget/config",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": _ORIGIN},
+            )
+
+            assert first.status_code == 200, first.text
+            first_body = first.json()
+
+            assert first_body["widget_id"] == _WIDGET_ID
+            assert first_body["display_name"] == "Public Support"
+            assert first_body["theme"]["primaryColor"] == "#112233"
+            assert "session_token" not in first_body
+            assert "session_id" not in first_body
+            assert "tenant_id" not in first.text
+            assert "agent_id" not in first.text
+            assert first.headers["Cache-Control"] == "no-store"
+            assert (
+                first.headers["Access-Control-Allow-Origin"]
+                == _ORIGIN
+            )
+
+            async with sessions() as session:
+                widget = await session.get(
+                    AgentWidgetSettings,
+                    {
+                        "tenant_id": "tenant-a",
+                        "agent_id": "agent-a",
+                    },
+                )
+                assert widget is not None
+
+                widget.display_name = "Updated Public Support"
+                widget.primary_color = "#000000"
+
+                await session.commit()
+
+            updated = await client.post(
+                "/api/widget/config",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": _ORIGIN},
+            )
+
+            assert updated.status_code == 200
+            assert (
+                updated.json()["display_name"]
+                == "Updated Public Support"
+            )
+            assert (
+                updated.json()["theme"]["primaryColor"]
+                == "#000000"
+            )
+
+            attacker = await client.post(
+                "/api/widget/config",
+                json={"widget_id": _WIDGET_ID},
+                headers={
+                    "Origin": "https://attacker.example",
+                },
+            )
+
+            assert attacker.status_code == 403
+            assert (
+                "Access-Control-Allow-Origin"
+                not in attacker.headers
+            )
+
+            async with sessions() as session:
+                widget = await session.get(
+                    AgentWidgetSettings,
+                    {
+                        "tenant_id": "tenant-a",
+                        "agent_id": "agent-a",
+                    },
+                )
+                assert widget is not None
+
+                widget.is_enabled = False
+                await session.commit()
+
+            disabled = await client.post(
+                "/api/widget/config",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": _ORIGIN},
+            )
+
+            assert disabled.status_code == 404
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_connector_pairing_redeem_connects_once(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path / "pairing-redeem.sqlite3"
+    )
+    await _seed_widget(sessions)
+
+    pairing_code = "ATK-TEST-PAIR-CODE-0001"
+    pairing_id = await _seed_pairing(
+        sessions,
+        pairing_code=pairing_code,
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            first = await client.post(
+                "/api/widget/connector/pair",
+                json={
+                    "pairing_code": pairing_code.lower(),
+                },
+                headers={
+                    "Origin": _ORIGIN,
+                },
+            )
+
+            second = await client.post(
+                "/api/widget/connector/pair",
+                json={
+                    "pairing_code": pairing_code,
+                },
+                headers={
+                    "Origin": _ORIGIN,
+                },
+            )
+
+        assert first.status_code == 200, first.text
+        assert first.json() == {
+            "connected": True,
+            "widget_id": _WIDGET_ID,
+            "origin": _ORIGIN,
+            "connector_type": "wordpress",
+        }
+        assert (
+            first.headers["Access-Control-Allow-Origin"]
+            == _ORIGIN
+        )
+        assert first.headers["Cache-Control"] == "no-store"
+
+        assert second.status_code == 400
+        assert second.json() == {
+            "detail": "Pairing code is invalid or unavailable."
+        }
+
+        async with sessions() as session:
+            pairing = await session.get(
+                WidgetConnectorPairing,
+                pairing_id,
+            )
+
+        assert pairing is not None
+        assert pairing.used_at is not None
+        assert pairing.connected_at is not None
+
+        # Only the digest is persisted.
+        assert pairing.code_digest == pairing_code_digest(
+            pairing_code
+        )
+        assert pairing.code_digest != pairing_code
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_connector_pairing_rejects_expired_code(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path / "pairing-expired.sqlite3"
+    )
+    await _seed_widget(sessions)
+
+    pairing_code = "ATK-EXPIRED-PAIR-CODE-01"
+    await _seed_pairing(
+        sessions,
+        pairing_code=pairing_code,
+        expired=True,
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/widget/connector/pair",
+                json={"pairing_code": pairing_code},
+                headers={"Origin": _ORIGIN},
+            )
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": "Pairing code is invalid or unavailable."
+        }
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_connector_pairing_rejects_wrong_origin(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path / "pairing-wrong-origin.sqlite3"
+    )
+    await _seed_widget(sessions)
+
+    pairing_code = "ATK-WRONG-ORIGIN-CODE-01"
+    await _seed_pairing(
+        sessions,
+        pairing_code=pairing_code,
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/widget/connector/pair",
+                json={"pairing_code": pairing_code},
+                headers={
+                    "Origin": "https://attacker.example",
+                },
+            )
+
+        assert response.status_code == 403
+        assert (
+            "Access-Control-Allow-Origin"
+            not in response.headers
+        )
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_connector_pairing_rejects_origin_removed_from_allowlist(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path / "pairing-origin-removed.sqlite3"
+    )
+    await _seed_widget(sessions)
+
+    pairing_code = "ATK-REMOVED-ORIGIN-CODE-1"
+    await _seed_pairing(
+        sessions,
+        pairing_code=pairing_code,
+    )
+
+    async with sessions() as session:
+        origin = await session.scalar(
+            select(WidgetAllowedOrigin).where(
+                WidgetAllowedOrigin.tenant_id == "tenant-a",
+                WidgetAllowedOrigin.agent_id == "agent-a",
+                WidgetAllowedOrigin.origin == _ORIGIN,
+            )
+        )
+        assert origin is not None
+        await session.delete(origin)
+        await session.commit()
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/widget/connector/pair",
+                json={"pairing_code": pairing_code},
+                headers={"Origin": _ORIGIN},
+            )
+
+        assert response.status_code == 403
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tenant_active,agent_active,widget_enabled",
+    [
+        (False, True, True),
+        (True, False, True),
+        (True, True, False),
+    ],
+)
+async def test_connector_pairing_rejects_disabled_target(
+    tmp_path: Path,
+    tenant_active: bool,
+    agent_active: bool,
+    widget_enabled: bool,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path
+        / (
+            "pairing-disabled-"
+            f"{tenant_active}-"
+            f"{agent_active}-"
+            f"{widget_enabled}.sqlite3"
+        )
+    )
+
+    await _seed_widget(
+        sessions,
+        tenant_active=tenant_active,
+        agent_active=agent_active,
+        widget_enabled=widget_enabled,
+    )
+
+    pairing_code = "ATK-DISABLED-TARGET-0001"
+    await _seed_pairing(
+        sessions,
+        pairing_code=pairing_code,
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/widget/connector/pair",
+                json={"pairing_code": pairing_code},
+                headers={"Origin": _ORIGIN},
+            )
+
+        assert response.status_code == 409
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_connector_pairing_rate_limit_is_enforced(
+    tmp_path: Path,
+) -> None:
+    app, engine, _, _, _ = await _open_widget_app(
+        tmp_path / "pairing-rate-limit.sqlite3"
+    )
+
+    class DenyingLimiter:
+        async def check(
+            self,
+            **kwargs,
+        ) -> RateLimitResult:
+            return RateLimitResult(
+                allowed=False,
+                remaining=0,
+                retry_after_seconds=31,
+            )
+
+    app.dependency_overrides[
+        get_rate_limiter
+    ] = lambda: DenyingLimiter()
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/widget/connector/pair",
+                json={
+                    "pairing_code":
+                        "ATK-RATE-LIMIT-TEST-0001"
+                },
+                headers={"Origin": _ORIGIN},
+            )
+
+        assert response.status_code == 429
+        assert response.headers["Retry-After"] == "31"
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_connector_pairing_preflight_is_supported(
+    tmp_path: Path,
+) -> None:
+    app, engine, _, _, _ = await _open_widget_app(
+        tmp_path / "pairing-preflight.sqlite3"
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.options(
+                "/api/widget/connector/pair",
+                headers={
+                    "Origin": _ORIGIN,
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers":
+                        "content-type",
+                },
+            )
+
+        assert response.status_code == 204
+        assert (
+            response.headers["Access-Control-Allow-Origin"]
+            == _ORIGIN
+        )
+
     finally:
         await engine.dispose()

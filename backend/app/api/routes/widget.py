@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.api.schemas.widget import (
     WidgetBootstrapRequest,
     WidgetBootstrapResponse,
+    WidgetConnectorPairingConnected,
+    WidgetConnectorPairingRedeem,
     WidgetPublicConfig,
     WidgetTheme,
 )
@@ -24,9 +26,80 @@ from backend.app.operations.widget import (
     is_widget_origin_allowed,
     resolve_public_widget,
 )
+from backend.app.operations.widget_pairing import (
+    WidgetPairingCodeUnavailableError,
+    WidgetPairingOriginMismatchError,
+    WidgetPairingTargetUnavailableError,
+    redeem_widget_connector_pairing,
+)
 
 
 router = APIRouter(prefix="/api/widget", tags=["widget"])
+
+
+@router.post(
+    "/config",
+    response_model=WidgetPublicConfig,
+    status_code=status.HTTP_200_OK,
+)
+async def get_public_widget_config(
+    payload: WidgetBootstrapRequest,
+    request: Request,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    origin_header: Annotated[str | None, Header(alias="Origin")] = None,
+) -> WidgetPublicConfig:
+    """Return browser-safe Widget appearance without issuing a session."""
+
+    origin = normalize_origin(origin_header)
+    if origin is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A valid Origin header is required.",
+        )
+
+    resolved = await resolve_public_widget(
+        session,
+        payload.widget_id,
+    )
+    if resolved is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Widget not found.",
+        )
+
+    widget, agent, tenant = resolved
+
+    if not await is_widget_origin_allowed(
+        session,
+        tenant_id=tenant.id,
+        agent_id=agent.id,
+        origin=origin,
+        environment=settings.environment,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Origin is not allowed for this Widget.",
+        )
+
+    request.state.widget_cors_origin = origin
+    response.headers["Cache-Control"] = "no-store"
+
+    return WidgetPublicConfig(
+        widget_id=widget.public_widget_id,
+        display_name=widget.display_name or agent.name,
+        greeting=widget.greeting,
+        theme=WidgetTheme(
+            primary_color=widget.primary_color,
+            text_color=widget.text_color,
+            launcher_color=widget.launcher_color,
+            header_color=widget.header_color,
+            user_message_color=widget.user_message_color,
+            position=widget.position,
+            appearance=widget.appearance,
+        ),
+    )
 
 
 @router.post(
@@ -141,4 +214,109 @@ async def bootstrap_widget(
                 appearance=widget.appearance,
             ),
         ),
+    )
+
+
+@router.post(
+    "/connector/pair",
+    response_model=WidgetConnectorPairingConnected,
+    status_code=status.HTTP_200_OK,
+)
+async def pair_widget_connector(
+    payload: WidgetConnectorPairingRedeem,
+    request: Request,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+    origin_header: Annotated[str | None, Header(alias="Origin")] = None,
+) -> WidgetConnectorPairingConnected:
+    origin = normalize_origin(origin_header)
+
+    if origin is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A valid Origin header is required.",
+        )
+
+    client_ip = get_client_ip(request, settings)
+
+    try:
+        code_limit = await rate_limiter.check(
+            bucket="widget-pairing-code",
+            identity=payload.pairing_code,
+            limit=settings.widget_pairing_rate_limit_per_code,
+            window_seconds=(
+                settings.widget_pairing_rate_limit_window_seconds
+            ),
+        )
+
+        ip_limit = await rate_limiter.check(
+            bucket="widget-pairing-ip",
+            identity=client_ip or "unknown",
+            limit=settings.widget_pairing_rate_limit_per_ip,
+            window_seconds=(
+                settings.widget_pairing_rate_limit_window_seconds
+            ),
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Widget pairing service is temporarily unavailable.",
+        ) from exc
+
+    if not code_limit.allowed or not ip_limit.allowed:
+        retry_after = max(
+            code_limit.retry_after_seconds,
+            ip_limit.retry_after_seconds,
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many Widget pairing attempts.",
+            headers={
+                "Retry-After": str(retry_after)
+            },
+        )
+
+    try:
+        pairing, widget = await redeem_widget_connector_pairing(
+            session,
+            pairing_code=payload.pairing_code,
+            origin=origin,
+        )
+
+        await session.commit()
+        await session.refresh(pairing)
+
+    except WidgetPairingCodeUnavailableError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    except WidgetPairingOriginMismatchError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+
+    except WidgetPairingTargetUnavailableError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    request.state.widget_cors_origin = origin
+    response.headers["Cache-Control"] = "no-store"
+
+    return WidgetConnectorPairingConnected(
+        connected=True,
+        widget_id=widget.public_widget_id,
+        origin=pairing.origin,
+        connector_type=pairing.connector_type,
     )

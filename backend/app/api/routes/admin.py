@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import (
     APIRouter,
@@ -18,19 +19,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.dependencies import require_admin_access, require_permission
 from backend.app.api.schemas.admin import (
+    AgentAdminCreate,
     AgentAdminResponse,
+    AgentConfigResponse,
+    AgentConfigUpdate,
     ApiKeyAdminResponse,
     LifecycleStatusUpdate,
     RevokeAllApiKeysResponse,
+    TenantAdminCreate,
     TenantAdminResponse,
 )
 from backend.app.auth.admin_context import AdminContext
 from backend.app.core.client_ip import get_client_ip
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
+from backend.app.db.models import Tenant
+from backend.app.infrastructure.database.tenant_repositories import (
+    TenantScopedAgentRepository,
+)
 from backend.app.infrastructure.storage import LocalUploadStorage
 from backend.app.operations.admin_lifecycle import (
     AdminLifecycleConflictError,
+    AdminLifecycleValidationError,
     AdminResourceNotFoundError,
     delete_agent,
     delete_conversation,
@@ -43,6 +53,7 @@ from backend.app.operations.admin_lifecycle import (
     revoke_api_key,
     set_agent_active,
     set_tenant_active,
+    update_agent_config,
 )
 from backend.app.services.audit import AuditService
 
@@ -71,6 +82,21 @@ def _agent_response(item) -> AgentAdminResponse:
         name=item.name,
         is_active=item.is_active,
         knowledge_mode=item.knowledge_mode,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+
+def _agent_config_response(item) -> AgentConfigResponse:
+    return AgentConfigResponse(
+        id=item.id,
+        tenant_id=item.tenant_id,
+        name=item.name,
+        system_prompt=item.system_prompt,
+        knowledge_mode=item.knowledge_mode,
+        contact_message=item.contact_message,
+        is_active=item.is_active,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -139,6 +165,49 @@ async def _audit_mutation(
         client_ip=get_client_ip(request, settings),
         detail=detail,
     )
+
+
+@router.post(
+    "/tenants",
+    response_model=TenantAdminResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("tenants:write"))],
+)
+async def create_managed_tenant(
+    payload: TenantAdminCreate,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> TenantAdminResponse:
+    tenant = Tenant(
+        id=str(uuid4()),
+        name=payload.name,
+        is_active=payload.is_active,
+    )
+    session.add(tenant)
+    await session.flush()
+
+    await _audit_mutation(
+        session,
+        context=context,
+        request=request,
+        settings=settings,
+        event_type="tenant_created",
+        target_type="tenant",
+        target_id=tenant.id,
+        detail={
+            "name": tenant.name,
+            "is_active": tenant.is_active,
+            "managed_by_admin": True,
+        },
+    )
+    await session.commit()
+    await session.refresh(tenant)
+    return _tenant_response(tenant)
 
 
 @router.get("/tenants", response_model=list[TenantAdminResponse],
@@ -248,6 +317,56 @@ async def permanently_delete_tenant(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post(
+    "/tenants/{tenant_id}/agents",
+    response_model=AgentAdminResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("agents:write"))],
+)
+async def create_managed_agent(
+    tenant_id: str,
+    payload: AgentAdminCreate,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> AgentAdminResponse:
+    try:
+        await require_tenant(session, tenant_id)
+        repo = TenantScopedAgentRepository(session)
+        agent = await repo.create(
+            tenant_id=tenant_id,
+            name=payload.name,
+            system_prompt=payload.system_prompt,
+            knowledge_mode=payload.knowledge_mode,
+            contact_message=payload.contact_message,
+        )
+        await _audit_mutation(
+            session,
+            context=context,
+            request=request,
+            settings=settings,
+            event_type="agent_created",
+            target_type="agent",
+            target_id=agent.id,
+            detail={
+                "tenant_id": tenant_id,
+                "knowledge_mode": payload.knowledge_mode,
+                "managed_by_admin": True,
+            },
+        )
+        await session.commit()
+        await session.refresh(agent)
+    except AdminResourceNotFoundError as exc:
+        await session.rollback()
+        raise _not_found(exc) from exc
+
+    return _agent_response(agent)
+
+
 @router.get(
     "/tenants/{tenant_id}/agents",
     response_model=list[AgentAdminResponse],
@@ -262,6 +381,67 @@ async def get_agents(
     except AdminResourceNotFoundError as exc:
         raise _not_found(exc) from exc
     return [_agent_response(item) for item in items]
+
+
+@router.patch(
+    "/tenants/{tenant_id}/agents/{agent_id}/config",
+    response_model=AgentConfigResponse,
+    dependencies=[Depends(require_permission("agents:write"))],
+)
+async def update_agent_configuration(
+    tenant_id: str,
+    agent_id: str,
+    payload: AgentConfigUpdate,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
+) -> AgentConfigResponse:
+    """Update editable configuration for one tenant-scoped agent."""
+
+    try:
+        item = await update_agent_config(
+            session,
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            update=payload,
+        )
+
+        changed_fields = sorted(payload.model_fields_set)
+
+        await _audit_mutation(
+            session,
+            context=context,
+            request=request,
+            settings=settings,
+            event_type="agent_config_updated",
+            target_type="agent",
+            target_id=agent_id,
+            detail={
+                "tenant_id": tenant_id,
+                "changed_fields": changed_fields,
+            },
+        )
+
+        await session.commit()
+        await session.refresh(item)
+
+    except AdminLifecycleValidationError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+    except AdminResourceNotFoundError as exc:
+        await session.rollback()
+        raise _not_found(exc) from exc
+
+    return _agent_config_response(item)
+
 
 
 @router.patch(

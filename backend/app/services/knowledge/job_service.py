@@ -24,21 +24,63 @@ class IngestionJobService:
         document_id: str,
         storage_key: str,
         max_attempts: int,
+        source_filename: str | None = None,
+        source_mime_type: str | None = None,
+        source_name: str | None = None,
+        job_id: str | None = None,
     ) -> IngestionJob:
         if max_attempts <= 0:
             raise ValueError("max_attempts must be positive.")
+
+        if job_id is None:
+            normalized_job_id = str(uuid4())
+        else:
+            normalized_job_id = job_id.strip()
+            if not normalized_job_id:
+                raise ValueError("job_id must not be blank.")
+            if len(normalized_job_id) > 128:
+                raise ValueError(
+                    "job_id must be at most 128 characters."
+                )
+
         job = IngestionJob(
-            id=str(uuid4()),
+            id=normalized_job_id,
             tenant_id=tenant_id,
             agent_id=agent_id,
             knowledge_base_id=knowledge_base_id,
             document_id=document_id,
             storage_key=storage_key,
+            source_filename=source_filename,
+            source_mime_type=source_mime_type,
+            source_name=source_name,
             max_attempts=max_attempts,
         )
         session.add(job)
         await session.flush()
         return job
+
+    @staticmethod
+    async def get_active_for_document(
+        session: AsyncSession,
+        *,
+        tenant_id: str,
+        document_id: str,
+    ) -> IngestionJob | None:
+        """Return one pending or processing job for a document."""
+
+        return await session.scalar(
+            select(IngestionJob)
+            .where(
+                IngestionJob.tenant_id == tenant_id,
+                IngestionJob.document_id == document_id,
+                IngestionJob.status.in_(("pending", "processing")),
+            )
+            .order_by(
+                IngestionJob.created_at.desc(),
+                IngestionJob.id.desc(),
+            )
+            .limit(1)
+        )
 
     @staticmethod
     async def get_scoped(

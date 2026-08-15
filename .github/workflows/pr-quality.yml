@@ -1,0 +1,139 @@
+name: PR Quality Gates
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE_PROJECT_NAME: athka-ci-${{ github.run_id }}
+
+concurrency:
+  group: pr-quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  policy:
+    name: policy-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Architecture policy
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/ci/architecture_guard.py
+
+      - name: Secret policy
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/ci/secret_guard.py
+
+      - name: No whitespace errors
+        run: git diff --check 90606dd02c4c60bd391340937bb13d3ba7ffdb80...HEAD
+
+  frontend:
+    name: frontend-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+          package-manager-cache: true
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: TypeScript
+        run: npx tsc --noEmit --incremental false
+
+      - name: Next.js production build
+        env:
+          API_BASE_URL: http://api:8000
+        run: npm run build
+
+  backend:
+    name: backend-db-rag
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Generate disposable CI environment
+        run: python3 scripts/ci/make_ci_env.py
+
+      - name: Validate compose
+        run: |
+          docker compose             --env-file .env.compose.ci             -f compose.local.yaml             config --quiet
+
+      - name: Build API and ingestion worker
+        run: |
+          docker compose             --env-file .env.compose.ci             -f compose.local.yaml             build api ingestion-worker
+
+      - name: Alembic single-head gate
+        run: |
+          set -euo pipefail
+          OUTPUT="$(
+            docker compose               --env-file .env.compose.ci               -f compose.local.yaml               run --rm api               sh -lc '
+                cd /app 2>/dev/null || true
+                if [ -f alembic.ini ]; then
+                  alembic heads
+                elif [ -f backend/alembic.ini ]; then
+                  cd backend
+                  alembic heads
+                else
+                  echo "ALEMBIC_INI_NOT_FOUND"
+                  exit 1
+                fi
+              '
+          )"
+          echo "$OUTPUT"
+          COUNT="$(printf "%s\n" "$OUTPUT" | grep -c "(head)" || true)"
+          test "$COUNT" -eq 1
+
+      - name: Full backend test suite - paid AI disabled
+        run: |
+          docker compose             --env-file .env.compose.ci             -f compose.local.yaml             run --rm api             sh -lc '
+              unset MAAP_REDIS_URL
+              unset MAAP_WIDGET_JWT_SECRET_KEY
+              unset MAAP_VOYAGE_API_KEY
+              unset MAAP_DEEPSEEK_API_KEY
+
+              python -m pytest                 backend/tests                 -q                 -p no:cacheprovider
+            '
+
+      - name: OpenAPI JSON is valid
+        run: python3 -m json.tool backend/openapi.json >/dev/null
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose             --env-file .env.compose.ci             -f compose.local.yaml             down -v --remove-orphans || true
+          rm -f .env.compose.ci

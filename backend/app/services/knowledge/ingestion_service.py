@@ -59,6 +59,15 @@ class IngestionResult:
     duplicate: bool = False
 
 
+@dataclass(frozen=True)
+class PreparedReindex:
+    """Replacement chunks prepared without changing active knowledge."""
+
+    content_hash: str
+    mime_type: str
+    records: tuple[ChunkWrite, ...]
+
+
 class IngestionService:
     """Validate, parse, chunk, embed, and persist one uploaded document."""
 
@@ -167,28 +176,26 @@ class IngestionService:
             duplicate=False,
         )
 
-    async def reindex(
+    async def validate_reindex_target(
         self,
         *,
         document_id: str,
         request: IngestionRequest,
-    ) -> IngestionResult:
-        """Replace a document's chunks using newly supplied source bytes.
+    ) -> Document:
+        """Validate one replacement against current database state."""
 
-        Raw uploads are not retained by the current storage layer, so callers
-        must provide the source file again. Existing chunks remain untouched
-        until parsing and embedding of the replacement succeeds.
-        """
-
-        extension, mime_type = self._validate_upload(request)
+        self._validate_upload(request)
         await self._require_authorized_knowledge_base(request)
+
         document = await self._document_repository.get_by_id(
             document_id=document_id,
             tenant_id=request.tenant_id,
         )
+
         if (
             document is None
-            or document.knowledge_base_id != request.knowledge_base_id
+            or document.knowledge_base_id
+            != request.knowledge_base_id
             or document.agent_id != request.agent_id
         ):
             raise DocumentNotFoundError(
@@ -196,53 +203,159 @@ class IngestionService:
             )
 
         content_hash = hashlib.sha256(request.content).hexdigest()
+
         duplicate = await self._document_repository.get_by_content_hash(
             content_hash=content_hash,
             tenant_id=request.tenant_id,
             knowledge_base_id=request.knowledge_base_id,
         )
+
         if duplicate is not None and duplicate.id != document.id:
             raise DomainError(
-                "An identical document already exists in this knowledge base."
+                "An identical document already exists "
+                "in this knowledge base."
             )
 
-        try:
-            await self._set_status(
-                document,
-                DocumentProcessingStatus.PROCESSING,
-            )
-            records = await self._prepare_chunk_records(
-                document=document,
-                request=request,
-                extension=extension,
-                mime_type=mime_type,
+        return document
+
+    async def prepare_reindex(
+        self,
+        *,
+        document: Document,
+        request: IngestionRequest,
+    ) -> PreparedReindex:
+        """Parse, chunk, and embed without mutating active database rows."""
+
+        extension, mime_type = self._validate_upload(request)
+
+        if (
+            document.tenant_id != request.tenant_id
+            or document.knowledge_base_id
+            != request.knowledge_base_id
+            or document.agent_id != request.agent_id
+        ):
+            raise DocumentNotFoundError(
+                "The document is unavailable for this agent."
             )
 
-            document.source_name = request.source_name
-            document.original_filename = request.filename
-            document.mime_type = mime_type
-            document.file_size_bytes = len(request.content)
-            document.content_hash = content_hash
-            document.updated_at = datetime.now(timezone.utc)
+        records = await self._prepare_chunk_records(
+            document=document,
+            request=request,
+            extension=extension,
+            mime_type=mime_type,
+        )
 
-            await self._chunk_repository.delete_by_document(
-                document_id=document.id,
-                tenant_id=document.tenant_id,
+        return PreparedReindex(
+            content_hash=hashlib.sha256(request.content).hexdigest(),
+            mime_type=mime_type,
+            records=tuple(records),
+        )
+
+    async def activate_prepared_reindex(
+        self,
+        *,
+        document_id: str,
+        request: IngestionRequest,
+        prepared: PreparedReindex,
+    ) -> IngestionResult:
+        """Atomically replace active chunks after preparation succeeds."""
+
+        _, mime_type = self._validate_upload(request)
+        content_hash = hashlib.sha256(request.content).hexdigest()
+
+        if (
+            prepared.content_hash != content_hash
+            or prepared.mime_type != mime_type
+        ):
+            raise DomainError(
+                "Prepared replacement does not match the upload."
             )
-            await self._document_repository.update(document)
-            persisted = await self._persist_all(records)
-            await self._set_status(document, DocumentProcessingStatus.READY)
-            return IngestionResult(
-                document=document,
-                chunks_persisted=len(persisted),
+
+        document = await self.validate_reindex_target(
+            document_id=document_id,
+            request=request,
+        )
+
+        expected_scope = (
+            document.tenant_id,
+            document.agent_id,
+            document.knowledge_base_id,
+            document.id,
+        )
+
+        for record in prepared.records:
+            actual_scope = (
+                record.chunk.tenant_id,
+                record.chunk.agent_id,
+                record.chunk.knowledge_base_id,
+                record.chunk.document_id,
             )
-        except Exception:
-            await self._set_status(
-                document,
-                DocumentProcessingStatus.FAILED,
-                failure_reason="Document processing failed.",
-            )
-            raise
+
+            if actual_scope != expected_scope:
+                raise DomainError(
+                    "Prepared replacement chunk scope is invalid."
+                )
+
+        await self._chunk_repository.delete_by_document(
+            document_id=document.id,
+            tenant_id=document.tenant_id,
+        )
+
+        persisted = await self._persist_all(
+            list(prepared.records)
+        )
+
+        document.source_name = request.source_name
+        document.original_filename = request.filename
+        document.mime_type = mime_type
+        document.file_size_bytes = len(request.content)
+        document.content_hash = content_hash
+        document.status = DocumentProcessingStatus.READY
+        document.failure_reason = None
+        document.updated_at = datetime.now(timezone.utc)
+
+        document = await self._document_repository.update(
+            document
+        )
+
+        await self._set_status(
+            document,
+            DocumentProcessingStatus.READY,
+        )
+
+        return IngestionResult(
+            document=document,
+            chunks_persisted=len(persisted),
+        )
+
+    async def reindex(
+        self,
+        *,
+        document_id: str,
+        request: IngestionRequest,
+    ) -> IngestionResult:
+        """Prepare and activate a replacement.
+
+        Transaction-sensitive callers should use the split prepare and
+        activation methods so external embedding work occurs outside the
+        final write transaction.
+        """
+
+        document = await self.validate_reindex_target(
+            document_id=document_id,
+            request=request,
+        )
+
+        prepared = await self.prepare_reindex(
+            document=document,
+            request=request,
+        )
+
+        return await self.activate_prepared_reindex(
+            document_id=document_id,
+            request=request,
+            prepared=prepared,
+        )
 
     async def _prepare_chunk_records(
         self,

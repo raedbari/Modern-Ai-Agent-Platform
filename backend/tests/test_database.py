@@ -1,4 +1,4 @@
-﻿"""Database schema and tenant-isolation tests."""
+"""Database schema and tenant-isolation tests."""
 
 import asyncio
 
@@ -70,6 +70,15 @@ def test_metadata_defines_expected_tables() -> None:
         # Browser Widget configuration tables added in Wave 2
         "agent_widget_settings",
         "widget_allowed_origins",
+        "widget_connector_pairings",
+
+        # Customer SaaS identity / onboarding tables
+        "users",
+        "user_refresh_sessions",
+        "email_verification_tokens",
+        "tenant_applications",
+        "legal_acceptances",
+        "tenant_memberships",
     }
 
 

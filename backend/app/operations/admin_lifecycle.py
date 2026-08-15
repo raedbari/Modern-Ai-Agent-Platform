@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,12 +19,20 @@ from backend.app.db.models import (
 )
 
 
+if TYPE_CHECKING:
+    from backend.app.api.schemas.admin import AgentConfigUpdate
+
+
 class AdminResourceNotFoundError(LookupError):
     """Raised when an administrative resource is absent in its scope."""
 
 
 class AdminLifecycleConflictError(RuntimeError):
     """Raised when a destructive operation violates lifecycle preconditions."""
+
+
+class AdminLifecycleValidationError(ValueError):
+    """Raised when an administrative mutation payload is invalid."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +159,61 @@ async def set_agent_active(
         agent_id=agent_id,
     )
     agent.is_active = is_active
+    await session.flush()
+    return agent
+
+
+async def update_agent_config(
+    session: AsyncSession,
+    *,
+    tenant_id: str,
+    agent_id: str,
+    update: "AgentConfigUpdate",
+) -> Agent:
+    """Apply a validated partial configuration update to one scoped agent.
+
+    The operation flushes changes but deliberately does not commit. The API
+    route owns the transaction so the state mutation and its audit record
+    commit or roll back together.
+    """
+
+    changed_fields = set(update.model_fields_set)
+
+    if not changed_fields:
+        raise AdminLifecycleValidationError(
+            "At least one agent configuration field must be provided."
+        )
+
+    editable_fields = {
+        "name",
+        "system_prompt",
+        "knowledge_mode",
+        "contact_message",
+    }
+
+    unsupported_fields = changed_fields - editable_fields
+
+    if unsupported_fields:
+        raise AdminLifecycleValidationError(
+            "Unsupported agent configuration fields: "
+            + ", ".join(sorted(unsupported_fields))
+        )
+
+    await require_tenant(session, tenant_id)
+
+    agent = await require_agent(
+        session,
+        tenant_id=tenant_id,
+        agent_id=agent_id,
+    )
+
+    for field_name in sorted(changed_fields):
+        setattr(
+            agent,
+            field_name,
+            getattr(update, field_name),
+        )
+
     await session.flush()
     return agent
 

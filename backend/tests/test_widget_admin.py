@@ -294,3 +294,196 @@ async def test_get_unconfigured_widget_returns_404(tmp_path: Path) -> None:
         assert response.status_code == 404
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_admin_creates_single_use_widget_connector_pairing(
+    tmp_path: Path,
+) -> None:
+    from backend.app.db.models import WidgetConnectorPairing
+    from backend.app.operations.widget_pairing import pairing_code_digest
+
+    app, engine, sessions = await _open_admin_mgmt_app(
+        tmp_path / "widget-pairing.sqlite3"
+    )
+
+    await _seed_admin_t16(
+        sessions,
+        admin_id="super-001",
+        username="alice",
+        role="super_admin",
+    )
+    await _seed_agent(sessions)
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            token = await _login_as(
+                client,
+                username="alice",
+            )
+
+            configure = await client.put(
+                _WIDGET_PATH,
+                json=_payload(),
+                headers={
+                    "Authorization": f"Bearer {token}"
+                },
+            )
+
+            assert configure.status_code == 200
+
+            response = await client.post(
+                f"{_WIDGET_PATH}/pairings",
+                json={
+                    "origin": "https://EXAMPLE.com/",
+                    "connector_type": "wordpress",
+                },
+                headers={
+                    "Authorization": f"Bearer {token}"
+                },
+            )
+
+        assert response.status_code == 201, response.text
+
+        body = response.json()
+
+        assert body["pairing_code"].startswith("ATK-")
+        assert body["origin"] == "https://example.com"
+        assert body["connector_type"] == "wordpress"
+        assert body["expires_in"] == 600
+
+        async with sessions() as session:
+            pairing = await session.scalar(
+                select(WidgetConnectorPairing).where(
+                    WidgetConnectorPairing.id
+                    == body["pairing_id"]
+                )
+            )
+
+        assert pairing is not None
+        assert pairing.tenant_id == "tenant-a"
+        assert pairing.agent_id == "agent-a"
+        assert pairing.origin == "https://example.com"
+        assert pairing.used_at is None
+        assert pairing.connected_at is None
+
+        # Raw pairing code must never be stored.
+        assert pairing.code_digest != body["pairing_code"]
+        assert pairing.code_digest == pairing_code_digest(
+            body["pairing_code"]
+        )
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_connector_pairing_rejects_origin_not_allowed_for_widget(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions = await _open_admin_mgmt_app(
+        tmp_path / "widget-pairing-origin.sqlite3"
+    )
+
+    await _seed_admin_t16(
+        sessions,
+        admin_id="super-001",
+        username="alice",
+        role="super_admin",
+    )
+    await _seed_agent(sessions)
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            token = await _login_as(
+                client,
+                username="alice",
+            )
+
+            configure = await client.put(
+                _WIDGET_PATH,
+                json=_payload(),
+                headers={
+                    "Authorization": f"Bearer {token}"
+                },
+            )
+
+            assert configure.status_code == 200
+
+            response = await client.post(
+                f"{_WIDGET_PATH}/pairings",
+                json={
+                    "origin": "https://attacker.example",
+                    "connector_type": "wordpress",
+                },
+                headers={
+                    "Authorization": f"Bearer {token}"
+                },
+            )
+
+        assert response.status_code == 422
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_connector_pairing_requires_enabled_widget(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions = await _open_admin_mgmt_app(
+        tmp_path / "widget-pairing-disabled.sqlite3"
+    )
+
+    await _seed_admin_t16(
+        sessions,
+        admin_id="super-001",
+        username="alice",
+        role="super_admin",
+    )
+    await _seed_agent(sessions)
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            token = await _login_as(
+                client,
+                username="alice",
+            )
+
+            payload = _payload()
+            payload["is_enabled"] = False
+
+            configure = await client.put(
+                _WIDGET_PATH,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {token}"
+                },
+            )
+
+            assert configure.status_code == 200
+
+            response = await client.post(
+                f"{_WIDGET_PATH}/pairings",
+                json={
+                    "origin": "https://example.com",
+                    "connector_type": "custom",
+                },
+                headers={
+                    "Authorization": f"Bearer {token}"
+                },
+            )
+
+        assert response.status_code == 409
+
+    finally:
+        await engine.dispose()

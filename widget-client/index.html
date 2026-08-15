@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Widget Client — Dev</title>
+  </head>
+  <body>
+    <h1>Widget Client Dev Server</h1>
+    <p>The widget will mount automatically when <code>src/index.ts</code> is loaded.</p>
+
+    <script>
+      // Default dev configuration — override before the module loads if needed
+      window.WidgetConfig ??= {
+        transport: 'mock',
+        mockScenario: 'happy-path',
+        launcherLabel: 'Chat',
+        mock: {
+          displayName: 'MAAP Assistant',
+          welcomeMessage: 'Hello! This is the local Widget preview.',
+        },
+      };
+    </script>
+    <script type="module" src="/src/index.ts"></script>
+  </body>
+</html>

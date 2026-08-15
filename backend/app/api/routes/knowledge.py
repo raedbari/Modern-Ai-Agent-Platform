@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.dependencies import (
     get_embedding_provider,
-    require_chat_context,
+    require_knowledge_context,
 )
 from backend.app.api.schemas.knowledge import (
     DocumentIngestionResponse,
@@ -46,6 +46,7 @@ from backend.app.domain.exceptions import (
     UnsupportedDocumentTypeError,
 )
 from backend.app.domain.models.document import Document
+from backend.app.domain.models.enums import DocumentProcessingStatus
 from backend.app.domain.models.knowledge_base import KnowledgeBase
 from backend.app.infrastructure.database.repositories import (
     SQLAlchemyDocumentRepository,
@@ -57,6 +58,7 @@ from backend.app.services.knowledge.ingestion_service import (
     IngestionRequest,
     IngestionResult,
 )
+from backend.app.services.audit import AuditService
 from backend.app.services.knowledge.job_service import IngestionJobService
 
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge"])
@@ -177,11 +179,56 @@ async def _delete_stored_uploads(
             )
 
 
+def _raise_ingestion_http_error(
+    exc: DomainError,
+) -> NoReturn:
+    """Map domain-safe ingestion failures to public API errors."""
+
+    if isinstance(exc, KnowledgeBaseNotFoundError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Knowledge base not found",
+        ) from exc
+
+    if isinstance(exc, DocumentNotFoundError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        ) from exc
+
+    if isinstance(exc, EmbeddingError):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "Embedding provider could not process "
+                "the document"
+            ),
+        ) from exc
+
+    if isinstance(
+        exc,
+        (
+            UnsupportedDocumentTypeError,
+            ParseError,
+            ChunkingError,
+        ),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail="Document processing failed",
+    ) from exc
+
+
 async def _commit_failed_ingestion(
     session: AsyncSession,
     exc: DomainError,
 ) -> NoReturn:
-    """Persist a safe FAILED status written by the ingestion service."""
+    """Commit a failed state already written by legacy ingestion flows."""
 
     try:
         await session.commit()
@@ -189,33 +236,46 @@ async def _commit_failed_ingestion(
         await session.rollback()
         raise
 
-    if isinstance(exc, KnowledgeBaseNotFoundError):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Knowledge base not found",
-        ) from exc
-    if isinstance(exc, DocumentNotFoundError):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found",
-        ) from exc
-    if isinstance(exc, EmbeddingError):
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Embedding provider could not process the document",
-        ) from exc
-    if isinstance(
-        exc,
-        (UnsupportedDocumentTypeError, ParseError, ChunkingError),
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=str(exc),
-        ) from exc
-    raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        detail="Document processing failed",
-    ) from exc
+    _raise_ingestion_http_error(exc)
+
+
+async def _record_processing_failure(
+    *,
+    session: AsyncSession,
+    context: ChatExecutionContext,
+    knowledge_base_id: str,
+    document_id: str,
+    mark_document_failed: bool,
+) -> None:
+    """Persist a safe failure state and audit in one short transaction."""
+
+    await session.rollback()
+
+    if mark_document_failed:
+        await SQLAlchemyDocumentRepository(
+            session
+        ).update_processing_status(
+            document_id=document_id,
+            tenant_id=context.tenant_id,
+            status=DocumentProcessingStatus.FAILED,
+            failure_reason="Document processing failed.",
+        )
+
+    await AuditService.write(
+        session,
+        event_type="knowledge_document_processing_failed",
+        outcome="failure",
+        admin_id=None,
+        target_type="knowledge_document",
+        target_id=document_id,
+        detail={
+            "tenant_id": context.tenant_id,
+            "agent_id": context.agent_id,
+            "knowledge_base_id": knowledge_base_id,
+        },
+    )
+
+    await session.commit()
 
 
 @router.post(
@@ -227,7 +287,7 @@ async def create_knowledge_base(
     payload: KnowledgeBaseCreate,
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_chat_context),
+        Depends(require_knowledge_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> KnowledgeBaseResponse:
@@ -249,7 +309,7 @@ async def create_knowledge_base(
 async def list_knowledge_bases(
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_chat_context),
+        Depends(require_knowledge_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[KnowledgeBaseResponse]:
@@ -270,7 +330,7 @@ async def get_knowledge_base(
     knowledge_base_id: str,
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_chat_context),
+        Depends(require_knowledge_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> KnowledgeBaseResponse:
@@ -292,7 +352,7 @@ async def update_knowledge_base(
     payload: KnowledgeBaseUpdate,
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_chat_context),
+        Depends(require_knowledge_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> KnowledgeBaseResponse:
@@ -326,7 +386,7 @@ async def delete_knowledge_base(
     knowledge_base_id: str,
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_chat_context),
+        Depends(require_knowledge_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -367,7 +427,7 @@ async def list_documents(
     knowledge_base_id: str,
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_chat_context),
+        Depends(require_knowledge_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[DocumentResponse]:
@@ -396,7 +456,7 @@ async def upload_document(
     file: Annotated[UploadFile, File()],
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_chat_context),
+        Depends(require_knowledge_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
     runtime: Annotated[
@@ -409,28 +469,93 @@ async def upload_document(
         Form(min_length=1, max_length=512),
     ] = "upload",
 ) -> DocumentIngestionResponse:
-    content = await _read_upload(file, settings.max_upload_size_bytes)
+    content = await _read_upload(
+        file,
+        settings.max_upload_size_bytes,
+    )
+
+    request = IngestionRequest(
+        content=content,
+        filename=file.filename or "upload",
+        mime_type=(
+            file.content_type
+            or "application/octet-stream"
+        ),
+        tenant_id=context.tenant_id,
+        agent_id=context.agent_id,
+        knowledge_base_id=knowledge_base_id,
+        source_name=source_name,
+    )
+
     service = build_ingestion_service(
         session=session,
         runtime=runtime,
         settings=settings,
     )
+
+    document_id: str | None = None
+
     try:
-        result = await service.ingest(
-            IngestionRequest(
-                content=content,
-                filename=file.filename or "upload",
-                mime_type=file.content_type or "application/octet-stream",
-                tenant_id=context.tenant_id,
-                agent_id=context.agent_id,
-                knowledge_base_id=knowledge_base_id,
-                source_name=source_name,
-            )
-        )
+        # Persist only the pending document in the first short
+        # transaction. Duplicate uploads retain their existing behavior.
+        initial = await service.prepare(request)
+
+        if initial.duplicate:
+            await session.commit()
+            return _ingestion_response(initial)
+
+        document_id = initial.document.id
         await session.commit()
+
+        # Parsing and embeddings execute with no active DB transaction.
+        prepared = await service.prepare_reindex(
+            document=initial.document,
+            request=request,
+        )
+
+        # Final activation and audit commit atomically.
+        result = await service.activate_prepared_reindex(
+            document_id=document_id,
+            request=request,
+            prepared=prepared,
+        )
+
+        await AuditService.write(
+            session,
+            event_type="knowledge_document_activated",
+            outcome="success",
+            admin_id=None,
+            target_type="knowledge_document",
+            target_id=document_id,
+            detail={
+                "tenant_id": context.tenant_id,
+                "agent_id": context.agent_id,
+                "knowledge_base_id": knowledge_base_id,
+                "chunks_persisted":
+                    result.chunks_persisted,
+            },
+        )
+
+        await session.commit()
+        return _ingestion_response(result)
+
     except DomainError as exc:
-        await _commit_failed_ingestion(session, exc)
-    return _ingestion_response(result)
+        if document_id is not None:
+            await _record_processing_failure(
+                session=session,
+                context=context,
+                knowledge_base_id=knowledge_base_id,
+                document_id=document_id,
+                mark_document_failed=True,
+            )
+        else:
+            await session.rollback()
+
+        _raise_ingestion_http_error(exc)
+
+    except Exception:
+        await session.rollback()
+        raise
 
 
 @router.post(
@@ -443,7 +568,7 @@ async def queue_document(
     file: Annotated[UploadFile, File()],
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_chat_context),
+        Depends(require_knowledge_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
     runtime: Annotated[
@@ -499,6 +624,9 @@ async def queue_document(
             document_id=prepared.document.id,
             storage_key=storage_key,
             max_attempts=settings.ingestion_job_max_attempts,
+            source_filename=request.filename,
+            source_mime_type=request.mime_type,
+            source_name=request.source_name,
         )
         await session.commit()
         return _job_response(document=prepared.document, job=job)
@@ -522,7 +650,7 @@ async def get_document_job(
     job_id: str,
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_chat_context),
+        Depends(require_knowledge_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> DocumentJobResponse:
@@ -566,7 +694,7 @@ async def get_document(
     document_id: str,
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_chat_context),
+        Depends(require_knowledge_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> DocumentResponse:
@@ -597,7 +725,7 @@ async def delete_document(
     document_id: str,
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_chat_context),
+        Depends(require_knowledge_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -607,32 +735,73 @@ async def delete_document(
         context,
         knowledge_base_id,
     )
+
+    document_repository = SQLAlchemyDocumentRepository(session)
+
+    document = await document_repository.get_by_id(
+        document_id=document_id,
+        tenant_id=context.tenant_id,
+    )
+
+    if (
+        document is None
+        or document.knowledge_base_id != knowledge_base_id
+        or document.agent_id != context.agent_id
+    ):
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
     storage_keys = list(
         (
             await session.scalars(
                 select(IngestionJob.storage_key).where(
                     IngestionJob.tenant_id == context.tenant_id,
+                    IngestionJob.agent_id == context.agent_id,
+                    IngestionJob.knowledge_base_id
+                    == knowledge_base_id,
                     IngestionJob.document_id == document_id,
                 )
             )
         ).all()
     )
-    deleted = await SQLAlchemyDocumentRepository(session).delete_by_id(
+
+    deleted = await document_repository.delete_by_id(
         document_id=document_id,
         tenant_id=context.tenant_id,
         knowledge_base_id=knowledge_base_id,
     )
+
     if not deleted:
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found",
         )
+
+    await AuditService.write(
+        session,
+        event_type="knowledge_document_deleted",
+        outcome="success",
+        admin_id=None,
+        target_type="knowledge_document",
+        target_id=document_id,
+        detail={
+            "tenant_id": context.tenant_id,
+            "agent_id": context.agent_id,
+            "knowledge_base_id": knowledge_base_id,
+        },
+    )
+
     await session.commit()
+
     await _delete_stored_uploads(
         LocalUploadStorage(settings.upload_storage_root),
         storage_keys,
     )
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -646,7 +815,7 @@ async def reindex_document(
     file: Annotated[UploadFile, File()],
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_chat_context),
+        Depends(require_knowledge_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
     runtime: Annotated[
@@ -659,26 +828,98 @@ async def reindex_document(
         Form(min_length=1, max_length=512),
     ] = "upload",
 ) -> DocumentIngestionResponse:
-    content = await _read_upload(file, settings.max_upload_size_bytes)
+    content = await _read_upload(
+        file,
+        settings.max_upload_size_bytes,
+    )
+
+    request = IngestionRequest(
+        content=content,
+        filename=file.filename or "upload",
+        mime_type=(
+            file.content_type
+            or "application/octet-stream"
+        ),
+        tenant_id=context.tenant_id,
+        agent_id=context.agent_id,
+        knowledge_base_id=knowledge_base_id,
+        source_name=source_name,
+    )
+
     service = build_ingestion_service(
         session=session,
         runtime=runtime,
         settings=settings,
     )
+
+    validated = False
+    was_active = False
+
     try:
-        result = await service.reindex(
+        document = await service.validate_reindex_target(
             document_id=document_id,
-            request=IngestionRequest(
-                content=content,
-                filename=file.filename or "upload",
-                mime_type=file.content_type or "application/octet-stream",
-                tenant_id=context.tenant_id,
-                agent_id=context.agent_id,
-                knowledge_base_id=knowledge_base_id,
-                source_name=source_name,
-            ),
+            request=request,
         )
+
+        validated = True
+        was_active = (
+            document.status
+            == DocumentProcessingStatus.READY
+        )
+
+        # End all validation reads before external processing.
+        await session.rollback()
+
+        prepared = await service.prepare_reindex(
+            document=document,
+            request=request,
+        )
+
+        result = await service.activate_prepared_reindex(
+            document_id=document_id,
+            request=request,
+            prepared=prepared,
+        )
+
+        await AuditService.write(
+            session,
+            event_type=(
+                "knowledge_document_replaced"
+                if was_active
+                else "knowledge_document_activated"
+            ),
+            outcome="success",
+            admin_id=None,
+            target_type="knowledge_document",
+            target_id=document_id,
+            detail={
+                "tenant_id": context.tenant_id,
+                "agent_id": context.agent_id,
+                "knowledge_base_id": knowledge_base_id,
+                "chunks_persisted":
+                    result.chunks_persisted,
+            },
+        )
+
         await session.commit()
+        return _ingestion_response(result)
+
     except DomainError as exc:
-        await _commit_failed_ingestion(session, exc)
-    return _ingestion_response(result)
+        if validated:
+            await _record_processing_failure(
+                session=session,
+                context=context,
+                knowledge_base_id=knowledge_base_id,
+                document_id=document_id,
+                # A failed replacement must preserve an old active
+                # document. Non-active documents receive FAILED.
+                mark_document_failed=not was_active,
+            )
+        else:
+            await session.rollback()
+
+        _raise_ingestion_http_error(exc)
+
+    except Exception:
+        await session.rollback()
+        raise

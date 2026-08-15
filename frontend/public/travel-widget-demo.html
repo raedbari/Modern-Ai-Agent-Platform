@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>مكتب الأفق للسفريات</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Segoe UI,Tahoma,Arial,sans-serif;background:linear-gradient(180deg,#fff,#f3f5fb);color:#111827;min-height:100vh}
+header{display:flex;justify-content:space-between;align-items:center;padding:20px 6vw;background:#fff;border-bottom:1px solid #e5e7eb}
+.brand{display:flex;gap:12px;align-items:center;font-weight:900}.mark{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#5b3df5,#14c9b2);color:#fff}
+nav{display:flex;gap:22px;color:#6b7280;font-weight:700;font-size:.92rem}
+.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:44px;align-items:center;padding:80px 7vw}
+h1{font-size:clamp(2.6rem,6vw,5rem);line-height:1.05;margin:0 0 16px}.lead{color:#6b7280;line-height:2;font-size:1.05rem}
+.card{border:1px solid #e5e7eb;border-radius:28px;background:#fff;overflow:hidden;box-shadow:0 28px 70px rgba(33,27,79,.16)}
+.cardTop{padding:28px;min-height:210px;color:#fff;background:linear-gradient(135deg,#21156b,#5b3df5 60%,#0d9488)}.cardTop strong{display:block;font-size:2rem;margin-top:18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:18px}.grid div{padding:16px;border-radius:16px;background:#f6f7fb}.grid span{color:#6b7280;font-size:.78rem}.grid b{display:block;margin-top:8px}
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;padding:0 7vw 100px}.feature{padding:22px;border:1px solid #e5e7eb;border-radius:20px;background:#fff}.feature p{color:#6b7280;line-height:1.8}
+#launcher{position:fixed;right:24px;bottom:24px;width:62px;height:62px;border:0;border-radius:999px;color:#fff;background:linear-gradient(135deg,#2563eb,#5b3df5);box-shadow:0 18px 40px rgba(37,99,235,.35);font-size:28px;cursor:pointer}
+#panel{position:fixed;right:24px;bottom:98px;width:min(390px,calc(100vw - 28px));height:min(620px,calc(100vh - 130px));display:none;flex-direction:column;overflow:hidden;border:1px solid #e5e7eb;border-radius:24px;background:#fff;box-shadow:0 30px 85px rgba(14,17,34,.26)}#panel.open{display:flex}
+.chatHead{display:flex;justify-content:space-between;align-items:center;padding:17px;color:#fff;background:linear-gradient(135deg,#2563eb,#5b3df5)}.identity{display:flex;gap:10px;align-items:center}.avatar{display:grid;place-items:center;width:40px;height:40px;border-radius:13px;background:rgba(255,255,255,.18)}#status{display:block;font-size:.72rem;opacity:.82;margin-top:3px}
+#close{border:0;background:rgba(255,255,255,.14);color:#fff;width:34px;height:34px;border-radius:10px;cursor:pointer}
+#messages{flex:1;display:flex;flex-direction:column;gap:12px;overflow:auto;padding:17px;background:linear-gradient(180deg,#f8f9fc,#fff)}.msg{max-width:86%;padding:11px 13px;border-radius:17px;line-height:1.7;white-space:pre-wrap;word-break:break-word;font-size:.9rem}.bot{align-self:flex-start;background:#eef0f5}.user{align-self:flex-end;color:#fff;background:linear-gradient(135deg,#2563eb,#5b3df5)}.system{align-self:center;background:#fff7db;color:#8a5d00;text-align:center;font-size:.78rem}
+form{display:grid;grid-template-columns:1fr auto;gap:10px;padding:13px;border-top:1px solid #e5e7eb}input{min-height:46px;border:1px solid #d8dce6;border-radius:14px;padding:0 13px;font:inherit;outline:none}button[type=submit]{width:46px;height:46px;border:0;border-radius:14px;color:#fff;background:linear-gradient(135deg,#2563eb,#5b3df5);cursor:pointer}input:disabled,button:disabled{opacity:.6}
+@media(max-width:900px){.hero{grid-template-columns:1fr}.features{grid-template-columns:1fr}nav{display:none}}@media(max-width:520px){#panel{right:14px;bottom:88px;height:calc(100vh - 112px)}#launcher{right:16px;bottom:16px}}
+
+/* ATHKA_WIDGET_THEME_BINDING */
+:root {
+  --widget-primary: #2563EB;
+  --widget-text: #FFFFFF;
+  --widget-launcher: #2563EB;
+  --widget-header: #2563EB;
+  --widget-user: #2563EB;
+  --widget-panel: #FFFFFF;
+  --widget-surface: #F8F9FC;
+  --widget-border: #E5E7EB;
+  --widget-input: #FFFFFF;
+  --widget-input-text: #111827;
+  --widget-bot: #EEF0F5;
+  --widget-bot-text: #111827;
+}
+
+#launcher {
+  color: var(--widget-text) !important;
+  background: var(--widget-launcher) !important;
+}
+
+#panel {
+  border-color: var(--widget-border) !important;
+  background: var(--widget-panel) !important;
+}
+
+.chatHead {
+  color: var(--widget-text) !important;
+  background: var(--widget-header) !important;
+}
+
+#messages {
+  background: var(--widget-surface) !important;
+}
+
+.msg.bot {
+  color: var(--widget-bot-text) !important;
+  background: var(--widget-bot) !important;
+}
+
+.msg.user {
+  color: var(--widget-text) !important;
+  background: var(--widget-user) !important;
+}
+
+#form {
+  border-color: var(--widget-border) !important;
+  background: var(--widget-panel) !important;
+}
+
+#input {
+  border-color: var(--widget-border) !important;
+  background: var(--widget-input) !important;
+  color: var(--widget-input-text) !important;
+}
+
+#send {
+  color: var(--widget-text) !important;
+  background: var(--widget-primary) !important;
+}
+
+</style>
+</head>
+<body>
+<header><div class="brand"><span class="mark">✈</span><span>مكتب الأفق للسفريات</span></div><nav><span>الوجهات</span><span>العروض</span><span>التأشيرات</span><span>تواصل معنا</span></nav></header>
+<main>
+<section class="hero">
+<div><h1>خطط رحلتك القادمة بثقة ووضوح</h1><p class="lead">نساعدك في اختيار الوجهة، تجهيز متطلبات السفر، ومقارنة خيارات الرحلات والإقامة. افتح مساعد الموقع من أسفل الصفحة واسأله عن المعلومات المعتمدة.</p></div>
+<aside class="card"><div class="cardTop"><small>عرض الأسبوع</small><strong>براغ وفيينا</strong><p>7 ليالٍ مع خيارات طيران وإقامة مرنة.</p></div><div class="grid"><div><span>المدة</span><b>7 ليالٍ</b></div><div><span>الدعم</span><b>قبل وأثناء السفر</b></div><div><span>التأشيرة</span><b>مراجعة المتطلبات</b></div><div><span>المرونة</span><b>خيارات متعددة</b></div></div></aside>
+</section>
+<section class="features"><article class="feature"><b>استشارات السفر</b><p>توصيات واضحة حسب الميزانية والمدة.</p></article><article class="feature"><b>التأشيرات</b><p>شرح المتطلبات والوثائق والخطوات.</p></article><article class="feature"><b>دعم العملاء</b><p>إجابات موثقة من قاعدة معرفة المكتب.</p></article></section>
+</main>
+
+<button id="launcher" aria-label="فتح المحادثة">💬</button>
+<section id="panel" aria-label="محادثة المساعد">
+<div class="chatHead"><div class="identity"><span class="avatar">🤖</span><div><strong id="name">مساعد السفر</strong><span id="status">جارٍ الاتصال...</span></div></div><button id="close" type="button">×</button></div>
+<div id="messages" aria-live="polite"></div>
+<form id="form"><input id="input" placeholder="اكتب رسالتك..." maxlength="8000" disabled><button id="send" type="submit" disabled>➤</button></form>
+</section>
+
+<script>
+(() => {
+  const API_BASE = 'http://127.0.0.1:8000';
+  const WIDGET_ID = 'wgt_pb6z7wFhCnmVXjABUlHgW0Gt4SnIhU-_';
+  const launcher = document.getElementById("launcher");
+  const panel = document.getElementById("panel");
+  const closeBtn = document.getElementById("close");
+  const form = document.getElementById("form");
+  const input = document.getElementById("input");
+  const send = document.getElementById("send");
+  const messages = document.getElementById("messages");
+  const name = document.getElementById("name");
+  const status = document.getElementById("status");
+  let bootstrap = null;
+  let conversationId = null;
+  let busy = false;
+
+
+  function applyWidgetTheme(theme) {
+    if (!theme) {
+      return;
+    }
+
+    const primary =
+      theme.primaryColor ||
+      theme.primary_color ||
+      "#2563EB";
+
+    const textColor =
+      theme.textColor ||
+      theme.text_color ||
+      "#FFFFFF";
+
+    const launcherColor =
+      theme.launcherColor ||
+      theme.launcher_color ||
+      primary;
+
+    const headerColor =
+      theme.headerColor ||
+      theme.header_color ||
+      primary;
+
+    const userMessageColor =
+      theme.userMessageColor ||
+      theme.user_message_color ||
+      primary;
+
+    const position =
+      theme.position === "left"
+        ? "left"
+        : "right";
+
+    const appearance =
+      theme.appearance === "dark"
+        ? "dark"
+        : "light";
+
+    const root =
+      document.documentElement.style;
+
+    root.setProperty(
+      "--widget-primary",
+      primary,
+    );
+
+    root.setProperty(
+      "--widget-text",
+      textColor,
+    );
+
+    root.setProperty(
+      "--widget-launcher",
+      launcherColor,
+    );
+
+    root.setProperty(
+      "--widget-header",
+      headerColor,
+    );
+
+    root.setProperty(
+      "--widget-user",
+      userMessageColor,
+    );
+
+    if (appearance === "dark") {
+      root.setProperty(
+        "--widget-panel",
+        "#11131D",
+      );
+      root.setProperty(
+        "--widget-surface",
+        "#171A26",
+      );
+      root.setProperty(
+        "--widget-border",
+        "#2A2E3D",
+      );
+      root.setProperty(
+        "--widget-input",
+        "#1B1E2B",
+      );
+      root.setProperty(
+        "--widget-input-text",
+        "#F5F7FF",
+      );
+      root.setProperty(
+        "--widget-bot",
+        "#242837",
+      );
+      root.setProperty(
+        "--widget-bot-text",
+        "#F5F7FF",
+      );
+    } else {
+      root.setProperty(
+        "--widget-panel",
+        "#FFFFFF",
+      );
+      root.setProperty(
+        "--widget-surface",
+        "#F8F9FC",
+      );
+      root.setProperty(
+        "--widget-border",
+        "#E5E7EB",
+      );
+      root.setProperty(
+        "--widget-input",
+        "#FFFFFF",
+      );
+      root.setProperty(
+        "--widget-input-text",
+        "#111827",
+      );
+      root.setProperty(
+        "--widget-bot",
+        "#EEF0F5",
+      );
+      root.setProperty(
+        "--widget-bot-text",
+        "#111827",
+      );
+    }
+
+    if (position === "left") {
+      launcher.style.left = "24px";
+      launcher.style.right = "auto";
+      panel.style.left = "24px";
+      panel.style.right = "auto";
+    } else {
+      launcher.style.right = "24px";
+      launcher.style.left = "auto";
+      panel.style.right = "24px";
+      panel.style.left = "auto";
+    }
+  }
+
+  function add(role, text) {
+    const el = document.createElement("div");
+    el.className = "msg " + role;
+    el.textContent = text;
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+    return el;
+  }
+
+  async function start() {
+    status.textContent = "جارٍ الاتصال...";
+    input.disabled = true;
+    send.disabled = true;
+    const r = await fetch(API_BASE + "/api/widget/bootstrap", {
+      method: "POST",
+      headers: {"Content-Type":"application/json","Accept":"application/json"},
+      body: JSON.stringify({widget_id: WIDGET_ID})
+    });
+    const p = await r.json().catch(() => null);
+    if (!r.ok) throw new Error((p && p.detail) || ("Bootstrap failed: " + r.status));
+    bootstrap = p;
+    applyWidgetTheme(
+      p.widget && p.widget.theme,
+    );
+    name.textContent = (p.widget && p.widget.display_name) || "مساعد السفر";
+    if (!messages.children.length) add("bot", (p.widget && p.widget.greeting) || "مرحبًا، كيف يمكنني مساعدتك؟");
+    status.textContent = "متصل";
+    input.disabled = false;
+    send.disabled = false;
+    input.focus();
+  }
+
+  async function chat(message) {
+    if (!bootstrap) await start();
+    const body = {message};
+    if (conversationId) body.conversation_id = conversationId;
+    let r = await fetch(API_BASE + "/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type":"application/json",
+        "Accept":"application/json",
+        "Authorization":"Bearer " + bootstrap.session_token
+      },
+      body: JSON.stringify(body)
+    });
+    if (r.status === 401) {
+      bootstrap = null;
+      await start();
+      r = await fetch(API_BASE + "/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type":"application/json",
+          "Accept":"application/json",
+          "Authorization":"Bearer " + bootstrap.session_token
+        },
+        body: JSON.stringify(body)
+      });
+    }
+    const p = await r.json().catch(() => null);
+    if (!r.ok) throw new Error((p && p.detail) || ("Chat failed: " + r.status));
+    conversationId = p.conversation_id;
+    return p;
+  }
+
+  launcher.addEventListener("click", async () => {
+    const open = !panel.classList.contains("open");
+    panel.classList.toggle("open", open);
+    if (open && !bootstrap) {
+      try { await start(); }
+      catch (e) { status.textContent = "تعذر الاتصال"; add("system", e.message || "تعذر تشغيل المساعد."); }
+    }
+  });
+
+  closeBtn.addEventListener("click", () => panel.classList.remove("open"));
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const message = input.value.trim();
+    if (!message || busy) return;
+    add("user", message);
+    input.value = "";
+    busy = true;
+    input.disabled = true;
+    send.disabled = true;
+    const pending = add("bot", "...");
+    try {
+      const p = await chat(message);
+      pending.remove();
+      add("bot", p.reply || "لم تصل إجابة.");
+    } catch (err) {
+      pending.remove();
+      add("system", err.message || "تعذر إرسال الرسالة.");
+    } finally {
+      busy = false;
+      input.disabled = false;
+      send.disabled = false;
+      input.focus();
+    }
+  });
+})();
+</script>
+</body>
+</html>
