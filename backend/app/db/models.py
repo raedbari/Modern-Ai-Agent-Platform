@@ -666,6 +666,12 @@ class Agent(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     system_prompt: Mapped[str | None] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="v1",
+        server_default="v1",
+    )
     knowledge_mode: Mapped[str] = mapped_column(
         String(20),
         nullable=False,

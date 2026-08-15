@@ -36,6 +36,20 @@ class EvaluationCase(BaseModel):
     )
     tags: list[str] = Field(default_factory=list)
 
+class RAGMetrics(BaseModel):
+    """RAG-specific metrics for retrieval quality (Sprint 1)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    retrieval_hit: bool | None = None  # Was any evidence retrieved?
+    retrieval_count: int = Field(default=0, ge=0)  # Number of chunks retrieved
+    top_similarity_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    rerank_position_change: int | None = None  # Position shift after reranking
+    has_citations: bool = False  # Does response include [S1], [S2] citations?
+    citation_count: int = Field(default=0, ge=0)
+    answer_status: str | None = None  # grounded | generated | insufficient_knowledge | temporarily_unavailable
+
+
 class EvaluationChecks(BaseModel):
     """Deterministic checks performed against one generated response."""
 
@@ -66,6 +80,8 @@ class EvaluationCaseResult(BaseModel):
     latency_ms: float = Field(ge=0)
 
     checks: EvaluationChecks
+    rag_metrics: RAGMetrics | None = None  # NEW: RAG-specific metrics
+    prompt_version: str | None = None  # NEW: Track prompt version
     error_code: Literal["generation_failed"] | None = None
 
 class EvaluationSummary(BaseModel):

@@ -1,28 +1,14 @@
-"""Provider-independent reranking contracts."""
+"""Provider-independent reranking contracts.
 
-from __future__ import annotations
+DEPRECATED: Import from backend.app.ai.ports instead.
+This module is kept for backward compatibility only.
+"""
 
-from dataclasses import dataclass
-from typing import Protocol
+from backend.app.ai.ports import (
+    RerankProvider,
+    RerankRequest,
+    RerankResult,
+)
 
+__all__ = ["RerankProvider", "RerankRequest", "RerankResult"]
 
-@dataclass(frozen=True)
-class RerankRequest:
-    query: str
-    documents: list[str]
-    top_k: int
-
-
-@dataclass(frozen=True)
-class RerankResult:
-    ranked_indices: list[int]
-    relevance_scores: list[float]
-
-
-class RerankProvider(Protocol):
-    async def rerank(
-        self,
-        request: RerankRequest,
-    ) -> RerankResult:
-        """Rerank documents for a query."""
-        ...
