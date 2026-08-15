@@ -28,5 +28,11 @@
   "allowed_secret_examples": [
     ".env.example",
     "backend/.env.example"
+  ],
+  "ignored_architecture_roots": [
+    "backend/tests/"
+  ],
+  "provider_http_allowlist": [
+    "backend/app/core/config.py"
   ]
 }
