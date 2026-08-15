@@ -2,6 +2,8 @@
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+from backend.app.core.config import get_settings
 from httpx import ASGITransport, AsyncClient
 import pytest
 from sqlalchemy.ext.asyncio import (
@@ -27,7 +29,7 @@ def test_health_endpoint_returns_expected_payload() -> None:
     assert response.json() == {
         "status": "ok",
         "service": "Modern AI Agent Platform API",
-        "environment": "development",
+        "environment": get_settings().environment,
     }
 
 

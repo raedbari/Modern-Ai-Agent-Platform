@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "mode": "transition",
+  "description": "Athka architecture policy: block new provider coupling and secret leakage while legacy pilot code is progressively modularized.",
+  "provider_implementation_roots": [
+    "backend/app/ai/providers/"
+  ],
+  "legacy_provider_import_allowlist": [
+    "backend/app/api/dependencies.py",
+    "backend/app/workers/ingestion_worker.py"
+  ],
+  "provider_import_prefixes": [
+    "backend.app.ai.providers.",
+    "app.ai.providers."
+  ],
+  "provider_http_domains": [
+    "api.voyageai.com",
+    "api.deepseek.com"
+  ],
+  "protected_secret_files": [
+    ".env",
+    ".env.compose",
+    ".env.production",
+    ".env.staging",
+    "credentials.json",
+    "secrets.json"
+  ],
+  "allowed_secret_examples": [
+    ".env.example",
+    "backend/.env.example"
+  ]
+}

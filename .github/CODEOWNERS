@@ -1,0 +1,8 @@
+# Bootstrap only. Add the exact GitHub usernames of Developer 2 and Developer 3
+# before making CODEOWNER review mandatory.
+*                                @raedbari
+/.github/                        @raedbari
+/scripts/ci/                     @raedbari
+/architecture/                   @raedbari
+/backend/app/ai/                 @raedbari
+/backend/app/services/knowledge/ @raedbari
