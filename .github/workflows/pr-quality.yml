@@ -38,7 +38,7 @@ jobs:
         run: python3 scripts/ci/secret_guard.py
 
       - name: No whitespace errors
-        run: git diff --check 90606dd02c4c60bd391340937bb13d3ba7ffdb80...HEAD "${{ github.event.pull_request.base.sha }}...HEAD"
+        run: git diff --check 90606dd02c4c60bd391340937bb13d3ba7ffdb80...HEAD
 
   frontend:
     name: frontend-quality
