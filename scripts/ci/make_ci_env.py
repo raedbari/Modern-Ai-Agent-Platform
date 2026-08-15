@@ -84,6 +84,20 @@ def safe_value(key, old=""):
     if "DEEPSEEK_API_KEY" in upper:
         return "ci-disabled-deepseek"
 
+    # Numeric settings whose names may contain TOKEN/SECRET-like words.
+    # They must be handled before the generic secret detector.
+    numeric_suffix_defaults = {
+        "JWT_ACCESS_TOKEN_EXPIRE_MINUTES": "30",
+        "JWT_REFRESH_TOKEN_EXPIRE_DAYS": "30",
+        "WIDGET_TOKEN_LIFETIME_SECONDS": "900",
+    }
+
+    for suffix, fallback in numeric_suffix_defaults.items():
+        if upper.endswith(suffix):
+            if old and re.fullmatch(r"\\d+", old):
+                return old
+            return fallback
+
     # Generic secrets
     if any(
         marker in upper

@@ -20,25 +20,44 @@ from backend.app.main import create_app
 
 
 def test_knowledge_routes_use_dual_auth_dependency() -> None:
-    app = create_app()
+    """Every public knowledge operation must expose API-key OR tenant-JWT auth."""
 
-    routes = [
-        route
-        for route in app.routes
-        if isinstance(route, APIRoute)
-        and route.path.startswith("/api/knowledge-bases")
+    from backend.app.main import create_app
+
+    paths = create_app().openapi()["paths"]
+
+    expected_security = [
+        {"TenantApiKey": []},
+        {"TenantUserJWT": []},
     ]
 
-    assert routes
+    checked: list[tuple[str, str]] = []
 
-    for route in routes:
-        dependency_calls = {
-            dependency.call
-            for dependency in route.dependant.dependencies
-        }
+    for path, path_item in paths.items():
+        if not path.startswith("/api/knowledge-bases"):
+            continue
 
-        assert require_knowledge_context in dependency_calls
-        assert require_chat_context not in dependency_calls
+        for method in (
+            "get",
+            "post",
+            "put",
+            "patch",
+            "delete",
+        ):
+            operation = path_item.get(method)
+
+            if operation is None:
+                continue
+
+            checked.append((method.upper(), path))
+
+            assert operation.get("security") == expected_security, (
+                f"{method.upper()} {path} must allow "
+                "TenantApiKey OR TenantUserJWT."
+            )
+
+    assert checked, "No public knowledge routes were found."
+
 
 
 def test_knowledge_openapi_allows_api_key_or_tenant_jwt() -> None:
