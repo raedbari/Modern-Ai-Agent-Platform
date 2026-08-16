@@ -12,12 +12,17 @@ Identifier = Annotated[
 
 
 class RuntimeContext(BaseModel):
-    """Identifies the tenant and agent executing the request."""
+    """Identifies and versions one provider-independent AI request."""
 
     model_config = ConfigDict(frozen=True)
 
     tenant_id: Identifier
     agent_id: Identifier
+    product_id: Identifier | None = None
+    request_id: Identifier | None = None
+    conversation_id: Identifier | None = None
+    prompt_version: Identifier | None = None
+    knowledge_version: Identifier | None = None
 
 
 class ChatMessage(BaseModel):

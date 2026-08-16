@@ -13,8 +13,6 @@ from backend.app.ai.ports import (
     RerankRequest,
     RerankResult,
 )
-
-
 class CoreAIRuntime:
     """Provider gateway for generation, embeddings, and reranking.
 

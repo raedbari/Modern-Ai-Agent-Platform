@@ -87,8 +87,8 @@ def test_chat_workflow_has_real_conditional_graph() -> None:
 async def test_one_compiled_graph_keeps_tenant_runtime_context_isolated() -> None:
     generation = AsyncMock()
     generation.generate.side_effect = [
-        GenerationResult(content="A", model="test-model"),
-        GenerationResult(content="B", model="test-model"),
+        GenerationResult(content="A [S1]", model="test-model"),
+        GenerationResult(content="B [S1]", model="test-model"),
     ]
     retrieval = TenantAwareRetrieval()
     workflow = ChatWorkflow(generation, retrieval=retrieval)
@@ -102,8 +102,8 @@ async def test_one_compiled_graph_keeps_tenant_runtime_context_isolated() -> Non
         message="Question B",
     )
 
-    assert result_a.reply == "A"
-    assert result_b.reply == "B"
+    assert result_a.reply == "A [S1]"
+    assert result_b.reply == "B [S1]"
     assert [
         (query.tenant_id, query.agent_id)
         for query in retrieval.queries
@@ -124,3 +124,28 @@ async def test_one_compiled_graph_keeps_tenant_runtime_context_isolated() -> Non
     assert request_b.messages[0].content == "Instructions B"
     assert "tenant-b.txt" in request_b.messages[1].content
     assert "tenant-a" not in request_b.messages[1].content
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", ["Unsupported", "Unsupported [S99]"])
+async def test_grounded_generation_requires_valid_citations(content: str) -> None:
+    generation = AsyncMock()
+    generation.generate.return_value = GenerationResult(
+        content=content,
+        model="test-model",
+        prompt_tokens=4,
+        completion_tokens=2,
+    )
+
+    result = await ChatWorkflow(
+        generation,
+        retrieval=TenantAwareRetrieval(),
+    ).execute(
+        context=_context("tenant-a", "chatbot-a", "Instructions"),
+        message="Question",
+    )
+
+    assert result.answer_status == "insufficient_knowledge"
+    assert result.model == "platform-fallback"
+    assert result.finish_reason == "invalid_citations"
+    assert result.sources == ()

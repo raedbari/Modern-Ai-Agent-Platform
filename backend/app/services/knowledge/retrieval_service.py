@@ -80,6 +80,7 @@ from backend.app.domain.ports.repositories import (
     KnowledgeBaseRepository,
 )
 from backend.app.domain.ports.retrieval import (
+    RetrievalExecution,
     RetrievalPort,
     RetrievalQuery,
     RetrievedChunk,
@@ -165,6 +166,15 @@ class RetrievalService(RetrievalPort):
             EmbeddingError:           When the query text cannot be embedded.
             RetrievalError:           When a repository search call fails.
         """
+        execution = await self.retrieve_with_trace(query)
+        return list(execution.chunks)
+
+    async def retrieve_with_trace(
+        self,
+        query: RetrievalQuery,
+    ) -> RetrievalExecution:
+        """Execute production retrieval and retain measurable stage counts."""
+
         self._validate_query(query)
 
         active_kb_ids = await self._resolve_active_kb_ids(query)
@@ -182,20 +192,33 @@ class RetrievalService(RetrievalPort):
         )
 
         if not candidates:
-            return []
+            return RetrievalExecution(
+                chunks=(),
+                candidate_count=0,
+                rerank_result_count=(
+                    0 if self._rerank_provider is not None else None
+                ),
+                rerank_applied=self._rerank_provider is not None,
+            )
 
         # Second-stage: Voyage reranking (optional — falls back safely).
         final_count = query.top_k
-        ranked = await self._rerank_candidates(
+        ranked, rerank_applied = await self._rerank_candidates_with_trace(
             query=query,
             candidates=candidates,
             final_count=final_count,
         )
 
-        return [
+        chunks = tuple(
             RetrievedChunk(chunk=chunk, similarity_score=score)
             for chunk, score in ranked
-        ]
+        )
+        return RetrievalExecution(
+            chunks=chunks,
+            candidate_count=len(candidates),
+            rerank_result_count=(len(ranked) if rerank_applied else None),
+            rerank_applied=rerank_applied,
+        )
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -361,6 +384,21 @@ class RetrievalService(RetrievalPort):
             A list of ``(Chunk, score)`` pairs, at most ``final_count`` long,
             ordered from most to least relevant.
         """
+        ranked, _ = await self._rerank_candidates_with_trace(
+            query=query,
+            candidates=candidates,
+            final_count=final_count,
+        )
+        return ranked
+
+    async def _rerank_candidates_with_trace(
+        self,
+        query: RetrievalQuery,
+        candidates: list[tuple[Chunk, float]],
+        final_count: int,
+    ) -> tuple[list[tuple[Chunk, float]], bool]:
+        """Return ranked chunks and whether the external reranker succeeded."""
+
         # Sort by pgvector score before anything else (needed for safe fallback).
         sorted_candidates = sorted(
             candidates,
@@ -380,7 +418,7 @@ class RetrievalService(RetrievalPort):
 
         if self._rerank_provider is None:
             # No reranker configured — return pgvector-ranked top-N.
-            return sorted_candidates[:final_count]
+            return sorted_candidates[:final_count], False
 
         # Send ONLY query + chunk texts to Voyage (no tenant secrets).
         document_texts = [chunk.content for chunk, _ in sorted_candidates]
@@ -410,7 +448,7 @@ class RetrievalService(RetrievalPort):
                 for pair in sorted_candidates
                 if pair[1] >= query.min_similarity
             ]
-            return thresholded_candidates[:final_count]
+            return thresholded_candidates[:final_count], False
 
         # Map reranked indices back to the original chunk objects.
         reranked: list[tuple[Chunk, float]] = []
@@ -419,4 +457,4 @@ class RetrievalService(RetrievalPort):
             relevance_score = rerank_result.scores[position]
             reranked.append((chunk, relevance_score))
 
-        return reranked
+        return reranked, True

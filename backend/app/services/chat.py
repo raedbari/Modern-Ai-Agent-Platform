@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -77,7 +77,10 @@ class ChatService:
                 conversation_id=conversation_id,
             )
             workflow_result = await self._workflow.execute(
-                context=context,
+                context=replace(
+                    context,
+                    conversation_id=conversation.id,
+                ),
                 message=message,
                 history=tuple(
                     ChatMessage(
@@ -111,6 +114,9 @@ class ChatService:
                 content=workflow_result.reply,
                 metadata_json={
                     "answer_status": workflow_result.answer_status,
+                    "prompt_version": context.prompt_version,
+                    "knowledge_version": context.knowledge_version,
+                    "model": workflow_result.model,
                     "sources": [
                         source.as_metadata()
                         for source in workflow_result.sources

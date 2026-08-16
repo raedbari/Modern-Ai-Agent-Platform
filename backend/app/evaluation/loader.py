@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from backend.app.evaluation.models import EvaluationCase
+from backend.app.evaluation.models import EvaluationCase, EvaluationDataset
 
 
 class EvaluationDatasetError(ValueError):
@@ -66,3 +66,29 @@ def load_evaluation_cases(path: Path) -> list[EvaluationCase]:
         raise EvaluationDatasetError("Evaluation dataset contains no cases")
 
     return cases
+
+
+def load_evaluation_dataset(
+    records_path: Path,
+    metadata_path: Path,
+) -> EvaluationDataset:
+    """Load version metadata and validated JSONL records as one dataset."""
+
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise EvaluationDatasetError(
+            "Evaluation dataset metadata could not be loaded"
+        ) from exc
+    if not isinstance(metadata, dict):
+        raise EvaluationDatasetError(
+            "Evaluation dataset metadata must be an object"
+        )
+    try:
+        return EvaluationDataset.model_validate(
+            {**metadata, "records": load_evaluation_cases(records_path)}
+        )
+    except ValidationError as exc:
+        raise EvaluationDatasetError(
+            "Evaluation dataset metadata is invalid"
+        ) from exc

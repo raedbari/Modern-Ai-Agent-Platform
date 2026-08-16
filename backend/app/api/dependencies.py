@@ -417,6 +417,7 @@ async def require_tenant_api_key_context(
         tenant_id=tenant.id,
         agent_id=agent.id,
         system_prompt=agent.system_prompt,
+        prompt_version=agent.prompt_version,
         knowledge_mode=agent.knowledge_mode,
         contact_message=agent.contact_message,
         auth_method="api_key",
@@ -518,6 +519,7 @@ async def require_chat_context(
             tenant_id=tenant.id,
             agent_id=agent.id,
             system_prompt=agent.system_prompt,
+            prompt_version=agent.prompt_version,
             knowledge_mode=agent.knowledge_mode,  # type: ignore[arg-type]
             contact_message=agent.contact_message,
             auth_method="widget",
@@ -585,6 +587,7 @@ async def require_chat_context(
         tenant_id=tenant.id,
         agent_id=agent.id,
         system_prompt=agent.system_prompt,
+        prompt_version=agent.prompt_version,
         knowledge_mode=agent.knowledge_mode,
         contact_message=agent.contact_message,
         auth_method="api_key",
@@ -709,6 +712,7 @@ async def require_knowledge_context(
         tenant_id=tenant_context.tenant_id,
         agent_id=agent.id,
         system_prompt=agent.system_prompt,
+        prompt_version=agent.prompt_version,
         knowledge_mode=agent.knowledge_mode,
         contact_message=agent.contact_message,
         auth_method="tenant_jwt",  # type: ignore[arg-type]
