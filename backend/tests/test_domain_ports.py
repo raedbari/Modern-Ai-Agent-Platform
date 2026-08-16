@@ -69,6 +69,7 @@ class TestChunkRepository:
         methods = {
             "create_many",
             "delete_by_document",
+            "replace_for_document",
             "list_by_document",
             "semantic_search",
         }

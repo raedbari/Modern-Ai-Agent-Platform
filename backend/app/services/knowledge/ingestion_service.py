@@ -296,28 +296,43 @@ class IngestionService:
                     "Prepared replacement chunk scope is invalid."
                 )
 
-        await self._chunk_repository.delete_by_document(
+        # Remember the current active status so we can mark the previous
+        # version as SUPERSEDED after the atomic chunk swap succeeds.
+        was_ready = document.status == DocumentProcessingStatus.READY
+
+        # Atomically swap old chunks for new ones inside a single DB
+        # transaction.  If the insert fails the old chunks are preserved and
+        # no mixed/empty state is ever visible to readers.
+        persisted = await self._chunk_repository.replace_for_document(
             document_id=document.id,
             tenant_id=document.tenant_id,
+            new_records=list(prepared.records),
         )
 
-        persisted = await self._persist_all(
-            list(prepared.records)
-        )
+        # If there was an active (READY) version before, mark it SUPERSEDED
+        # now that new chunks are safely in place.
+        if was_ready:
+            await self._document_repository.update_processing_status(
+                document_id=document.id,
+                tenant_id=document.tenant_id,
+                status=DocumentProcessingStatus.SUPERSEDED,
+            )
+            document.status = DocumentProcessingStatus.SUPERSEDED
 
         document.source_name = request.source_name
         document.original_filename = request.filename
         document.mime_type = mime_type
         document.file_size_bytes = len(request.content)
         document.content_hash = content_hash
-        document.status = DocumentProcessingStatus.READY
         document.failure_reason = None
+        document.version_number = document.version_number + 1
         document.updated_at = datetime.now(timezone.utc)
 
         document = await self._document_repository.update(
             document
         )
 
+        # Transition the document to READY — the new version is now live.
         await self._set_status(
             document,
             DocumentProcessingStatus.READY,

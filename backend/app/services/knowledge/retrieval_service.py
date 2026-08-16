@@ -261,6 +261,7 @@ class RetrievalService(RetrievalPort):
                 agent_id=query.agent_id,
             ),
             texts=[query.query],
+            input_type="query",
         )
         try:
             result = await self._embedding_provider.embed(request)

@@ -1073,6 +1073,13 @@ class KnowledgeBaseModel(Base):
         default="active",
         server_default="active",
     )
+    # Governance metadata — added in migration e1f2a3b4c5d6
+    classification: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="internal",
+        server_default="internal",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -1167,7 +1174,7 @@ class DocumentModel(Base):
             name="fk_documents_tenant_agent",
         ),
         CheckConstraint(
-            "status IN ('pending', 'processing', 'ready', 'failed')",
+            "status IN ('pending', 'processing', 'ready', 'failed', 'active', 'superseded', 'archived')",
             name="ck_documents_status",
         ),
         CheckConstraint(
@@ -1179,6 +1186,16 @@ class DocumentModel(Base):
             "tenant_id",
             "knowledge_base_id",
             "status",
+        ),
+        # Governance: only one ACTIVE/READY document per (tenant, kb, filename).
+        # Added in migration e1f2a3b4c5d6.
+        Index(
+            "uq_documents_active_per_tenant_kb_filename",
+            "tenant_id",
+            "knowledge_base_id",
+            "original_filename",
+            unique=True,
+            postgresql_where=text("status IN ('ready', 'active')"),
         ),
     )
 
@@ -1208,6 +1225,22 @@ class DocumentModel(Base):
         server_default="pending",
     )
     failure_reason: Mapped[str | None] = mapped_column(Text)
+    # Governance metadata — added in migration e1f2a3b4c5d6
+    version_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+    )
+    superseded_by_id: Mapped[str | None] = mapped_column(
+        String(128),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_by: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

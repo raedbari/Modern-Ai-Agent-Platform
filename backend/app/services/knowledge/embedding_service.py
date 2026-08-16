@@ -271,6 +271,7 @@ class EmbeddingService:
                 agent_id=first.agent_id,
             ),
             texts=texts,
+            input_type="document",
         )
 
         try:
