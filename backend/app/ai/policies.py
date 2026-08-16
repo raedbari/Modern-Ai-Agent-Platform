@@ -30,7 +30,7 @@ class RoutingPriority(Enum):
 @dataclass(frozen=True)
 class RoutingRequirements:
     """Requirements for model selection (design only - Sprint 1).
-    
+
     Future ModelPolicy implementations will use these requirements to
     select appropriate providers/models at runtime.
     """
@@ -43,9 +43,9 @@ class RoutingRequirements:
 
 class ModelPolicy(Protocol):
     """Policy interface for model/provider selection (design only - Sprint 1).
-    
+
     Current behavior: single provider configured at startup.
-    
+
     Future implementations could:
     - Route by tenant tier (free → fast model, paid → quality model)
     - Fall back on provider failure
@@ -59,7 +59,7 @@ class ModelPolicy(Protocol):
         requirements: RoutingRequirements,
     ) -> str:
         """Select model identifier for generation request.
-        
+
         Returns:
             Model identifier (e.g., "deepseek-v4-flash", "gpt-4")
         """
@@ -70,7 +70,7 @@ class ModelPolicy(Protocol):
         context: RuntimeContext,
     ) -> bool:
         """Decide whether to use reranking for this request.
-        
+
         Future implementations could:
         - Disable reranking for low-tier tenants to reduce cost
         - Enable reranking only for complex queries
@@ -81,7 +81,7 @@ class ModelPolicy(Protocol):
 
 class KnowledgePolicy:
     """Policy for knowledge retrieval behavior.
-    
+
     This is already implemented in Agent model as knowledge_mode:
     - "required": No evidence → no factual answer (safe fallback)
     - "preferred": Evidence available → use it; no evidence → model may answer
@@ -94,7 +94,7 @@ class KnowledgePolicy:
 @dataclass(frozen=True)
 class PromptVersionMetadata:
     """Metadata for prompt version tracking.
-    
+
     Used by evaluation platform to correlate results with specific prompts.
     Enables A/B testing and prompt improvement tracking.
     """
@@ -107,7 +107,7 @@ class PromptVersionMetadata:
 
 class BudgetPolicy(Protocol):
     """Policy for token/cost budget management (design only - Sprint 1).
-    
+
     Future implementations could:
     - Track token usage per tenant
     - Enforce daily/monthly limits
@@ -136,7 +136,7 @@ class BudgetPolicy(Protocol):
 
 class SafetyPolicy(Protocol):
     """Policy for content safety and moderation (design only - Sprint 1).
-    
+
     Future implementations could:
     - Pre-screen user queries for prohibited content
     - Post-screen generated responses for policy violations
@@ -150,7 +150,7 @@ class SafetyPolicy(Protocol):
         user_message: str,
     ) -> tuple[bool, str | None]:
         """Validate user input meets safety requirements.
-        
+
         Returns:
             (is_valid, rejection_reason_if_invalid)
         """
@@ -162,7 +162,7 @@ class SafetyPolicy(Protocol):
         generated_text: str,
     ) -> tuple[bool, str | None]:
         """Validate generated output meets safety requirements.
-        
+
         Returns:
             (is_valid, rejection_reason_if_invalid)
         """
@@ -172,7 +172,7 @@ class SafetyPolicy(Protocol):
 # Current simple implementation used by Sprint 1
 class DefaultModelPolicy:
     """Default model policy: single provider, no routing (Sprint 1).
-    
+
     This implementation simply returns configured values from Settings.
     Future implementations can replace this with sophisticated routing.
     """
