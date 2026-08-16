@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Add prompt_version column to agents table for tracking prompt iterations.
-    
+
     This enables evaluation platform to correlate results with specific prompt
     versions and supports A/B testing of prompt improvements.
     """
@@ -38,4 +38,3 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Remove prompt_version column from agents table."""
     op.drop_column('agents', 'prompt_version')
-
