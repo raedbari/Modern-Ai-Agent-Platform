@@ -54,11 +54,11 @@ class EmbeddingProvider(Protocol):
 
 class RerankProvider(Protocol):
     """Interface implemented by document reranking providers.
-    
+
     Reranking providers accept a query and a list of candidate documents,
     then return a reordered list optimized for relevance. This is typically
     used as a second-stage refinement after initial vector similarity search.
-    
+
     The provider receives ONLY query text and document texts - no tenant IDs,
     credentials, or internal metadata should be transmitted.
     """
@@ -68,13 +68,13 @@ class RerankProvider(Protocol):
         request: RerankRequest,
     ) -> RerankResult:
         """Rerank documents by relevance to the query.
-        
+
         Args:
             request: RerankRequest containing query, documents, and top_k limit.
-            
+
         Returns:
             RerankResult with ranked_indices and relevance_scores.
-            
+
         Raises:
             RetrievalError: When the reranking provider is unavailable.
         """
