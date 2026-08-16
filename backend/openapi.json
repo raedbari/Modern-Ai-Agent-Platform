@@ -6521,6 +6521,22 @@
         "operationId": "chat_api_chat_post",
         "parameters": [
           {
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
+          },
+          {
             "description": "Agent selector authorized against the API-key tenant.",
             "in": "header",
             "name": "X-Agent-ID",

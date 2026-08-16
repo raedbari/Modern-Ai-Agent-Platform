@@ -31,6 +31,7 @@ from backend.app.db.models import (
     Tenant,
 )
 from backend.app.services.chat import GenerationRuntime
+from backend.app.telemetry import StructuredLoggingTelemetrySink, TelemetrySink
 from backend.app.operations.widget import (
     is_widget_origin_allowed,
     resolve_public_widget,
@@ -745,6 +746,13 @@ def get_core_ai_runtime() -> GenerationRuntime:
             input_type="query",
         ),
     )
+
+
+@lru_cache
+def get_telemetry_sink() -> TelemetrySink:
+    """Return the replaceable Platform Core telemetry output port."""
+
+    return StructuredLoggingTelemetrySink()
 
 
 @lru_cache

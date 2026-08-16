@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Literal, Protocol, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -25,6 +26,12 @@ from backend.app.domain.ports.retrieval import (
     RetrievalQuery,
     RetrievedChunk,
 )
+from backend.app.telemetry import (
+    AITelemetryEvent,
+    TelemetrySink,
+    emit_safely,
+    utc_now,
+)
 
 AnswerStatus = Literal[
     "grounded",
@@ -45,6 +52,7 @@ TEMPORARY_FALLBACK_MESSAGE = (
 )
 
 INSUFFICIENT_EVIDENCE_SENTINEL = "__MAAP_INSUFFICIENT_EVIDENCE__"
+
 
 class GenerationRuntime(Protocol):
     """The generation capability required by the chat workflow."""
@@ -94,6 +102,8 @@ class ChatWorkflowResult:
     completion_tokens: int
     answer_status: AnswerStatus
     sources: tuple[ChatSource, ...]
+    retrieval_count: int = 0
+    rerank_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,6 +251,11 @@ async def _generate_node(
             context=RuntimeContext(
                 tenant_id=chat.tenant_id,
                 agent_id=chat.agent_id,
+                request_id=chat.request_id,
+                product_id=chat.product_id,
+                conversation_id=chat.conversation_id,
+                prompt_version=chat.prompt_version,
+                knowledge_version=chat.knowledge_version,
             ),
             messages=list(state["request_messages"]),
         )
@@ -264,6 +279,7 @@ async def _generate_node(
                 completion_tokens=0,
                 answer_status="insufficient_knowledge",
                 sources=(),
+                retrieval_count=len(state.get("retrieved", ())),
             )
         }
 
@@ -277,6 +293,7 @@ async def _generate_node(
             completion_tokens=generation.completion_tokens,
             answer_status="grounded" if sources else "generated",
             sources=sources,
+            retrieval_count=len(state.get("retrieved", ())),
         )
     }
 
@@ -307,6 +324,7 @@ def _contact_fallback_node(
                 else "insufficient_knowledge"
             ),
             sources=(),
+            retrieval_count=len(state.get("retrieved", ())),
         )
     }
 
@@ -423,6 +441,7 @@ class ChatWorkflow:
         retrieval_top_k: int = 5,
         retrieval_min_similarity: float = 0.5,
         max_context_chars: int = 12000,
+        telemetry_sink: TelemetrySink | None = None,
     ) -> None:
         if retrieval_top_k <= 0:
             raise ValueError("retrieval_top_k must be positive.")
@@ -438,6 +457,7 @@ class ChatWorkflow:
         self._retrieval_top_k = retrieval_top_k
         self._retrieval_min_similarity = retrieval_min_similarity
         self._max_context_chars = max_context_chars
+        self._telemetry_sink = telemetry_sink
 
     async def execute(
         self,
@@ -456,14 +476,86 @@ class ChatWorkflow:
             retrieval_min_similarity=self._retrieval_min_similarity,
             max_context_chars=self._max_context_chars,
         )
-        state = await CHAT_WORKFLOW_GRAPH.ainvoke(
-            {
-                "message": message,
-                "history": history,
-            },
-            context=invocation_context,
+        started_at = perf_counter()
+        try:
+            state = await CHAT_WORKFLOW_GRAPH.ainvoke(
+                {
+                    "message": message,
+                    "history": history,
+                },
+                context=invocation_context,
+            )
+            result = state.get("result")
+            if result is None:
+                raise RuntimeError("Chat workflow returned no result")
+        except Exception as exc:
+            self._emit_telemetry(
+                context=context,
+                result=None,
+                latency_ms=(perf_counter() - started_at) * 1000,
+                error_type=type(exc).__name__,
+            )
+            raise
+
+        self._emit_telemetry(
+            context=context,
+            result=result,
+            latency_ms=(perf_counter() - started_at) * 1000,
+            error_type=None,
         )
-        result = state.get("result")
-        if result is None:
-            raise RuntimeError("Chat workflow returned no result")
         return result
+
+    def _emit_telemetry(
+        self,
+        *,
+        context: ChatExecutionContext,
+        result: ChatWorkflowResult | None,
+        latency_ms: float,
+        error_type: str | None,
+    ) -> None:
+        """Emit one privacy-safe event for the completed workflow attempt."""
+
+        if self._telemetry_sink is None:
+            return
+        request_id = context.request_id
+        product_id = context.product_id
+        if request_id is None or product_id is None:
+            return
+
+        emit_safely(
+            self._telemetry_sink,
+            AITelemetryEvent(
+                request_id=request_id,
+                tenant_id=context.tenant_id,
+                product_id=product_id,
+                agent_id=context.agent_id,
+                conversation_id=context.conversation_id,
+                provider=context.model_provider,
+                model=result.model if result is not None else None,
+                prompt_version=context.prompt_version,
+                knowledge_version=context.knowledge_version,
+                retrieval_count=(
+                    result.retrieval_count if result is not None else None
+                ),
+                rerank_count=(
+                    result.rerank_count if result is not None else None
+                ),
+                source_count=(
+                    len(result.sources) if result is not None else None
+                ),
+                answer_status=(
+                    result.answer_status
+                    if result is not None
+                    else "failed"
+                ),
+                input_tokens=(
+                    result.prompt_tokens if result is not None else None
+                ),
+                output_tokens=(
+                    result.completion_tokens if result is not None else None
+                ),
+                latency_ms=latency_ms,
+                error_type=error_type,
+                timestamp=utc_now(),
+            ),
+        )
