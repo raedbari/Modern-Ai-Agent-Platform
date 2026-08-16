@@ -9,8 +9,8 @@ Verifies:
 """
 import pytest
 from sqlalchemy import inspect
-from app.db.models import Agent
-from app.domain.models.agent import Agent as DomainAgent
+from backend.app.db.models import Agent
+from backend.app.domain.models.agent import Agent as DomainAgent
 
 
 class TestAgentPromptVersionField:
