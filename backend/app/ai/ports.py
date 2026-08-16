@@ -19,7 +19,7 @@ class RerankRequest:
 
     query: str
     documents: list[str]
-    top_k: int
+    top_k: int | None
 
 
 @dataclass(frozen=True)
@@ -27,7 +27,7 @@ class RerankResult:
     """Result of reranking operation with ranked indices and scores."""
 
     ranked_indices: list[int]
-    relevance_scores: list[float]
+    scores: list[float]
 
 
 class GenerationProvider(Protocol):
@@ -73,7 +73,7 @@ class RerankProvider(Protocol):
             request: RerankRequest containing query, documents, and top_k limit.
 
         Returns:
-            RerankResult with ranked_indices and relevance_scores.
+            RerankResult with ranked_indices and scores.
 
         Raises:
             RetrievalError: When the reranking provider is unavailable.
