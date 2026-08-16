@@ -20,7 +20,7 @@ class CoreAIRuntime:
 
     Conversation orchestration belongs to ``ChatWorkflow`` where LangGraph
     can coordinate retrieval, evidence policy, generation, and fallback.
-    
+
     Reranking is optional and injected at construction. When None, callers
     (e.g., RetrievalService) degrade gracefully to pgvector-only ranking.
     """
@@ -53,11 +53,10 @@ class CoreAIRuntime:
         request: RerankRequest,
     ) -> RerankResult:
         """Rerank documents using the configured provider.
-        
+
         Raises:
             ValueError: When no rerank provider is configured.
         """
         if self._rerank_provider is None:
             raise ValueError("No rerank provider configured in CoreAIRuntime")
         return await self._rerank_provider.rerank(request)
-
