@@ -92,10 +92,37 @@ It currently evaluates generation more directly than the complete RAG pipeline.
 
 ## Current Architectural Problem
 
-Platform capabilities and Athkachatbots product capabilities exist, but ownership boundaries are not yet formally documented.
+Platform capabilities and Athkachatbots product capabilities exist, and their
+logical ownership boundaries are now documented in
+`product-platform-boundaries.md`. The repository has also added contract,
+tenant-isolation, provider-boundary, and end-to-end tests around important
+flows.
 
-The current structure mixes product concerns, shared platform concerns, knowledge concerns, and agent runtime concerns across technical-layer folders.
+The physical structure still mixes product, shared-platform, knowledge, and
+agent-runtime concerns across technical-layer folders. The documented
+boundaries are therefore an architectural direction and ownership model, not
+a claim that the code has already been fully modularized.
 
 The goal is NOT a rewrite.
 
-The next step is to define explicit ownership and contracts while keeping the Modular Monolith.
+The next steps are to obtain Architecture v1.0 approval, protect the agreed
+boundaries incrementally, and add the governance, telemetry, evaluation, and
+operational evidence required for a measured pilot. Code should move only
+when doing so improves an approved boundary without disrupting working pilot
+functionality.
+
+## Current Maturity Limits
+
+- Architecture v1.0 is proposed and is not yet management-approved.
+- Knowledge replacement is technically safe, but the target approval,
+  classification, retention, and version-governance model is not implemented.
+- Evaluation is an initial deterministic foundation, not a complete RAG
+  evaluation platform.
+- Upload storage is a local filesystem volume suitable only for the current
+  pilot implementation; it is not production object storage.
+- Health checks and application logs exist, but complete AI telemetry, cost
+  measurement, backup/restore evidence, and production SLOs do not.
+- DeepSeek and Voyage are active provider implementations. Ollama is legacy
+  only and is not part of the target architecture.
+- The current hosting topology is a controlled-pilot candidate, not an
+  approved production topology.
