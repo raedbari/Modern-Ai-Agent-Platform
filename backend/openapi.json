@@ -6568,6 +6568,9 @@
           },
           {
             "WidgetToken": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "Chat",

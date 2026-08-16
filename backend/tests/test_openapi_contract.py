@@ -454,4 +454,5 @@ def test_operation_security_contract() -> None:
     ) == [
         {"TenantApiKey": []},
         {"WidgetToken": []},
+        {"TenantUserJWT": []},
     ]

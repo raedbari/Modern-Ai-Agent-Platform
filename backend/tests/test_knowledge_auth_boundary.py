@@ -92,12 +92,13 @@ def test_knowledge_openapi_allows_api_key_or_tenant_jwt() -> None:
     assert found > 0
 
 
-def test_chat_openapi_retains_both_authentication_methods() -> None:
+def test_chat_openapi_retains_all_authentication_methods() -> None:
     schema = create_app().openapi()
 
     assert schema["paths"]["/api/chat"]["post"]["security"] == [
         {"TenantApiKey": []},
         {"WidgetToken": []},
+        {"TenantUserJWT": []},
     ]
 
 
