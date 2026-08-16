@@ -1,93 +1,162 @@
 # Knowledge Lifecycle
 
-## Purpose
+> **Workstream D — TX AI Lab Knowledge Platform**
+> Authority: Platform team. Products must not define or override lifecycle rules.
 
-Define the target TX AI Lab knowledge lifecycle while accurately recording the
-smaller lifecycle implemented by the Controlled Pilot.
+---
 
-## Target Lifecycle — Not Yet Implemented
+## 1. Target Lifecycle State Machine
 
-```text
-DRAFT
-  -> REVIEW
-  -> APPROVED
-  -> PUBLISHED
-  -> ACTIVE
-  -> SUPERSEDED / ARCHIVED / DELETED
+```
+                         ┌─────────┐
+                         │  DRAFT  │  (document uploaded, not yet validated)
+                         └────┬────┘
+                              │ submit for review
+                              ▼
+                         ┌─────────┐
+                         │ REVIEW  │  (under content / compliance review)
+                         └────┬────┘
+                              │ approve
+                              ▼
+                         ┌──────────┐
+                         │ APPROVED │  (approved, not yet ingested/published)
+                         └────┬─────┘
+                              │ publish (trigger ingestion)
+                              ▼
+                        ┌───────────┐
+                        │ PUBLISHED │  (ingestion in-flight: parse→chunk→embed)
+                        └─────┬─────┘
+                              │ activate (ingestion complete, searchable)
+                              ▼
+                         ┌────────┐
+                         │ ACTIVE │  ◄─── the only state that serves retrieval
+                         └───┬────┘
+              ┌──────────────┼──────────────┐
+              │              │              │
+              ▼              ▼              ▼
+       ┌────────────┐  ┌──────────┐  ┌─────────┐
+       │ SUPERSEDED │  │ ARCHIVED │  │ DELETED │
+       └────────────┘  └──────────┘  └─────────┘
+         replaced by     soft-delete   hard-delete
+         newer version   (recoverable) (irrecoverable)
 ```
 
-- **DRAFT:** content has an owner but is not approved for use.
-- **REVIEW:** designated reviewers validate accuracy, classification, source,
-  and permitted use.
-- **APPROVED:** governance approval is recorded.
-- **PUBLISHED:** an approved version is prepared for product access.
-- **ACTIVE:** retrieval may use the version under tenant/product permission.
-- **SUPERSEDED:** a newer version replaced it; it remains retained only under
-  policy.
-- **ARCHIVED:** unavailable for normal retrieval but retained under policy.
-- **DELETED:** removed from active systems and expired from backups according
-  to the approved deletion and backup policy.
+### Terminal States
 
-This state machine, its reviewers, and its approval records are target
-governance. They are not present in the current database model.
+| State      | Description                                                  | Recoverable? |
+|------------|--------------------------------------------------------------|--------------|
+| SUPERSEDED | Replaced by a newer version via atomic reindex               | No           |
+| ARCHIVED   | Soft-deleted — metadata preserved, chunks not served         | Yes (re-activate) |
+| DELETED    | Physical removal of metadata, chunks, embeddings             | No           |
 
-## Currently Implemented
+---
 
-The pilot implements a technical document-processing lifecycle with pending,
-processing, ready, and failed behavior. It supports parsing, chunking,
-embedding, indexing, tenant/agent assignment, duplicate detection, durable
-jobs, source metadata, replacement, activation, and deletion. Retrieval only
-uses ready knowledge in the trusted tenant and agent scope.
+## 2. Current → Target State Mapping
 
-The current implementation must not be described as business approval,
-classification, retention, or complete version governance.
+| Current State (`DocumentProcessingStatus`) | Target State | Sprint Action        | Notes |
+|---------------------------------------------|--------------|----------------------|-------|
+| `PENDING`                                   | `DRAFT`      | alias / rename       | upload received, not yet processed |
+| `PROCESSING`                                | `PUBLISHED`  | document as in-flight | ingestion pipeline is running |
+| `READY`                                     | `ACTIVE`     | alias — add-now      | chunks indexed, retrieval enabled |
+| `FAILED`                                    | `FAILED`     | keep unchanged       | terminal error state, no retrieval |
+| _(not present)_                             | `SUPERSEDED` | **add-now**          | set when atomic reindex succeeds |
+| _(not present)_                             | `ARCHIVED`   | **add-now**          | set on soft-delete or explicit archive |
+| _(not present)_                             | `DRAFT`      | design-later         | separate pre-upload state |
+| _(not present)_                             | `REVIEW`     | design-later         | approval workflow |
+| _(not present)_                             | `APPROVED`   | design-later         | approval workflow |
+| _(not present)_                             | `DELETED`    | design-later         | physical delete with full cleanup |
 
-## Atomic Replacement
+### Sprint Scope (add-now)
+- Add `SUPERSEDED` and `ARCHIVED` to `DocumentProcessingStatus` enum.
+- Treat `READY` as semantically equivalent to `ACTIVE` until enum rename is scheduled.
+- FAILED remains a terminal error state with no automatic recovery.
 
-The required replacement invariant is implemented and must be preserved:
+---
 
-```text
-V1 ACTIVE
-  -> receive V2
-  -> parse, chunk, embed, and validate V2
-     -> success: atomically activate V2 and remove/supersede V1 chunks
-     -> failure: keep V1 active and record V2 failure safely
+## 3. KnowledgeBase Lifecycle
+
+```
+  ┌────────┐                ┌──────────┐
+  │ ACTIVE │ ◄──────────── │ INACTIVE │
+  └───┬────┘  re-activate   └──────────┘
+      │
+      │ archive
+      ▼
+  ┌──────────┐
+  │ ARCHIVED │  (no new documents, no retrieval)
+  └──────────┘
 ```
 
-No partially processed replacement may become retrieval evidence. Replacement
-must remain tenant-scoped and auditable.
+| State    | Documents accepted? | Retrieval served? | Sprint scope |
+|----------|--------------------|-------------------|--------------|
+| ACTIVE   | Yes                | Yes               | existing     |
+| INACTIVE | No                 | No                | existing     |
+| ARCHIVED | No                 | No                | add-now (doc only) |
 
-## Target Metadata — Not Yet Fully Implemented
+---
 
-- owner
-- sector
-- tenant
-- source
-- classification
-- version
-- approval_status
-- created_by
-- updated_by
-- retention_policy
-- effective_date
-- expiry_date
+## 4. Valid Transitions
 
-Current records include tenant, agent, knowledge-base, source/file details,
-processing status, timestamps, jobs, chunks, and audit foundations. The other
-fields require approved models and incremental implementation.
+### Document transitions (enforced by platform services)
 
-## Deletion Target
+| From       | To          | Trigger                          |
+|------------|-------------|----------------------------------|
+| PENDING    | PROCESSING  | ingestion job starts             |
+| PROCESSING | READY       | all chunks embedded & persisted  |
+| PROCESSING | FAILED      | any pipeline stage error         |
+| READY      | SUPERSEDED  | atomic reindex succeeds          |
+| READY      | ARCHIVED    | tenant or admin archives doc     |
+| FAILED     | PENDING     | tenant triggers retry            |
+| ARCHIVED   | READY       | tenant restores doc (design-later) |
 
-An approved deletion must address metadata, original/derived files, chunks,
-embeddings, indexes, caches or operational copies where applicable, and backup
-expiry. Current knowledge deletion paths cover important active-system data,
-but retention and backup-deletion evidence are unresolved.
+### Forbidden transitions (platform must reject)
+- Any state → READY/ACTIVE by product-level code (only platform services may set ACTIVE)
+- SUPERSEDED → anything (terminal)
+- DELETED → anything (terminal)
 
-## Required Decisions
+---
 
-- Who may submit, review, approve, publish, archive, and delete.
-- Whether pilot customer uploads may become active immediately.
-- Version identifier and active-version rules.
-- Retention and legal-hold behavior.
-- Classification and provider-use gates.
-- Audit evidence required for each transition.
+## 5. Migration Path for Deferred States
+
+### DRAFT state
+**Trigger**: pre-validation upload flow is introduced.
+**Migration**: existing PENDING records without a validation timestamp stay PENDING; new uploads enter DRAFT.
+**Estimated sprint**: post-Pilot Phase 2.
+
+### REVIEW / APPROVED workflow
+**Trigger**: compliance team requires content approval before knowledge is published.
+**Migration**: platform adds `approval_status` field to Document (already classified as `design-later`). Existing records get `approval_status = auto-approved` retroactively.
+**Estimated sprint**: post-Pilot Phase 2.
+
+### DELETED (physical)
+**Trigger**: regulatory retention window expires or explicit admin purge.
+**Migration**: soft-delete (ARCHIVED) is the current mechanism. Physical deletion requires a scheduled cleanup job that respects `retention_policy` (design-later field).
+**Estimated sprint**: post-Pilot, when retention_policy is implemented.
+
+---
+
+## 6. Retrieval Eligibility
+
+Only documents in `READY` / `ACTIVE` state are eligible to serve retrieval requests. The platform's retrieval service (`RetrievalService`) must filter chunks by document status at query time:
+
+```sql
+-- Only ACTIVE/READY chunks served
+WHERE d.tenant_id = :tenant_id
+  AND d.knowledge_base_id = :kb_id
+  AND d.status IN ('ready', 'active')
+```
+
+---
+
+## 7. Audit Events
+
+| Transition              | Audit event emitted? | Notes |
+|-------------------------|----------------------|-------|
+| PENDING → PROCESSING    | Yes (via IngestionJob) | job_started |
+| PROCESSING → READY      | Yes                  | ingestion_complete |
+| PROCESSING → FAILED     | Yes                  | ingestion_failed |
+| READY → SUPERSEDED      | Yes                  | document_superseded |
+| READY → ARCHIVED        | Yes                  | document_archived |
+| FAILED → PENDING        | Yes                  | ingestion_retry |
+
+Full audit log infrastructure is owned by the platform. Products must not suppress or bypass audit events.

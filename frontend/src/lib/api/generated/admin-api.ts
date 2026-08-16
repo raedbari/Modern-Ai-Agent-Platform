@@ -813,9 +813,9 @@ export interface components {
         /** AdminAuditEventResponse */
         AdminAuditEventResponse: {
             /** Admin Id */
-            admin_id: string | null;
+            admin_id: null | string;
             /** Client Ip */
-            client_ip: string | null;
+            client_ip: null | string;
             /**
              * Created At
              * Format: date-time
@@ -835,9 +835,9 @@ export interface components {
              */
             outcome: "success" | "failure";
             /** Target Id */
-            target_id: string | null;
+            target_id: null | string;
             /** Target Type */
-            target_type: string | null;
+            target_type: null | string;
         };
         /**
          * AdminProfileResponse
@@ -931,7 +931,7 @@ export interface components {
          */
         AgentConfigResponse: {
             /** Contact Message */
-            contact_message: string | null;
+            contact_message: null | string;
             /**
              * Created At
              * Format: date-time
@@ -946,7 +946,7 @@ export interface components {
             /** Name */
             name: string;
             /** System Prompt */
-            system_prompt: string | null;
+            system_prompt: null | string;
             /** Tenant Id */
             tenant_id: string;
             /**
@@ -996,7 +996,7 @@ export interface components {
             /** Last Used At */
             last_used_at: string | null;
             /** Name */
-            name: string | null;
+            name: null | string;
             /** Revoked At */
             revoked_at: string | null;
             /** Tenant Id */
@@ -1011,10 +1011,7 @@ export interface components {
         Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post: {
             /** Agent Id */
             agent_id: string;
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Source Name
@@ -1024,10 +1021,7 @@ export interface components {
         };
         /** Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post */
         Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Source Name
@@ -1037,10 +1031,7 @@ export interface components {
         };
         /** Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post */
         Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Source Name
@@ -1050,10 +1041,7 @@ export interface components {
         };
         /** Body_reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post */
         Body_reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Source Name
@@ -1063,10 +1051,7 @@ export interface components {
         };
         /** Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post */
         Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Source Name
@@ -1120,7 +1105,7 @@ export interface components {
             /** Id */
             id: string;
             /** Last Message Preview */
-            last_message_preview: string | null;
+            last_message_preview: null | string;
             /** Last Message Role */
             last_message_role: ("system" | "user" | "assistant" | "tool") | null;
             /** Message Count */
@@ -1137,7 +1122,7 @@ export interface components {
              */
             updated_at: string;
             /** User Identifier */
-            user_identifier: string | null;
+            user_identifier: null | string;
             /** User Message Count */
             user_message_count: number;
         };
@@ -1163,7 +1148,7 @@ export interface components {
          */
         DocumentAdminResponse: {
             /** Agent Id */
-            agent_id: string | null;
+            agent_id: null | string;
             /** Chunk Count */
             chunk_count: number;
             /**
@@ -1172,7 +1157,7 @@ export interface components {
              */
             created_at: string;
             /** Failure Reason */
-            failure_reason: string | null;
+            failure_reason: null | string;
             /** File Size Bytes */
             file_size_bytes: number;
             /** Id */
@@ -1211,7 +1196,7 @@ export interface components {
             /** Duplicate */
             duplicate: boolean;
             /** Failure Reason */
-            failure_reason: string | null;
+            failure_reason: null | string;
             /** File Size Bytes */
             file_size_bytes: number;
             /** Id */
@@ -1265,9 +1250,9 @@ export interface components {
             /** Duplicate */
             duplicate: boolean;
             /** Job Id */
-            job_id: string | null;
+            job_id: null | string;
             /** Last Error */
-            last_error: string | null;
+            last_error: null | string;
             /** Max Attempts */
             max_attempts: number;
             /**
@@ -1284,9 +1269,20 @@ export interface components {
          *
          *     Values are intentionally lowercase strings so they serialise naturally
          *     to JSON without any extra conversion at the API boundary.
+         *
+         *     States (6 total):
+         *     - PENDING    : document has been accepted and is queued for ingestion.
+         *     - PROCESSING : ingestion pipeline is actively parsing, chunking, and embedding.
+         *     - READY      : ingestion complete; document is active and available for retrieval.
+         *     - FAILED     : ingestion encountered an unrecoverable error.
+         *     - SUPERSEDED : a newer version of this document has been atomically reindexed;
+         *                    this version is no longer served for retrieval but is retained for
+         *                    audit and rollback purposes.
+         *     - ARCHIVED   : document has been soft-deleted or explicitly archived by a
+         *                    tenant administrator; excluded from retrieval and normal listings.
          * @enum {string}
          */
-        DocumentProcessingStatus: "pending" | "processing" | "ready" | "failed";
+        DocumentProcessingStatus: "pending" | "processing" | "ready" | "failed" | "superseded" | "archived";
         /** DocumentResponse */
         DocumentResponse: {
             /**
@@ -1295,7 +1291,7 @@ export interface components {
              */
             created_at: string;
             /** Failure Reason */
-            failure_reason: string | null;
+            failure_reason: null | string;
             /** File Size Bytes */
             file_size_bytes: number;
             /** Id */
@@ -1363,7 +1359,7 @@ export interface components {
             /** Knowledge Base Id */
             knowledge_base_id: string;
             /** Last Error */
-            last_error: string | null;
+            last_error: null | string;
             /** Max Attempts */
             max_attempts: number;
             /**
@@ -1691,7 +1687,7 @@ export interface components {
             /** Applicant Name */
             applicant_name: string;
             /** Approved Tenant Id */
-            approved_tenant_id: string | null;
+            approved_tenant_id: null | string;
             /** Company Name */
             company_name: string;
             /**
@@ -1706,11 +1702,11 @@ export interface components {
             /** Requested Plan */
             requested_plan: string;
             /** Review Note */
-            review_note: string | null;
+            review_note: null | string;
             /** Reviewed At */
             reviewed_at: string | null;
             /** Reviewed By */
-            reviewed_by: string | null;
+            reviewed_by: null | string;
             /**
              * Status
              * @enum {string}
@@ -1728,8 +1724,12 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
-            loc: (string | number)[];
+            loc: (number | string)[];
             /** Message */
             msg: string;
             /** Error Type */
@@ -1828,9 +1828,9 @@ export interface components {
             /** Allowed Origins */
             allowed_origins: string[];
             /** Display Name */
-            display_name: string | null;
+            display_name: null | string;
             /** Greeting */
-            greeting: string | null;
+            greeting: null | string;
             /** Is Enabled */
             is_enabled: boolean;
             /** Public Widget Id */
@@ -3280,7 +3280,7 @@ export interface operations {
             query?: never;
             header?: {
                 /** @description Agent selected for the knowledge operation. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path?: never;
             cookie?: never;
@@ -3312,7 +3312,7 @@ export interface operations {
             query?: never;
             header?: {
                 /** @description Agent selected for the knowledge operation. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path?: never;
             cookie?: never;
@@ -3348,7 +3348,7 @@ export interface operations {
             query?: never;
             header?: {
                 /** @description Agent selected for the knowledge operation. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path: {
                 knowledge_base_id: string;
@@ -3382,7 +3382,7 @@ export interface operations {
             query?: never;
             header?: {
                 /** @description Agent selected for the knowledge operation. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path: {
                 knowledge_base_id: string;
@@ -3414,7 +3414,7 @@ export interface operations {
             query?: never;
             header?: {
                 /** @description Agent selected for the knowledge operation. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path: {
                 knowledge_base_id: string;
@@ -3452,7 +3452,7 @@ export interface operations {
             query?: never;
             header?: {
                 /** @description Agent selected for the knowledge operation. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path: {
                 knowledge_base_id: string;
@@ -3490,7 +3490,7 @@ export interface operations {
             query?: never;
             header?: {
                 /** @description Agent selected for the knowledge operation. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path: {
                 knowledge_base_id: string;
@@ -3525,7 +3525,7 @@ export interface operations {
             query?: never;
             header?: {
                 /** @description Agent selected for the knowledge operation. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path: {
                 knowledge_base_id: string;
@@ -3559,7 +3559,7 @@ export interface operations {
             query?: never;
             header?: {
                 /** @description Agent selected for the knowledge operation. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path: {
                 knowledge_base_id: string;
@@ -3597,7 +3597,7 @@ export interface operations {
             query?: never;
             header?: {
                 /** @description Agent selected for the knowledge operation. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path: {
                 knowledge_base_id: string;
@@ -3632,7 +3632,7 @@ export interface operations {
             query?: never;
             header?: {
                 /** @description Agent selected for the knowledge operation. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path: {
                 knowledge_base_id: string;
@@ -3665,7 +3665,7 @@ export interface operations {
             query?: never;
             header?: {
                 /** @description Agent selected for the knowledge operation. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path: {
                 knowledge_base_id: string;

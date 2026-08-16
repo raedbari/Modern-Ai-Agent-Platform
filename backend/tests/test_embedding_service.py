@@ -180,6 +180,25 @@ class MixedDimProvider(EmbeddingProvider):
         )
 
 
+class CapturingProvider(EmbeddingProvider):
+    """Captures the last EmbeddingRequest and returns valid vectors."""
+
+    def __init__(self, dims: int = _DIMS) -> None:
+        self._dims = dims
+        self.last_request: EmbeddingRequest | None = None
+
+    async def embed(
+        self,
+        request: EmbeddingRequest,
+    ) -> ProviderEmbeddingResult:
+        self.last_request = request
+        return ProviderEmbeddingResult(
+            embeddings=[_make_vector(self._dims) for _ in request.texts],
+            model="test-embedding",
+            dimension=self._dims,
+        )
+
+
 # ---------------------------------------------------------------------------
 # EmbeddingService construction
 # ---------------------------------------------------------------------------
@@ -528,3 +547,37 @@ class TestEmbedChunksFailures:
         # Indexes 0, 2, 4 → good; 1, 3, 5 → bad
         assert result.success_count == 3
         assert result.failure_count == 3
+
+
+# ---------------------------------------------------------------------------
+# embed_chunks — input_type validation
+# ---------------------------------------------------------------------------
+
+
+class TestEmbeddingInputType:
+    @pytest.mark.asyncio
+    async def test_embed_chunks_uses_document_input_type(self) -> None:
+        """EmbeddingRequest sent to the provider must have input_type='document'."""
+        provider = CapturingProvider()
+        svc = EmbeddingService(
+            provider=provider,
+            batch_size=_BATCH,
+            embedding_dimensions=_DIMS,
+        )
+        await svc.embed_chunks([_make_chunk(0)])
+        assert provider.last_request is not None
+        assert provider.last_request.input_type == "document"
+
+    @pytest.mark.asyncio
+    async def test_embed_chunks_document_input_type_across_batches(self) -> None:
+        """All batches must use input_type='document', not just the first."""
+        provider = CapturingProvider()
+        svc = EmbeddingService(
+            provider=provider,
+            batch_size=2,
+            embedding_dimensions=_DIMS,
+        )
+        # 4 chunks → 2 batches; last_request will be from the final batch
+        await svc.embed_chunks(_make_chunks(4))
+        assert provider.last_request is not None
+        assert provider.last_request.input_type == "document"

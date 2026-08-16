@@ -167,6 +167,49 @@ class InMemoryChunkRepository(ChunkRepository):
         ]
         return before - len(self.records)
 
+    async def replace_for_document(
+        self,
+        document_id: str,
+        tenant_id: str,
+        new_records: list[ChunkWrite],
+    ) -> list[Chunk]:
+        """Atomically replace old chunks with new ones (in-memory simulation).
+
+        In a real implementation this would be wrapped in a DB transaction.
+        Here we simulate it by only committing the swap after the insert
+        succeeds — old records are restored if the insert raises.
+        """
+        # Save old state for rollback simulation
+        old_records = [
+            record
+            for record in self.records
+            if record.chunk.document_id == document_id
+            and record.chunk.tenant_id == tenant_id
+        ]
+        # Remove old chunks for this document
+        self.records = [
+            record
+            for record in self.records
+            if not (
+                record.chunk.document_id == document_id
+                and record.chunk.tenant_id == tenant_id
+            )
+        ]
+        try:
+            self.records.extend(new_records)
+            return [record.chunk for record in new_records]
+        except Exception:
+            # Rollback: restore old records
+            self.records = [
+                record
+                for record in self.records
+                if not (
+                    record.chunk.document_id == document_id
+                    and record.chunk.tenant_id == tenant_id
+                )
+            ] + old_records
+            raise
+
     async def list_by_document(
         self,
         document_id: str,

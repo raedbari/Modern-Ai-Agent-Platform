@@ -163,6 +163,9 @@ class StubChunkRepository(ChunkRepository):
     async def delete_by_document(self, document_id, tenant_id):
         return 0
 
+    async def replace_for_document(self, document_id, tenant_id, new_records):
+        return [record.chunk for record in new_records]
+
     async def list_by_document(self, document_id, tenant_id):
         return []
 
@@ -194,6 +197,9 @@ class FailingChunkRepository(ChunkRepository):
     async def delete_by_document(self, document_id, tenant_id):
         return 0
 
+    async def replace_for_document(self, document_id, tenant_id, new_records):
+        return [record.chunk for record in new_records]
+
     async def list_by_document(self, document_id, tenant_id):
         return []
 
@@ -209,6 +215,9 @@ class RaisingChunkRepository(ChunkRepository):
 
     async def delete_by_document(self, document_id, tenant_id):
         return 0
+
+    async def replace_for_document(self, document_id, tenant_id, new_records):
+        return [record.chunk for record in new_records]
 
     async def list_by_document(self, document_id, tenant_id):
         return []

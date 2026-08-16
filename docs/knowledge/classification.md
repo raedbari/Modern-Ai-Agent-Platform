@@ -1,77 +1,156 @@
 # Knowledge Classification
 
-## Status
+> **Workstream D — TX AI Lab Knowledge Platform**
+> Authority: Classification levels are defined by the platform. Products display classification but do not define it.
 
-This is a proposed Architecture v1.0 governance model. Classification fields,
-automatic detection, redaction, provider routing, and enforcement are not yet
-implemented. Pilot data must therefore be manually selected and reviewed under
-an approved interim policy.
+---
 
-## Proposed Levels
+## 1. Data Classification Levels
 
-| Level | Description | Default external-provider posture |
-|---|---|---|
-| Public | Approved for public disclosure | Allowed for approved purpose/provider |
-| Internal | Non-public operational information | Owner and provider-policy approval required |
-| Confidential | Customer, commercial, or sensitive information | Restricted; minimize/redact and use approved provider only |
-| Restricted / regulated | Highly sensitive, legally controlled, or high-impact data | Block unless an explicitly approved controlled path exists |
+The platform supports three classification levels for KnowledgeBases and their documents.
 
-Final names, definitions, examples, and owners require management and Security
-approval. Unclassified data must not default to Public.
+| Level        | Code          | Description | Example content |
+|--------------|---------------|-------------|-----------------|
+| **Public**   | `public`      | Intended for unrestricted distribution. May be shared outside the organization without restriction. | Marketing material, public FAQs, published regulations |
+| **Internal** | `internal`    | For use within the organization and its authorized product tenants. Default level for all new KBs. | Internal policies, operational guides, tenant-specific product knowledge |
+| **Restricted** | `restricted` | Sensitive content with limited access. Requires explicit authorization per product/agent. Additional audit controls apply. | Legal documents, financial data, personally-identifiable information, regulated content |
 
-## Classification Decision Inputs
+### Default Classification
+All new KnowledgeBases default to `internal` unless explicitly set at creation time. This is enforced at the database level:
 
-- business owner and tenant;
-- sector and legal/regulatory obligations;
-- personal, financial, health, credential, or security content;
-- source and permitted purpose;
-- provider contract, region, retention, and training-use terms;
-- product audience and Widget/public exposure;
-- retention, effective date, and expiry.
-
-## Required Flow
-
-```text
-Source received
-  -> identify owner and tenant
-  -> validate source and file
-  -> assign classification
-  -> review permitted product and provider use
-  -> approve/reject/quarantine
-  -> publish and activate only if permitted
-  -> reevaluate on version, owner, purpose, provider, or policy change
+```sql
+classification VARCHAR(32) NOT NULL DEFAULT 'internal'
 ```
 
-## Currently Implemented
+Products **must not** escalate a classification level (e.g. change `restricted` to `internal`) — only a platform admin may reduce classification.
 
-- Tenant and agent scoping.
-- File type/size checks and parsers for supported pilot formats.
-- Source name, file metadata, hashes, statuses, jobs, and audit foundations.
-- Tenant filtering before Voyage reranking.
+---
 
-These controls do not constitute classification or approval.
+## 2. Classification Enforcement Rules
 
-## Target Metadata
+### 2.1 Access Control by Classification
 
-Classification is recorded with owner, sector, tenant, source, version,
-approval status, actors, retention policy, effective date, and expiry date.
-Changes must be auditable and tied to a knowledge version.
+| Classification | Who can retrieve? | Who can manage? |
+|----------------|-------------------|-----------------|
+| `public`       | Any agent in the tenant | Tenant admin |
+| `internal`     | Agents explicitly attached to the KB | Tenant admin |
+| `restricted`   | Agents explicitly attached + approved | Platform admin + Tenant admin |
 
-## Handling Rules
+> Note: `restricted` enforcement beyond the `internal` level is a **design-later** item. The classification field is stored now; fine-grained ACL enforcement per classification level will be implemented in a future sprint.
 
-- **Public:** still requires integrity, provenance, and purpose checks.
-- **Internal:** prevent accidental public Widget disclosure; provider use must
-  be approved.
-- **Confidential:** minimize content, redact where approved, restrict access,
-  and apply stronger logging/retention controls.
-- **Restricted:** block by default; an approved provider or local-provider path
-  requires a separate security decision.
+### 2.2 Classification Inheritance
 
-## Unresolved Decisions
+- A Document inherits the classification of its KnowledgeBase.
+- A Document may not have a lower (less restrictive) classification than its parent KB.
+- Cross-KB document movement is forbidden. A document always belongs to exactly one KB.
 
-- Final taxonomy and sector-specific overlays.
-- Who assigns and approves classifications.
-- Which pilot datasets are allowed with DeepSeek and Voyage.
-- Redaction standards and verification.
-- Malware/quarantine requirements.
-- Reclassification and incident procedure.
+### 2.3 Classification Change Rules
+
+| Change               | Allowed? | Who can perform? | Notes |
+|----------------------|----------|------------------|-------|
+| public → internal    | No       | —                | Escalation is irreversible without platform admin |
+| internal → restricted| Yes      | Tenant admin     | Downgrades access for all attached agents |
+| restricted → internal| Yes      | Platform admin only | Requires audit justification |
+| internal → public    | No       | —                | Escalation is irreversible without platform admin |
+| public → restricted  | Yes      | Platform admin only | Emergency restriction |
+
+> Implemented now: field stored + default enforced.
+> ACL enforcement on change: **design-later**.
+
+---
+
+## 3. Classification and the Three-Layer Ownership Model
+
+```
+Layer 1 — Source Organization
+  └─ Sets initial classification level at knowledge contribution time
+  └─ Classification cannot be reduced by Layer 2 or Layer 3 without Layer 1 consent
+
+Layer 2 — TX AI Lab
+  └─ Stores and enforces classification in the platform data model
+  └─ May increase classification (restrict) on operational grounds
+  └─ Owns the default classification policy (default = internal)
+
+Layer 3 — Product (Athkachatbots)
+  └─ Reads classification to determine what to display in the UI
+  └─ May NOT change classification
+  └─ May NOT serve restricted content without explicit platform authorization
+```
+
+---
+
+## 4. Product Independence Rules
+
+### What products may do
+- Read the `classification` field from the KnowledgeBase API response.
+- Display classification level to the user (e.g. a badge in the KB list view).
+- Refuse to surface `restricted` KB content in public-facing chat interfaces (UI-level guard).
+
+### What products must NOT do
+- Store a copy of the classification level independently of the platform.
+- Create KBs with `restricted` classification without platform admin approval.
+- Use classification to bypass or modify tenant isolation.
+- Override the platform's retrieval filter based on product-defined classification rules.
+
+---
+
+## 5. Retrieval Behavior by Classification
+
+The `RetrievalService` enforces classification at query time:
+
+```
+Query arrives with (tenant_id, agent_id, query_text)
+  │
+  ├─ Identify KBs attached to agent
+  │    └─ Filter: classification IN (public, internal, restricted_if_authorized)
+  │
+  ├─ Execute pgvector similarity search
+  │    └─ WHERE tenant_id = :tenant_id
+  │         AND knowledge_base_id IN (:authorized_kb_ids)
+  │         AND document.status IN ('ready', 'active')
+  │
+  └─ Return ranked chunks
+```
+
+> The retrieval service never leaks chunks from a KB the requesting agent is not authorized for, regardless of classification level.
+
+---
+
+## 6. Tenant Isolation and Classification (Interaction)
+
+Classification operates **within** a tenant's isolation boundary. It is never a substitute for tenant isolation.
+
+| Scenario | Behavior |
+|----------|----------|
+| Tenant A queries Tenant B's `public` KB | Denied — tenant boundary takes precedence |
+| Tenant A agent queries own `restricted` KB without authorization | Denied — classification ACL |
+| Tenant A agent queries own `internal` KB it is attached to | Allowed |
+| Tenant A agent queries own `restricted` KB with explicit authorization | Allowed (design-later: authorization model) |
+
+Cross-tenant access is always denied regardless of classification level. There is no "public" classification that enables cross-tenant access.
+
+---
+
+## 7. Object Storage Boundary and Classification
+
+| Storage layer | Holds | Classification applied? |
+|---------------|-------|-------------------------|
+| PostgreSQL (metadata) | KB record with `classification` field | Yes — field present |
+| PostgreSQL (chunks + vectors) | Chunk text, embeddings | Inherited from parent document/KB |
+| Object Storage (future) | Original files, derived files | Must replicate classification tag as object metadata at upload time |
+
+When object storage is introduced (see `ownership-governance.md`), the `classification` value must be stored as object metadata to enable bucket-level or prefix-level access policies.
+
+---
+
+## 8. Sprint Implementation Summary
+
+| Item | Status |
+|------|--------|
+| `classification` field on `KnowledgeBase` model | **add-now** |
+| Default value `internal` enforced at DB level | **add-now** |
+| Classification read in API responses | **add-now** |
+| Fine-grained ACL enforcement by classification level | design-later |
+| Object storage classification tagging | design-later |
+| Cross-classification escalation approval workflow | design-later |
+| `restricted` authorization model for agents | design-later |

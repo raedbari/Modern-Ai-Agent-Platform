@@ -213,6 +213,27 @@ class InMemoryChunkRepository(ChunkRepository):
         }
         return before - len(self._store)
 
+    async def replace_for_document(
+        self,
+        document_id: str,
+        tenant_id: str,
+        new_records: list,
+    ) -> list:
+        """Atomic replace: delete old chunks and insert new ones."""
+        old_store = dict(self._store)
+        # Remove old chunks
+        self._store = {
+            k: v for k, v in self._store.items()
+            if not (v[0].document_id == document_id and v[0].tenant_id == tenant_id)
+        }
+        try:
+            for record in new_records:
+                self._store[record.chunk.id] = (record.chunk, list(record.embedding))
+            return [record.chunk for record in new_records]
+        except Exception:
+            self._store = old_store
+            raise
+
     async def list_by_document(self, document_id: str, tenant_id: str) -> list[Chunk]:
         return [
             c for c, _ in self._store.values()

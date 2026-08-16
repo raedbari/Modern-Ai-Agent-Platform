@@ -287,6 +287,31 @@ class SQLAlchemyChunkRepository(ChunkRepository):
         await self._session.flush()
         return int(result.rowcount or 0)
 
+    async def replace_for_document(
+        self,
+        document_id: str,
+        tenant_id: str,
+        new_records: list[ChunkWrite],
+    ) -> list[Chunk]:
+        """Delete all existing chunks and insert new_records in one transaction.
+
+        The caller's SQLAlchemy session is already inside a unit-of-work
+        transaction (managed by the FastAPI dependency or the calling service).
+        Both the DELETE and the subsequent INSERT are flushed within the same
+        session — they will be committed or rolled back together, guaranteeing
+        that no window exists where the document has zero chunks.
+        """
+        await self._session.execute(
+            delete(ChunkModel).where(
+                ChunkModel.document_id == document_id,
+                ChunkModel.tenant_id == tenant_id,
+            )
+        )
+        await self._session.flush()
+
+        # Re-use the bulk insert logic from create_many
+        return await self.create_many(new_records)
+
     async def list_by_document(
         self,
         document_id: str,
