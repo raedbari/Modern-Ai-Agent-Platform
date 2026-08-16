@@ -416,7 +416,7 @@ class RetrievalService(RetrievalPort):
         reranked: list[tuple[Chunk, float]] = []
         for position, original_index in enumerate(rerank_result.ranked_indices):
             chunk, _ = sorted_candidates[original_index]
-            relevance_score = rerank_result.relevance_scores[position]
+            relevance_score = rerank_result.scores[position]
             reranked.append((chunk, relevance_score))
 
         return reranked
