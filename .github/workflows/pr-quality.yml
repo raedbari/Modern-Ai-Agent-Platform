@@ -125,8 +125,7 @@ jobs:
               unset MAAP_WIDGET_JWT_SECRET_KEY
               unset MAAP_VOYAGE_API_KEY
               unset MAAP_DEEPSEEK_API_KEY
-
-              python -m pytest                 backend/tests                 -q                 -p no:cacheprovider
+              cd /app/backend && python -m pytest tests -q -p no:cacheprovider
             '
 
       - name: OpenAPI JSON is valid
