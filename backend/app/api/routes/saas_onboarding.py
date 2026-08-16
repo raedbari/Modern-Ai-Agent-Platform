@@ -1,26 +1,16 @@
-
-from backend.app.operations.saas_onboarding import (
-    reject_application,
-    request_application_changes,
-    resend_verification,
-)
-
-from backend.app.api.schemas.saas_onboarding import (
-    ResendVerificationRequest,
-    ResendVerificationResponse,
-    ReviewNoteRequest,
-)
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.dependencies import require_admin_access, require_permission
+from backend.app.api.dependencies import require_admin_access, require_permission, require_user_jwt
 from backend.app.api.schemas.saas_onboarding import (
     ApprovalRequest,
     ResendVerificationRequest,
     ResendVerificationResponse,
+    ResubmitApplicationRequest,
     ReviewNoteRequest,
     SignupRequest,
     SignupResponse,
@@ -29,10 +19,10 @@ from backend.app.api.schemas.saas_onboarding import (
     VerifyEmailResponse,
 )
 from backend.app.auth.admin_context import AdminContext
+from backend.app.auth.tenant_context import UserContext
 from backend.app.core.client_ip import get_client_ip
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
-from backend.app.services.customer_email import send_verification_email
 from backend.app.operations.saas_onboarding import (
     ApplicationNotFoundError,
     ApplicationStateConflictError,
@@ -40,18 +30,25 @@ from backend.app.operations.saas_onboarding import (
     OnboardingConflictError,
     approve_application,
     get_application,
+    list_applications,
     reject_application,
     request_application_changes,
     resend_verification,
-    list_applications,
+    resubmit_application,
     signup_customer,
     verify_email,
 )
+from backend.app.services.customer_email import send_verification_email
+
+
+LOGGER = logging.getLogger(__name__)
 
 router = APIRouter(tags=["saas-onboarding"])
 
+
 def response_row(row) -> TenantApplicationResponse:
     application, user = row
+
     return TenantApplicationResponse(
         id=application.id,
         user_id=user.id,
@@ -70,7 +67,12 @@ def response_row(row) -> TenantApplicationResponse:
         updated_at=application.updated_at,
     )
 
-@router.post("/api/saas/signup", response_model=SignupResponse, status_code=201)
+
+@router.post(
+    "/api/saas/signup",
+    response_model=SignupResponse,
+    status_code=201,
+)
 async def signup(
     payload: SignupRequest,
     request: Request,
@@ -89,6 +91,7 @@ async def signup(
             client_ip=get_client_ip(request, settings),
             user_agent=request.headers.get("User-Agent", "")[:512] or None,
         )
+
         await session.commit()
 
         try:
@@ -100,40 +103,123 @@ async def signup(
             LOGGER.exception(
                 "Verification email delivery failed after signup"
             )
+
     except OnboardingConflictError as exc:
         await session.rollback()
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
     except IntegrityError as exc:
         await session.rollback()
-        raise HTTPException(status_code=409, detail="Signup conflict.") from exc
+        raise HTTPException(
+            status_code=409,
+            detail="Signup conflict.",
+        ) from exc
 
     return SignupResponse(
         status=application.status,
-        verification_token=(raw_token if settings.environment in {"development", "test"} else None),
+        verification_token=(
+            raw_token
+            if settings.environment in {"development", "test"}
+            else None
+        ),
     )
 
-@router.post("/api/saas/verify-email", response_model=VerifyEmailResponse)
+
+@router.post(
+    "/api/saas/verify-email",
+    response_model=VerifyEmailResponse,
+)
 async def verify_email_route(
     payload: VerifyEmailRequest,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> VerifyEmailResponse:
     try:
-        application = await verify_email(session, raw_token=payload.token)
+        application = await verify_email(
+            session,
+            raw_token=payload.token,
+        )
+
         await session.commit()
+
     except InvalidVerificationTokenError as exc:
         await session.rollback()
-        raise HTTPException(status_code=400, detail="Verification token is invalid or expired.") from exc
-    return VerifyEmailResponse(email_verified=True, status=application.status)
+
+        raise HTTPException(
+            status_code=400,
+            detail="Verification token is invalid or expired.",
+        ) from exc
+
+    return VerifyEmailResponse(
+        email_verified=True,
+        status=application.status,
+    )
+
+
+@router.post(
+    "/api/saas/application/resubmit",
+    response_model=TenantApplicationResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def resubmit_application_route(
+    payload: ResubmitApplicationRequest,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(require_user_jwt)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> TenantApplicationResponse:
+    """Resubmit the authenticated customer's corrected application."""
+
+    try:
+        application = await resubmit_application(
+            session,
+            user_id=ctx.user_id,
+            company_name=payload.company_name,
+            requested_plan=payload.requested_plan,
+            client_ip=get_client_ip(request, settings),
+        )
+
+        row = await get_application(
+            session,
+            application.id,
+        )
+
+        await session.commit()
+
+    except ApplicationNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    except ApplicationStateConflictError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    return response_row(row)
+
 
 @router.get(
     "/api/admin/tenant-applications",
     response_model=list[TenantApplicationResponse],
-    dependencies=[Depends(require_admin_access), Depends(require_permission("tenants:read"))],
+    dependencies=[
+        Depends(require_admin_access),
+        Depends(require_permission("tenants:read")),
+    ],
 )
 async def admin_list_applications(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[TenantApplicationResponse]:
-    return [response_row(row) for row in await list_applications(session)]
+    return [
+        response_row(row)
+        for row in await list_applications(session)
+    ]
 
 
 @router.get(
@@ -153,6 +239,7 @@ async def admin_get_application(
             session,
             application_id,
         )
+
     except ApplicationNotFoundError as exc:
         raise HTTPException(
             status_code=404,
@@ -161,10 +248,13 @@ async def admin_get_application(
 
     return response_row(row)
 
+
 @router.post(
     "/api/admin/tenant-applications/{application_id}/approve",
     response_model=TenantApplicationResponse,
-    dependencies=[Depends(require_permission("tenants:write"))],
+    dependencies=[
+        Depends(require_permission("tenants:write")),
+    ],
 )
 async def admin_approve_application(
     application_id: str,
@@ -172,27 +262,58 @@ async def admin_approve_application(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
-    context: Annotated[AdminContext | None, Depends(require_admin_access)],
+    context: Annotated[
+        AdminContext | None,
+        Depends(require_admin_access),
+    ],
 ) -> TenantApplicationResponse:
     try:
         await approve_application(
             session,
             application_id=application_id,
-            admin_id=context.admin_id if context is not None else None,
+            admin_id=(
+                context.admin_id
+                if context is not None
+                else None
+            ),
             review_note=payload.review_note,
-            client_ip=get_client_ip(request, settings),
+            client_ip=get_client_ip(
+                request,
+                settings,
+            ),
         )
+
         await session.commit()
-        row = await get_application(session, application_id)
+
+        row = await get_application(
+            session,
+            application_id,
+        )
+
     except ApplicationNotFoundError as exc:
         await session.rollback()
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
     except ApplicationStateConflictError as exc:
         await session.rollback()
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
     except IntegrityError as exc:
         await session.rollback()
-        raise HTTPException(status_code=409, detail="Approval conflict.") from exc
+
+        raise HTTPException(
+            status_code=409,
+            detail="Approval conflict.",
+        ) from exc
+
     return response_row(row)
 
 
@@ -212,7 +333,6 @@ async def resend_verification_route(
         Depends(get_settings),
     ],
 ) -> ResendVerificationResponse:
-
     raw_token = await resend_verification(
         session,
         email=payload.email,
@@ -236,8 +356,7 @@ async def resend_verification_route(
             raw_token
             if (
                 raw_token is not None
-                and settings.environment
-                in {"development", "test"}
+                and settings.environment in {"development", "test"}
             )
             else None
         )
@@ -245,152 +364,24 @@ async def resend_verification_route(
 
 
 @router.post(
-    "/api/admin/tenant-applications/"
-    "{application_id}/request-changes",
-    response_model=TenantApplicationResponse,
-    dependencies=[
-        Depends(require_permission("tenants:write"))
-    ],
-)
-async def admin_request_changes(
-    application_id: str,
-    payload: ReviewNoteRequest,
-    request: Request,
-    session: Annotated[
-        AsyncSession,
-        Depends(get_db),
-    ],
-    settings: Annotated[
-        Settings,
-        Depends(get_settings),
-    ],
-    context: Annotated[
-        AdminContext | None,
-        Depends(require_admin_access),
-    ],
-) -> TenantApplicationResponse:
-
-    try:
-        await request_application_changes(
-            session,
-            application_id=application_id,
-            admin_id=(
-                context.admin_id
-                if context is not None
-                else None
-            ),
-            review_note=payload.review_note,
-            client_ip=get_client_ip(
-                request,
-                settings,
-            ),
-        )
-
-        await session.commit()
-
-        row = await get_application(
-            session,
-            application_id,
-        )
-
-    except ApplicationNotFoundError as exc:
-        await session.rollback()
-
-        raise HTTPException(
-            status_code=404,
-            detail=str(exc),
-        ) from exc
-
-    except ApplicationStateConflictError as exc:
-        await session.rollback()
-
-        raise HTTPException(
-            status_code=409,
-            detail=str(exc),
-        ) from exc
-
-    return response_row(row)
-
-
-@router.post(
-    "/api/admin/tenant-applications/"
-    "{application_id}/reject",
-    response_model=TenantApplicationResponse,
-    dependencies=[
-        Depends(require_permission("tenants:write"))
-    ],
-)
-async def admin_reject_application(
-    application_id: str,
-    payload: ReviewNoteRequest,
-    request: Request,
-    session: Annotated[
-        AsyncSession,
-        Depends(get_db),
-    ],
-    settings: Annotated[
-        Settings,
-        Depends(get_settings),
-    ],
-    context: Annotated[
-        AdminContext | None,
-        Depends(require_admin_access),
-    ],
-) -> TenantApplicationResponse:
-
-    try:
-        await reject_application(
-            session,
-            application_id=application_id,
-            admin_id=(
-                context.admin_id
-                if context is not None
-                else None
-            ),
-            review_note=payload.review_note,
-            client_ip=get_client_ip(
-                request,
-                settings,
-            ),
-        )
-
-        await session.commit()
-
-        row = await get_application(
-            session,
-            application_id,
-        )
-
-    except ApplicationNotFoundError as exc:
-        await session.rollback()
-
-        raise HTTPException(
-            status_code=404,
-            detail=str(exc),
-        ) from exc
-
-    except ApplicationStateConflictError as exc:
-        await session.rollback()
-
-        raise HTTPException(
-            status_code=409,
-            detail=str(exc),
-        ) from exc
-
-    return response_row(row)
-
-
-@router.post(
     "/api/admin/tenant-applications/{application_id}/request-changes",
     response_model=TenantApplicationResponse,
-    dependencies=[Depends(require_permission("tenants:write"))],
+    dependencies=[
+        Depends(require_permission("tenants:write")),
+    ],
 )
 async def admin_request_changes(
     application_id: str,
     payload: ReviewNoteRequest,
     request: Request,
-    session: Annotated[AsyncSession, Depends(get_db)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[
+        AsyncSession,
+        Depends(get_db),
+    ],
+    settings: Annotated[
+        Settings,
+        Depends(get_settings),
+    ],
     context: Annotated[
         AdminContext | None,
         Depends(require_admin_access),
@@ -406,7 +397,10 @@ async def admin_request_changes(
                 else None
             ),
             review_note=payload.review_note,
-            client_ip=get_client_ip(request, settings),
+            client_ip=get_client_ip(
+                request,
+                settings,
+            ),
         )
 
         await session.commit()
@@ -418,6 +412,7 @@ async def admin_request_changes(
 
     except ApplicationNotFoundError as exc:
         await session.rollback()
+
         raise HTTPException(
             status_code=404,
             detail=str(exc),
@@ -425,6 +420,7 @@ async def admin_request_changes(
 
     except ApplicationStateConflictError as exc:
         await session.rollback()
+
         raise HTTPException(
             status_code=409,
             detail=str(exc),
@@ -436,14 +432,22 @@ async def admin_request_changes(
 @router.post(
     "/api/admin/tenant-applications/{application_id}/reject",
     response_model=TenantApplicationResponse,
-    dependencies=[Depends(require_permission("tenants:write"))],
+    dependencies=[
+        Depends(require_permission("tenants:write")),
+    ],
 )
 async def admin_reject_application(
     application_id: str,
     payload: ReviewNoteRequest,
     request: Request,
-    session: Annotated[AsyncSession, Depends(get_db)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[
+        AsyncSession,
+        Depends(get_db),
+    ],
+    settings: Annotated[
+        Settings,
+        Depends(get_settings),
+    ],
     context: Annotated[
         AdminContext | None,
         Depends(require_admin_access),
@@ -459,7 +463,10 @@ async def admin_reject_application(
                 else None
             ),
             review_note=payload.review_note,
-            client_ip=get_client_ip(request, settings),
+            client_ip=get_client_ip(
+                request,
+                settings,
+            ),
         )
 
         await session.commit()
@@ -471,6 +478,7 @@ async def admin_reject_application(
 
     except ApplicationNotFoundError as exc:
         await session.rollback()
+
         raise HTTPException(
             status_code=404,
             detail=str(exc),
@@ -478,6 +486,7 @@ async def admin_reject_application(
 
     except ApplicationStateConflictError as exc:
         await session.rollback()
+
         raise HTTPException(
             status_code=409,
             detail=str(exc),

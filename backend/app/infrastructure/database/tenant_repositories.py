@@ -226,7 +226,7 @@ class TenantScopedWidgetRepository:
                 tenant_id=tenant_id,
                 agent_id=agent_id,
                 public_widget_id=(
-                    "w_" + uuid4().hex
+                    "wgt_" + uuid4().hex
                 ),
             )
             self.session.add(settings)
