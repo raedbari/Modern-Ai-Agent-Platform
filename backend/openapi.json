@@ -2476,6 +2476,30 @@
         "title": "ResendVerificationResponse",
         "type": "object"
       },
+      "ResubmitApplicationRequest": {
+        "additionalProperties": false,
+        "description": "Customer corrections before resubmitting an application.",
+        "properties": {
+          "company_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Company Name",
+            "type": "string"
+          },
+          "requested_plan": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Requested Plan",
+            "type": "string"
+          }
+        },
+        "required": [
+          "company_name",
+          "requested_plan"
+        ],
+        "title": "ResubmitApplicationRequest",
+        "type": "object"
+      },
       "ReviewNoteRequest": {
         "additionalProperties": false,
         "properties": {
@@ -7937,6 +7961,53 @@
         "summary": "Reindex Document",
         "tags": [
           "knowledge"
+        ]
+      }
+    },
+    "/api/saas/application/resubmit": {
+      "post": {
+        "description": "Resubmit the authenticated customer's corrected application.",
+        "operationId": "resubmit_application_route_api_saas_application_resubmit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResubmitApplicationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Resubmit Application Route",
+        "tags": [
+          "saas-onboarding"
         ]
       }
     },

@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.dependencies import require_admin_access, require_permission
+from backend.app.api.dependencies import require_admin_access, require_permission, require_user_jwt
 from backend.app.api.schemas.saas_onboarding import (
     ApprovalRequest,
     ResendVerificationRequest,
     ResendVerificationResponse,
+    ResubmitApplicationRequest,
     ReviewNoteRequest,
     SignupRequest,
     SignupResponse,
@@ -18,6 +19,7 @@ from backend.app.api.schemas.saas_onboarding import (
     VerifyEmailResponse,
 )
 from backend.app.auth.admin_context import AdminContext
+from backend.app.auth.tenant_context import UserContext
 from backend.app.core.client_ip import get_client_ip
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import get_db
@@ -32,6 +34,7 @@ from backend.app.operations.saas_onboarding import (
     reject_application,
     request_application_changes,
     resend_verification,
+    resubmit_application,
     signup_customer,
     verify_email,
 )
@@ -153,6 +156,53 @@ async def verify_email_route(
         email_verified=True,
         status=application.status,
     )
+
+
+@router.post(
+    "/api/saas/application/resubmit",
+    response_model=TenantApplicationResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def resubmit_application_route(
+    payload: ResubmitApplicationRequest,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(require_user_jwt)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> TenantApplicationResponse:
+    """Resubmit the authenticated customer's corrected application."""
+
+    try:
+        application = await resubmit_application(
+            session,
+            user_id=ctx.user_id,
+            company_name=payload.company_name,
+            requested_plan=payload.requested_plan,
+            client_ip=get_client_ip(request, settings),
+        )
+
+        row = await get_application(
+            session,
+            application.id,
+        )
+
+        await session.commit()
+
+    except ApplicationNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    except ApplicationStateConflictError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    return response_row(row)
 
 
 @router.get(
