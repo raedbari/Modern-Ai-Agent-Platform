@@ -209,9 +209,10 @@ class VoyageRerankProvider:
             "query": request.query,
             "documents": request.documents,
             "model": self._model_name,
-            "top_k": min(
-                request.top_k,
-                len(request.documents),
+            "top_k": (
+                len(request.documents)
+                if request.top_k is None
+                else min(request.top_k, len(request.documents))
             ),
         }
 
