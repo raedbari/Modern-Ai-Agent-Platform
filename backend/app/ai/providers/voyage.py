@@ -145,6 +145,10 @@ class VoyageEmbeddingProvider:
     def model(self) -> str:
         return self._model
 
+    async def aclose(self) -> None:
+        """Close the underlying HTTP client."""
+        await self._client.aclose()
+
     async def embed(self, request: EmbeddingRequest) -> EmbeddingResult:
         """Embed one or more texts with the correct Voyage ``input_type``.
 
@@ -170,12 +174,10 @@ class VoyageEmbeddingProvider:
         if not request.texts:
             raise EmbeddingError("EmbeddingRequest.texts must not be empty.")
 
-        input_type = getattr(request, "input_type", None) or self._default_input_type
-
         payload = {
             "input": request.texts,
             "model": self._model,
-            "input_type": input_type,
+            "input_type": request.input_type,
             "output_dimension": self._dimension,
         }
 
@@ -187,7 +189,7 @@ class VoyageEmbeddingProvider:
         try:
             items: list[dict[str, Any]] = response_data["data"]
             vectors: list[list[float]] = [item["embedding"] for item in items]
-        except (KeyError, TypeError) as exc:
+        except Exception as exc:
             raise EmbeddingError(
                 "Voyage AI returned an unexpected response structure."
             ) from exc
@@ -316,6 +318,10 @@ class VoyageRerankProvider:
     def model(self) -> str:
         return self._model
 
+    async def aclose(self) -> None:
+        """Close the underlying HTTP client."""
+        await self._client.aclose()
+
     async def rerank(self, request: RerankRequest) -> RerankResult:
         """Rerank candidate documents by relevance to a query.
 
@@ -373,7 +379,7 @@ class VoyageRerankProvider:
         try:
             data = response.json()
             results = data["data"]
-        except (KeyError, TypeError, Exception) as exc:
+        except Exception as exc:
             raise RetrievalError(
                 "Voyage AI returned an unexpected rerank response structure."
             ) from exc
