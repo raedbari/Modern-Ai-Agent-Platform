@@ -70,6 +70,23 @@ class TenantApplicationResponse(BaseModel):
     updated_at: datetime
 
 
+class ResubmitApplicationRequest(BaseModel):
+    """Customer corrections before resubmitting an application."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    company_name: str = Field(min_length=1, max_length=255)
+    requested_plan: str = Field(min_length=1, max_length=64)
+
+    @field_validator("company_name", "requested_plan")
+    @classmethod
+    def strip_required(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Value must not be blank.")
+        return value
+
+
 class ResendVerificationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

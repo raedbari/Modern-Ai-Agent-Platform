@@ -173,3 +173,19 @@ Any business logic that would need to change if the product UI changed must live
 | Classification default | DB DEFAULT 'internal' on `knowledge_bases.classification` |
 | Lifecycle transitions | `IngestionService` and `KnowledgeService` — never product route handlers |
 | Embedding input_type | `EmbeddingService` — `input_type="document"` for chunks, `input_type="query"` for search |
+
+---
+
+## 6. Object Storage Migration Path
+
+The current implementation processes files in-memory via `NullObjectStorageAdapter`. When object storage is introduced:
+
+| Step | Action |
+|------|--------|
+| 1 | Implement `S3ObjectStorageAdapter` (or equivalent) conforming to `ObjectStoragePort` |
+| 2 | Set `classification` as object metadata tag at upload time |
+| 3 | Apply bucket-level or prefix-level IAM policies based on classification |
+| 4 | Update `IngestionWorker` to use the new adapter via dependency injection |
+| 5 | Migrate existing in-memory-stored files to object storage in a one-time job |
+
+Until this migration, the `NullObjectStorageAdapter` remains the active implementation and all files are stored at `upload_storage_root` on local disk.

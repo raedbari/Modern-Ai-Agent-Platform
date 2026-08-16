@@ -936,3 +936,145 @@ async def test_multiple_memberships_do_not_break_customer_auth(
 
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_customer_resubmits_requested_changes(tmp_path):
+    app, engine, sessions = await open_app(
+        tmp_path / "resubmit.db"
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            email = "resubmit@example.com"
+
+            await signup_verify(client, email)
+
+            applications = await client.get(
+                "/api/admin/tenant-applications"
+            )
+            application_id = applications.json()[0]["id"]
+
+            requested = await client.post(
+                f"/api/admin/tenant-applications/{application_id}/request-changes",
+                json={"review_note": "Update company details."},
+            )
+            assert requested.status_code == 200
+            assert requested.json()["status"] == "changes_requested"
+
+            login = await client.post(
+                "/api/v1/tenant-auth/login",
+                json={
+                    "email": email,
+                    "password": PASSWORD,
+                },
+            )
+            assert login.status_code == 200, login.text
+            token = login.json()["access_token"]
+
+            resubmitted = await client.post(
+                "/api/saas/application/resubmit",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                },
+                json={
+                    "company_name": "Updated Company",
+                    "requested_plan": "PRO",
+                },
+            )
+
+            assert resubmitted.status_code == 200, resubmitted.text
+            body = resubmitted.json()
+
+            assert body["status"] == "under_review"
+            assert body["company_name"] == "Updated Company"
+            assert body["requested_plan"] == "pro"
+
+        async with sessions() as session:
+            application = await session.get(
+                TenantApplication,
+                application_id,
+            )
+            audit = await session.scalar(
+                select(AdminAuditLog).where(
+                    AdminAuditLog.event_type
+                    == "tenant_application_resubmitted"
+                )
+            )
+
+        assert application.status == "under_review"
+        assert application.company_name == "Updated Company"
+        assert application.requested_plan == "pro"
+        assert audit is not None
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_customer_cannot_resubmit_under_review_application(tmp_path):
+    app, engine, _sessions = await open_app(
+        tmp_path / "invalid-resubmit.db"
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            email = "invalid-resubmit@example.com"
+
+            await signup_verify(client, email)
+
+            login = await client.post(
+                "/api/v1/tenant-auth/login",
+                json={
+                    "email": email,
+                    "password": PASSWORD,
+                },
+            )
+            token = login.json()["access_token"]
+
+            response = await client.post(
+                "/api/saas/application/resubmit",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                },
+                json={
+                    "company_name": "Updated Company",
+                    "requested_plan": "starter",
+                },
+            )
+
+            assert response.status_code == 409
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_application_resubmit_requires_authentication(tmp_path):
+    app, engine, _sessions = await open_app(
+        tmp_path / "resubmit-auth.db"
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/saas/application/resubmit",
+                json={
+                    "company_name": "Updated Company",
+                    "requested_plan": "starter",
+                },
+            )
+
+            assert response.status_code == 401
+
+    finally:
+        await engine.dispose()
