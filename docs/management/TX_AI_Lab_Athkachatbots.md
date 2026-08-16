@@ -1,8 +1,8 @@
 # TX AI Lab — Knowledge, Data and Agent Platform
 
-> **الحالة:** Architecture Direction / Controlled Pilot  
-> **المنتج الأول:** Athkachatbots  
-> **نموذج التنفيذ الحالي:** Repository واحد + Modular Monolith بحدود معمارية واضحة  
+> **الحالة:** Architecture Direction / Controlled Pilot
+> **المنتج الأول:** Athkachatbots
+> **نموذج التنفيذ الحالي:** Repository واحد + Modular Monolith بحدود معمارية واضحة
 > **الهدف:** بناء منصة مشتركة للمختبر تخدم Athkachatbots ومنتجات AI أخرى مستقبلًا، دون إعادة بناء المعرفة والوكلاء والتقييم من الصفر لكل منتج.
 
 ---
@@ -1719,10 +1719,10 @@ TX AI Lab Platform
              └── Athkachatbots
 ```
 
-**Repository واحد الآن.**  
-**قاعدة كود واحدة الآن.**  
-**حدود معمارية واضحة.**  
-**لا Rewrite.**  
+**Repository واحد الآن.**
+**قاعدة كود واحدة الآن.**
+**حدود معمارية واضحة.**
+**لا Rewrite.**
 **لا Microservices مبكرة.**
 
 Athkachatbots يستمر كأول Product، بينما نعيد تنظيم القدرات القابلة لإعادة الاستخدام تدريجيًا لتصبح أساسًا مشتركًا للمختبر.

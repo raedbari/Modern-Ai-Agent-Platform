@@ -148,6 +148,6 @@ named authority records a decision. Architecture v1.0 is **not approved**.
 - [ ] Architecture v1.0 approved with recorded conditions.
 - [ ] Architecture v1.0 returned for revision.
 
-**Decision:** TBD  
-**Conditions / required follow-up:** TBD  
+**Decision:** TBD
+**Conditions / required follow-up:** TBD
 **Approver signatures or linked decision record:** TBD
