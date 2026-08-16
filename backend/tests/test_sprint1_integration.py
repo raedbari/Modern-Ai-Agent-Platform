@@ -15,10 +15,10 @@ def test_agent_model_has_prompt_version():
     """Verify Agent model includes prompt_version field."""
     from app.db.models import Agent
     from app.domain.models.agent import Agent as DomainAgent
-    
+
     # DB model
     assert hasattr(Agent, 'prompt_version')
-    
+
     # Domain model
     domain_agent = DomainAgent(
         id="test",
@@ -35,19 +35,19 @@ def test_provider_abstraction_accessible():
     """Verify provider abstractions are accessible."""
     from app.ai.ports import RerankProvider, RerankRequest, RerankResult
     from app.ai import rerank  # Backward compatibility
-    
+
     # Direct import
     assert RerankProvider is not None
     assert RerankRequest is not None
     assert RerankResult is not None
-    
+
     # Re-export
     assert rerank.RerankProvider is RerankProvider
 
 def test_rag_metrics_structure():
     """Verify RAG metrics can be instantiated."""
     from app.evaluation.models import RAGMetrics, EvaluationCaseResult
-    
+
     metrics = RAGMetrics(
         retrieval_hit=True,
         retrieval_count=5,
@@ -57,24 +57,24 @@ def test_rag_metrics_structure():
         citation_count=3,
         answer_status="grounded"
     )
-    
+
     assert metrics.retrieval_hit is True
     assert metrics.citation_count == 3
 
 def test_golden_questions_loads():
     """Verify Golden Questions dataset exists and loads."""
     dataset_path = Path(__file__).parent.parent / "app" / "evaluation" / "datasets" / "golden_questions_v1.jsonl"
-    
+
     assert dataset_path.exists()
-    
+
     cases = []
     with open(dataset_path, 'r', encoding='utf-8') as f:
         for line in f:
             if line.strip():
                 cases.append(json.loads(line))
-    
+
     assert len(cases) >= 20
-    
+
     # Verify structure
     for case in cases:
         assert 'id' in case
@@ -84,14 +84,14 @@ def test_golden_questions_loads():
 def test_evaluation_result_with_all_sprint1_fields():
     """Verify EvaluationCaseResult includes all Sprint 1 additions."""
     from app.evaluation.models import EvaluationCaseResult, EvaluationChecks, RAGMetrics
-    
+
     checks = EvaluationChecks(
         language_matches=True,
         required_substrings_present=True,
         forbidden_substrings_absent=True,
         latency_within_limit=True
     )
-    
+
     rag_metrics = RAGMetrics(
         retrieval_hit=True,
         retrieval_count=8,
@@ -101,7 +101,7 @@ def test_evaluation_result_with_all_sprint1_fields():
         citation_count=4,
         answer_status="grounded"
     )
-    
+
     result = EvaluationCaseResult(
         case_id="integ-001",
         tenant_id="tenant-1",
@@ -113,7 +113,7 @@ def test_evaluation_result_with_all_sprint1_fields():
         rag_metrics=rag_metrics,
         prompt_version="v1"
     )
-    
+
     # Verify all Sprint 1 fields present
     assert result.rag_metrics is not None
     assert result.rag_metrics.retrieval_hit
@@ -129,7 +129,7 @@ def test_policies_module_loads():
         DefaultModelPolicy,
         PromptVersionMetadata
     )
-    
+
     # Verify DefaultModelPolicy can be instantiated
     policy = DefaultModelPolicy()
     assert policy is not None
