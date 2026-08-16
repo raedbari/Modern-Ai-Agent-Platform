@@ -30,7 +30,7 @@ class TestGoldenQuestionsDataset:
             for line in f:
                 if line.strip():
                     case = json.loads(line)
-                    assert 'id' in case
-                    assert 'query' in case
+                    assert 'case_id' in case
+                    assert 'user_input' in case
                     assert 'tenant_id' in case
                     assert 'agent_id' in case

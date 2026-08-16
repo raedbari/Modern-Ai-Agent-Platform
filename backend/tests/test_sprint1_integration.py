@@ -127,7 +127,7 @@ def test_policies_module_loads():
     )
 
     # Verify DefaultModelPolicy can be instantiated
-    policy = DefaultModelPolicy()
+    policy = DefaultModelPolicy(default_model="test-model")
     assert policy is not None
 
 print("✅ Sprint 1 Integration Tests - All components verified")
