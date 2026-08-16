@@ -422,4 +422,3 @@ async def test_voyage_rerank_provider_aclose_closes_client(
     assert not provider._client.is_closed
     await provider.aclose()
     assert provider._client.is_closed
-
