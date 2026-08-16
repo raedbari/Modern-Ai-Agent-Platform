@@ -11,4 +11,3 @@ from backend.app.ai.ports import (
 )
 
 __all__ = ["RerankProvider", "RerankRequest", "RerankResult"]
-
