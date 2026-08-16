@@ -66,7 +66,7 @@ class CoreAIRuntime:
         *,
         rerank_provider: RerankProvider | None = None,
     ) -> None: ...
-    
+
     async def generate(self, request: GenerationRequest) -> GenerationResult: ...
     async def embed(self, request: EmbeddingRequest) -> EmbeddingResult: ...
     async def rerank(self, request: RerankRequest) -> RerankResult: ...
@@ -112,7 +112,7 @@ class AnthropicGenerationProvider(GenerationProvider):
     def __init__(self, settings: Settings) -> None:
         self._api_key = settings.anthropic_api_key
         self._model = settings.anthropic_model
-    
+
     async def generate(self, request: GenerationRequest) -> GenerationResult:
         # Implementation here
         ...
@@ -253,7 +253,7 @@ class Settings(BaseSettings):
     deepseek_model: str = "deepseek-v4-flash"
     deepseek_timeout_seconds: float = 30.0
     deepseek_max_retries: int = 2
-    
+
     # Voyage (Embedding + Reranking)
     voyage_api_key: SecretStr | None = None
     voyage_base_url: AnyHttpUrl = "https://api.voyageai.com/v1"
@@ -261,7 +261,7 @@ class Settings(BaseSettings):
     voyage_rerank_model: str = "rerank-2.5"
     voyage_timeout_seconds: float = 30.0
     voyage_max_retries: int = 2
-    
+
     # Retrieval
     retrieval_candidate_count: int = 20  # pgvector first-stage
     retrieval_final_count: int = 5       # After reranking
