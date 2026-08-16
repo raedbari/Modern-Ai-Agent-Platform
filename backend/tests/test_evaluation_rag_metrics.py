@@ -8,7 +8,7 @@ Verifies:
 - Prompt version tracking in evaluation results
 """
 import pytest
-from backend.app.evaluation.models import RAGMetrics, EvaluationCaseResult
+from backend.app.evaluation.models import RAGMetrics, EvaluationCaseResult, EvaluationChecks
 
 
 class TestRAGMetricsStructure:
@@ -158,11 +158,13 @@ class TestEvaluationCaseResultIntegration:
 
         result = EvaluationCaseResult(
             case_id="test-001",
+        tenant_id="test-tenant",
+        agent_id="test-agent",
+        checks=EvaluationChecks(),
             status="passed",
-            answer="Paris is the capital of France.",
+            response_content="Paris is the capital of France.",
             latency_ms=234.5,
-            token_count=45,
-            cost_usd=0.0012,
+            prompt_tokens=45,
             rag_metrics=rag_metrics,
             prompt_version="v1"
         )
@@ -175,11 +177,13 @@ class TestEvaluationCaseResultIntegration:
         """Verify EvaluationCaseResult tracks prompt version."""
         result = EvaluationCaseResult(
             case_id="test-002",
+        tenant_id="test-tenant",
+        agent_id="test-agent",
+        checks=EvaluationChecks(),
             status="passed",
-            answer="Test answer",
+            response_content="Test answer",
             latency_ms=150.0,
-            token_count=20,
-            cost_usd=0.0005,
+            prompt_tokens=20,
             rag_metrics=None,
             prompt_version="v2-experimental"
         )
@@ -190,11 +194,13 @@ class TestEvaluationCaseResultIntegration:
         """Verify EvaluationCaseResult works without RAG metrics (non-RAG agent)."""
         result = EvaluationCaseResult(
             case_id="test-003",
+        tenant_id="test-tenant",
+        agent_id="test-agent",
+        checks=EvaluationChecks(),
             status="passed",
-            answer="Direct response",
+            response_content="Direct response",
             latency_ms=100.0,
-            token_count=15,
-            cost_usd=0.0003,
+            prompt_tokens=15,
             rag_metrics=None,
             prompt_version="v1"
         )
@@ -276,11 +282,13 @@ class TestPromptVersionTracking:
         for version in versions:
             result = EvaluationCaseResult(
                 case_id=f"test-{version}",
+        tenant_id="test-tenant",
+        agent_id="test-agent",
+        checks=EvaluationChecks(),
                 status="passed",
-                answer="Test",
+                response_content="Test",
                 latency_ms=100.0,
-                token_count=10,
-                cost_usd=0.0001,
+                prompt_tokens=10,
                 rag_metrics=None,
                 prompt_version=version
             )
@@ -301,11 +309,13 @@ class TestPromptVersionTracking:
 
         result = EvaluationCaseResult(
             case_id="test-version-rag",
+        tenant_id="test-tenant",
+        agent_id="test-agent",
+        checks=EvaluationChecks(),
             status="passed",
-            answer="Test answer",
+            response_content="Test answer",
             latency_ms=200.0,
-            token_count=30,
-            cost_usd=0.0008,
+            prompt_tokens=30,
             rag_metrics=rag_metrics,
             prompt_version="v2.1"
         )
