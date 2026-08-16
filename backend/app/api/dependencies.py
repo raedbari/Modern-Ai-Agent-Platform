@@ -741,7 +741,7 @@ def get_embedding_provider() -> EmbeddingProvider:
 
     from backend.app.ai.providers.voyage import VoyageEmbeddingProvider
 
-    return VoyageEmbeddingProvider(get_settings())
+    return VoyageEmbeddingProvider(get_settings(), input_type="document")
 
 
 

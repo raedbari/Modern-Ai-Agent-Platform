@@ -9,7 +9,9 @@ platform.  This module provides two separate provider classes:
   ``rerank-2.5`` to sort candidate chunks by relevance.
 
 Neither class calls a paid API in tests.  All network I/O is confined to
-the methods documented below; callers inject fakes/mocks for testing.
+the methods documented below; callers inject a custom ``transport`` for
+testing — the ``voyageai`` SDK is NOT used so this module is importable
+in any environment regardless of whether the SDK is installed.
 
 Security
 --------
@@ -23,12 +25,16 @@ updating the database VECTOR column dimension and running a full migration.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from dataclasses import dataclass
+from typing import Any
 
-import voyageai  # type: ignore[import-untyped]
+import httpx
 
 from backend.app.ai.contracts import EmbeddingRequest, EmbeddingResult
+from backend.app.core.config import Settings
 from backend.app.domain.exceptions import EmbeddingError, RetrievalError
 
 logger = logging.getLogger(__name__)
@@ -42,6 +48,9 @@ VOYAGE_EMBEDDING_DIMENSION = 1024
 VOYAGE_QUERY_INPUT_TYPE = "query"        # Voyage: optimises vectors for retrieval queries
 VOYAGE_DOCUMENT_INPUT_TYPE = "document"  # Voyage: optimises vectors for document storage
 VOYAGE_RERANK_MODEL = "rerank-2.5"
+
+# HTTP status codes that are safe to retry.
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 # ---------------------------------------------------------------------------
@@ -79,21 +88,58 @@ class RerankResult:
 class VoyageEmbeddingProvider:
     """Embed query/document texts using Voyage AI ``voyage-4-large``.
 
+    Communicates directly with the Voyage REST API over ``httpx``; the
+    ``voyageai`` SDK is not required.  An injectable ``transport`` parameter
+    allows tests to intercept HTTP traffic without network access.
+
     Args:
-        api_key: Voyage AI API key.  Must not be empty.
-        model:   Override the model name.  Defaults to ``voyage-4-large``.
+        settings:   Application settings.  ``settings.voyage_api_key`` must
+                    be set; it is validated at construction time.
+        transport:  Optional ``httpx.AsyncBaseTransport`` override.  Inject
+                    a mock transport in tests to avoid real HTTP calls.
+        input_type: Default Voyage ``input_type`` used when the
+                    ``EmbeddingRequest`` does not specify one.  Defaults to
+                    ``"document"`` (suitable for ingestion).  Pass
+                    ``"query"`` when constructing a retrieval provider.
     """
 
     def __init__(
         self,
-        api_key: str,
+        settings: Settings,
         *,
-        model: str = VOYAGE_EMBEDDING_MODEL,
+        transport: httpx.AsyncBaseTransport | None = None,
+        input_type: str = VOYAGE_DOCUMENT_INPUT_TYPE,
     ) -> None:
-        if not api_key or not api_key.strip():
-            raise ValueError("Voyage AI API key must not be empty.")
-        self._model = model
-        self._client = voyageai.AsyncClient(api_key=api_key)
+        api_key = (
+            settings.voyage_api_key.get_secret_value().strip()
+            if settings.voyage_api_key is not None
+            else ""
+        )
+        if not api_key:
+            raise ValueError(
+                "VOYAGE_API_KEY is required but not set in settings."
+            )
+
+        self._api_key = api_key
+        self._model = settings.voyage_model
+        self._base_url = str(settings.voyage_base_url).rstrip("/")
+        self._dimension = settings.embedding_dimension
+        self._default_input_type = input_type
+        self._max_retries = settings.voyage_max_retries
+        self._timeout = settings.voyage_timeout_seconds
+        self._retry_base = settings.voyage_retry_base_seconds
+
+        client_kwargs: dict[str, Any] = {
+            "headers": {
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+            "timeout": self._timeout,
+        }
+        if transport is not None:
+            client_kwargs["transport"] = transport
+
+        self._client = httpx.AsyncClient(**client_kwargs)
 
     @property
     def model(self) -> str:
@@ -124,36 +170,93 @@ class VoyageEmbeddingProvider:
         if not request.texts:
             raise EmbeddingError("EmbeddingRequest.texts must not be empty.")
 
-        try:
-            response = await self._client.embed(
-                request.texts,
-                model=self._model,
-                input_type=request.input_type,
-            )
-        except Exception as exc:
-            raise EmbeddingError(
-                "Voyage AI embedding request failed."
-            ) from exc
+        input_type = getattr(request, "input_type", None) or self._default_input_type
 
-        vectors: list[list[float]] = response.embeddings
+        payload = {
+            "input": request.texts,
+            "model": self._model,
+            "input_type": input_type,
+            "output_dimension": self._dimension,
+        }
+
+        response_data = await self._post_with_retry(
+            f"{self._base_url}/embeddings",
+            payload,
+        )
+
+        try:
+            items: list[dict[str, Any]] = response_data["data"]
+            vectors: list[list[float]] = [item["embedding"] for item in items]
+        except (KeyError, TypeError) as exc:
+            raise EmbeddingError(
+                "Voyage AI returned an unexpected response structure."
+            ) from exc
 
         if len(vectors) != len(request.texts):
             raise EmbeddingError(
-                f"Voyage AI returned {len(vectors)} vector(s) for "
-                f"{len(request.texts)} input(s)."
+                f"Voyage AI returned unexpected number of embeddings: "
+                f"got {len(vectors)}, expected {len(request.texts)}."
             )
 
         for vec in vectors:
-            if len(vec) != VOYAGE_EMBEDDING_DIMENSION:
+            if len(vec) != self._dimension:
                 raise EmbeddingError(
-                    f"Voyage AI returned a vector of dimension {len(vec)}; "
-                    f"expected {VOYAGE_EMBEDDING_DIMENSION}."
+                    f"Voyage AI returned embedding with incorrect dimension: "
+                    f"got {len(vec)}, expected {self._dimension}."
                 )
 
         return EmbeddingResult(
             embeddings=vectors,
             model=self._model,
-            dimension=VOYAGE_EMBEDDING_DIMENSION,
+            dimension=self._dimension,
+        )
+
+    async def _post_with_retry(
+        self,
+        url: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """POST ``payload`` to ``url``, retrying on transient errors.
+
+        Raises:
+            EmbeddingError: After all retries are exhausted or on a
+                non-retryable HTTP error.
+        """
+        attempts = 0
+        max_attempts = self._max_retries + 1
+
+        while attempts < max_attempts:
+            try:
+                response = await self._client.post(
+                    url,
+                    content=json.dumps(payload).encode(),
+                )
+            except Exception as exc:
+                raise EmbeddingError(
+                    "Voyage AI request failed due to a network error."
+                ) from exc
+
+            if response.status_code == 200:
+                try:
+                    return response.json()
+                except Exception as exc:
+                    raise EmbeddingError(
+                        "Voyage AI returned a non-JSON response."
+                    ) from exc
+
+            if response.status_code not in _RETRYABLE_STATUS_CODES:
+                raise EmbeddingError(
+                    f"Voyage AI embedding is temporarily unavailable "
+                    f"(HTTP {response.status_code})."
+                )
+
+            attempts += 1
+            if attempts < max_attempts:
+                await asyncio.sleep(self._retry_base * (2 ** (attempts - 1)))
+
+        raise EmbeddingError(
+            "Voyage AI embedding is temporarily unavailable "
+            f"after {max_attempts} attempt(s)."
         )
 
 
@@ -169,20 +272,45 @@ class VoyageRerankProvider:
     No tenant IDs, internal IDs, or credentials are transmitted.
 
     Args:
-        api_key: Voyage AI API key.  Must not be empty.
-        model:   Override the model name.  Defaults to ``rerank-2.5``.
+        settings:  Application settings.  ``settings.voyage_api_key`` must
+                   be set.
+        transport: Optional ``httpx.AsyncBaseTransport`` override for tests.
     """
 
     def __init__(
         self,
-        api_key: str,
+        settings: Settings,
         *,
-        model: str = VOYAGE_RERANK_MODEL,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        if not api_key or not api_key.strip():
-            raise ValueError("Voyage AI API key must not be empty.")
-        self._model = model
-        self._client = voyageai.AsyncClient(api_key=api_key)
+        api_key = (
+            settings.voyage_api_key.get_secret_value().strip()
+            if settings.voyage_api_key is not None
+            else ""
+        )
+        if not api_key:
+            raise ValueError(
+                "VOYAGE_API_KEY is required but not set in settings."
+            )
+
+        self._api_key = api_key
+        self._model = settings.voyage_rerank_model
+        self._base_url = str(settings.voyage_base_url).rstrip("/")
+        self._max_retries = settings.voyage_max_retries
+        self._timeout = settings.voyage_timeout_seconds
+        self._retry_base = settings.voyage_retry_base_seconds
+
+        client_kwargs: dict[str, Any] = {
+            "headers": {
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+            "timeout": self._timeout,
+        }
+        if transport is not None:
+            client_kwargs["transport"] = transport
+
+        self._client = httpx.AsyncClient(**client_kwargs)
 
     @property
     def model(self) -> str:
@@ -205,21 +333,54 @@ class VoyageRerankProvider:
         if not request.documents:
             return RerankResult(ranked_indices=[], relevance_scores=[])
 
-        try:
-            response = await self._client.rerank(
-                request.query,
-                request.documents,
-                model=self._model,
-                top_k=min(request.top_k, len(request.documents)),
-            )
-        except Exception as exc:
+        payload = {
+            "query": request.query,
+            "documents": request.documents,
+            "model": self._model,
+            "top_k": min(request.top_k, len(request.documents)),
+        }
+
+        attempts = 0
+        max_attempts = self._max_retries + 1
+
+        while attempts < max_attempts:
+            try:
+                response = await self._client.post(
+                    f"{self._base_url}/rerank",
+                    content=json.dumps(payload).encode(),
+                )
+            except Exception as exc:
+                raise RetrievalError(
+                    "Voyage AI rerank request failed."
+                ) from exc
+
+            if response.status_code == 200:
+                break
+
+            if response.status_code not in _RETRYABLE_STATUS_CODES:
+                raise RetrievalError(
+                    f"Voyage AI rerank failed (HTTP {response.status_code})."
+                )
+
+            attempts += 1
+            if attempts < max_attempts:
+                await asyncio.sleep(self._retry_base * (2 ** (attempts - 1)))
+        else:
             raise RetrievalError(
-                "Voyage AI rerank request failed."
+                "Voyage AI rerank request failed after all retries."
+            )
+
+        try:
+            data = response.json()
+            results = data["data"]
+        except (KeyError, TypeError, Exception) as exc:
+            raise RetrievalError(
+                "Voyage AI returned an unexpected rerank response structure."
             ) from exc
 
-        ranked_indices: list[int] = [item.index for item in response.results]
+        ranked_indices: list[int] = [item["index"] for item in results]
         relevance_scores: list[float] = [
-            float(item.relevance_score) for item in response.results
+            float(item["relevance_score"]) for item in results
         ]
 
         return RerankResult(
