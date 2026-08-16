@@ -17,7 +17,7 @@ index f1e3325..8136eef 100644
 @@ -89,6 +89,22 @@ jobs:
        - name: Generate disposable CI environment
          run: python3 scripts/ci/make_ci_env.py
- 
+
 +      - name: Ensure .env.compose.ci exists
 +        run: |
 +          if [ ! -f .env.compose.ci ]; then
@@ -42,15 +42,15 @@ index f5e5da2..a8a7d9d 100644
 --- a/backend/Dockerfile
 +++ b/backend/Dockerfile
 @@ -16,6 +16,10 @@ RUN python -m pip install --upgrade pip \
- 
+
  COPY --chown=maap:maap backend /app/backend
- 
+
 +# copy CI entrypoint for migrate
 +COPY backend/ci_migrate_entrypoint.sh /app/backend/ci_migrate_entrypoint.sh
 +RUN chmod +x /app/backend/ci_migrate_entrypoint.sh
 +
  USER maap
- 
+
  EXPOSE 8000
 diff --git a/compose.local.yaml b/compose.local.yaml
 index bcc5130..1efa805 100644
@@ -75,7 +75,7 @@ index bcc5130..1efa805 100644
        ]
      restart: "no"
      env_file:
--- 
+--
 2.55.0
 
 
@@ -122,6 +122,5 @@ index 8136eef..b6b0732 100644
                    exit 1
                  fi
                '
--- 
+--
 2.55.0
-
