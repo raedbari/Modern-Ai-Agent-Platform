@@ -202,7 +202,7 @@ class VoyageRerankProvider:
         if not request.documents:
             return RerankResult(
                 ranked_indices=[],
-                relevance_scores=[],
+                scores=[],
             )
 
         payload = {
@@ -272,7 +272,7 @@ class VoyageRerankProvider:
 
         return RerankResult(
             ranked_indices=indices,
-            relevance_scores=scores,
+            scores=scores,
         )
 
     async def _post_with_retries(
