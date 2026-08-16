@@ -13,8 +13,8 @@ from pathlib import Path
 
 def test_agent_model_has_prompt_version():
     """Verify Agent model includes prompt_version field."""
-    from app.db.models import Agent
-    from app.domain.models.agent import Agent as DomainAgent
+    from backend.app.db.models import Agent
+    from backend.app.domain.models.agent import Agent as DomainAgent
 
     # DB model
     assert hasattr(Agent, 'prompt_version')
@@ -23,18 +23,14 @@ def test_agent_model_has_prompt_version():
     domain_agent = DomainAgent(
         id="test",
         tenant_id="t1",
-        name="Test",
-        description="Test",
-        system_prompt="Test",
-        knowledge_base_id=None,
         prompt_version="v1"
     )
     assert domain_agent.prompt_version == "v1"
 
 def test_provider_abstraction_accessible():
     """Verify provider abstractions are accessible."""
-    from app.ai.ports import RerankProvider, RerankRequest, RerankResult
-    from app.ai import rerank  # Backward compatibility
+    from backend.app.ai.ports import RerankProvider, RerankRequest, RerankResult
+    from backend.app.ai import rerank  # Backward compatibility
 
     # Direct import
     assert RerankProvider is not None
@@ -46,7 +42,7 @@ def test_provider_abstraction_accessible():
 
 def test_rag_metrics_structure():
     """Verify RAG metrics can be instantiated."""
-    from app.evaluation.models import RAGMetrics, EvaluationCaseResult
+    from backend.app.evaluation.models import RAGMetrics, EvaluationCaseResult
 
     metrics = RAGMetrics(
         retrieval_hit=True,
@@ -77,13 +73,13 @@ def test_golden_questions_loads():
 
     # Verify structure
     for case in cases:
-        assert 'id' in case
-        assert 'query' in case
+        assert 'case_id' in case
+        assert 'user_input' in case
         assert 'tenant_id' in case
 
 def test_evaluation_result_with_all_sprint1_fields():
     """Verify EvaluationCaseResult includes all Sprint 1 additions."""
-    from app.evaluation.models import EvaluationCaseResult, EvaluationChecks, RAGMetrics
+    from backend.app.evaluation.models import EvaluationCaseResult, EvaluationChecks, RAGMetrics
 
     checks = EvaluationChecks(
         language_matches=True,
@@ -122,7 +118,7 @@ def test_evaluation_result_with_all_sprint1_fields():
 
 def test_policies_module_loads():
     """Verify policy interfaces are accessible."""
-    from app.ai.policies import (
+    from backend.app.ai.policies import (
         ModelPolicy,
         BudgetPolicy,
         SafetyPolicy,
