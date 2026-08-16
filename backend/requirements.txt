@@ -1,8 +1,8 @@
-fastapi>=0.115,<0.120
+fastapi>=0.115,<0.145
 httpx>=0.28,<0.29
 pydantic-settings>=2.7,<3.0
 pytest>=8.3,<10.0
-uvicorn[standard]>=0.34,<0.40
+uvicorn[standard]>=0.34,<0.60
 python-multipart>=0.0.20,<1.0
 langchain>=1.0,<2.0
 langchain-deepseek>=1.0,<2.0
@@ -26,7 +26,7 @@ pgvector>=0.3,<1.0
 pytest-asyncio>=0.24,<2.0
 
 # Admin authentication
-argon2-cffi>=23.1,<25.0
+argon2-cffi>=23.1,<26.0
 PyJWT>=2.8,<3.0
 redis>=5.2,<7.0
 email-validator==2.3.0
