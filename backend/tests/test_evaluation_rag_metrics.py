@@ -8,7 +8,7 @@ Verifies:
 - Prompt version tracking in evaluation results
 """
 import pytest
-from app.evaluation.models import RAGMetrics, EvaluationCaseResult
+from backend.app.evaluation.models import RAGMetrics, EvaluationCaseResult
 
 
 class TestRAGMetricsStructure:
