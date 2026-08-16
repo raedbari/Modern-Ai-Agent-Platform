@@ -9,8 +9,8 @@ Verifies:
 """
 import pytest
 from typing import Protocol
-from app.ai.ports import RerankProvider, RerankRequest, RerankResult
-from app.ai import rerank  # Test backward compatibility
+from backend.app.ai.ports import RerankProvider, RerankRequest, RerankResult
+from backend.app.ai import rerank  # Test backward compatibility
 
 
 class TestRerankProviderProtocol:
@@ -126,25 +126,25 @@ class TestBackwardCompatibility:
     """Test backward compatibility with app.ai.rerank imports."""
 
     def test_rerank_module_exports_provider(self):
-        """Verify RerankProvider can be imported from app.ai.rerank."""
+        """Verify RerankProvider can be imported from backend.app.ai.rerank."""
         assert hasattr(rerank, 'RerankProvider')
         assert rerank.RerankProvider is RerankProvider
 
     def test_rerank_module_exports_request(self):
-        """Verify RerankRequest can be imported from app.ai.rerank."""
+        """Verify RerankRequest can be imported from backend.app.ai.rerank."""
         assert hasattr(rerank, 'RerankRequest')
         assert rerank.RerankRequest is RerankRequest
 
     def test_rerank_module_exports_result(self):
-        """Verify RerankResult can be imported from app.ai.rerank."""
+        """Verify RerankResult can be imported from backend.app.ai.rerank."""
         assert hasattr(rerank, 'RerankResult')
         assert rerank.RerankResult is RerankResult
 
     def test_legacy_imports_work(self):
         """Verify legacy code using app.ai.rerank imports continues to work."""
-        from app.ai.rerank import RerankProvider as LegacyProvider
-        from app.ai.rerank import RerankRequest as LegacyRequest
-        from app.ai.rerank import RerankResult as LegacyResult
+        from backend.app.ai.rerank import RerankProvider as LegacyProvider
+        from backend.app.ai.rerank import RerankRequest as LegacyRequest
+        from backend.app.ai.rerank import RerankResult as LegacyResult
 
         # Create instances using legacy imports
         request = LegacyRequest(
