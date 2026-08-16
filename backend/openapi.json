@@ -33,10 +33,11 @@
           "detail": {
             "anyOf": [
               {
-                "type": "null"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
-                "type": "object"
+                "type": "null"
               }
             ],
             "title": "Detail"
@@ -687,7 +688,7 @@
             "type": "string"
           },
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -709,7 +710,7 @@
       "Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -730,7 +731,7 @@
       "Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -751,7 +752,7 @@
       "Body_reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -772,7 +773,7 @@
       "Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -1037,10 +1038,11 @@
           "metadata": {
             "anyOf": [
               {
-                "type": "null"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
-                "type": "object"
+                "type": "null"
               }
             ],
             "title": "Metadata"
@@ -1172,10 +1174,11 @@
           "metadata": {
             "anyOf": [
               {
-                "type": "null"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
-                "type": "object"
+                "type": "null"
               }
             ],
             "title": "Metadata"
@@ -1693,9 +1696,6 @@
           },
           "status": {
             "const": "ok",
-            "enum": [
-              "ok"
-            ],
             "title": "Status",
             "type": "string"
           }
@@ -2279,10 +2279,11 @@
           "metadata": {
             "anyOf": [
               {
-                "type": "null"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
-                "type": "object"
+                "type": "null"
               }
             ],
             "title": "Metadata"
@@ -2367,10 +2368,11 @@
           "metadata": {
             "anyOf": [
               {
-                "type": "null"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
-                "type": "object"
+                "type": "null"
               }
             ],
             "title": "Metadata"
@@ -2563,9 +2565,6 @@
           },
           "legal_accepted": {
             "const": true,
-            "enum": [
-              true
-            ],
             "title": "Legal Accepted",
             "type": "boolean"
           },
@@ -2970,9 +2969,6 @@
             "const": "Bearer",
             "default": "Bearer",
             "description": "Token type",
-            "enum": [
-              "Bearer"
-            ],
             "title": "Token Type",
             "type": "string"
           },
@@ -3029,9 +3025,6 @@
           "status": {
             "const": "active",
             "description": "Membership status",
-            "enum": [
-              "active"
-            ],
             "title": "Status",
             "type": "string"
           },
@@ -3190,6 +3183,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -3297,9 +3297,6 @@
           "token_type": {
             "const": "Bearer",
             "default": "Bearer",
-            "enum": [
-              "Bearer"
-            ],
             "title": "Token Type",
             "type": "string"
           },
@@ -3321,9 +3318,6 @@
           "connected": {
             "const": true,
             "default": true,
-            "enum": [
-              true
-            ],
             "title": "Connected",
             "type": "boolean"
           },
@@ -4262,6 +4256,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Change Password Endpoint Api Admin Auth Change Password Post",
                   "type": "object"
                 }
@@ -4352,6 +4347,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Logout Api Admin Auth Logout Post",
                   "type": "object"
                 }
@@ -8231,6 +8227,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Logout Api V1 Tenant Auth Logout Post",
                   "type": "object"
                 }
