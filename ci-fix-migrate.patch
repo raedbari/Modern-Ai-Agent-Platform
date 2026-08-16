@@ -1,0 +1,127 @@
+From 0b3d09a51fba4db328cc7a91bbc7bdef863f9b2e Mon Sep 17 00:00:00 2001
+From: Fawaz Al-Shayef <fawaz.alshayef@email.com>
+Date: Sun, 16 Aug 2026 10:12:48 +0300
+Subject: [PATCH 1/2] ci(migrate): add diagnostic migrate entrypoint, wire into
+ Dockerfile & compose, ensure .env.compose.ci exists in CI
+
+---
+ .github/workflows/pr-quality.yml | 16 ++++++++++++++++
+ backend/Dockerfile               |  4 ++++
+ compose.local.yaml               |  9 +++------
+ 3 files changed, 23 insertions(+), 6 deletions(-)
+
+diff --git a/.github/workflows/pr-quality.yml b/.github/workflows/pr-quality.yml
+index f1e3325..8136eef 100644
+--- a/.github/workflows/pr-quality.yml
++++ b/.github/workflows/pr-quality.yml
+@@ -89,6 +89,22 @@ jobs:
+       - name: Generate disposable CI environment
+         run: python3 scripts/ci/make_ci_env.py
+ 
++      - name: Ensure .env.compose.ci exists
++        run: |
++          if [ ! -f .env.compose.ci ]; then
++            cat > .env.compose.ci <<EOF
++          MAAP_POSTGRES_PASSWORD=${{ secrets.MAAP_POSTGRES_PASSWORD }}
++          MAAP_POSTGRES_USER=${{ secrets.MAAP_POSTGRES_USER || 'maap' }}
++          MAAP_POSTGRES_DB=${{ secrets.MAAP_POSTGRES_DB || 'maap' }}
++          MAAP_POSTGRES_PORT=5433
++          # optional safe defaults
++          MAAP_ADMIN_API_KEY=${{ secrets.MAAP_ADMIN_API_KEY || 'ci-admin' }}
++          MAAP_VOYAGE_API_KEY=${{ secrets.MAAP_VOYAGE_API_KEY || 'ci-voyage' }}
++          MAAP_JWT_SECRET_KEY=${{ secrets.MAAP_JWT_SECRET_KEY || 'ci-secret' }}
++          MAAP_WIDGET_JWT_SECRET_KEY=${{ secrets.MAAP_WIDGET_JWT_SECRET_KEY || 'ci-widget' }}
++          EOF
++          fi
++
+       - name: Validate compose
+         run: |
+           docker compose             --env-file .env.compose.ci             -f compose.local.yaml             config --quiet
+diff --git a/backend/Dockerfile b/backend/Dockerfile
+index f5e5da2..a8a7d9d 100644
+--- a/backend/Dockerfile
++++ b/backend/Dockerfile
+@@ -16,6 +16,10 @@ RUN python -m pip install --upgrade pip \
+ 
+ COPY --chown=maap:maap backend /app/backend
+ 
++# copy CI entrypoint for migrate
++COPY backend/ci_migrate_entrypoint.sh /app/backend/ci_migrate_entrypoint.sh
++RUN chmod +x /app/backend/ci_migrate_entrypoint.sh
++
+ USER maap
+ 
+ EXPOSE 8000
+diff --git a/compose.local.yaml b/compose.local.yaml
+index bcc5130..1efa805 100644
+--- a/compose.local.yaml
++++ b/compose.local.yaml
+@@ -70,15 +70,12 @@ services:
+     build:
+       context: .
+       dockerfile: backend/Dockerfile
++    # run the diagnostic migrate entrypoint built into the image
+     command:
+       [
+-        "python",
+-        "-m",
+-        "alembic",
++        "sh",
+         "-c",
+-        "backend/alembic.ini",
+-        "upgrade",
+-        "head",
++        "/app/backend/ci_migrate_entrypoint.sh"
+       ]
+     restart: "no"
+     env_file:
+-- 
+2.55.0
+
+
+From a697ade1ecf80129216b579e544ac99493adf410 Mon Sep 17 00:00:00 2001
+From: Fawaz Al-Shayef <fawaz.alshayef@email.com>
+Date: Sun, 16 Aug 2026 10:18:38 +0300
+Subject: [PATCH 2/2] ci(alembic-gate): add --no-deps to prevent migrate
+ service from starting
+
+- Fixes: alembic heads check was triggering migrate service which failed with exit 255
+- Solution: use --no-deps to run alembic check in isolation (only needs code files)
+- Added: improved debug output (ls -la) when alembic.ini not found
+- Added: explicit -c alembic.ini flag for clarity
+
+Credit: GitHub Copilot root cause analysis
+---
+ .github/workflows/pr-quality.yml | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/.github/workflows/pr-quality.yml b/.github/workflows/pr-quality.yml
+index 8136eef..b6b0732 100644
+--- a/.github/workflows/pr-quality.yml
++++ b/.github/workflows/pr-quality.yml
+@@ -117,15 +117,19 @@ jobs:
+         run: |
+           set -euo pipefail
+           OUTPUT="$(
+-            docker compose               --env-file .env.compose.ci               -f compose.local.yaml               run --rm api               sh -lc '
++            docker compose               --env-file .env.compose.ci               -f compose.local.yaml               run --rm --no-deps api               sh -lc '
+                 cd /app 2>/dev/null || true
++                # prefer top-level alembic.ini, otherwise backend/alembic.ini
+                 if [ -f alembic.ini ]; then
+-                  alembic heads
++                  alembic -c alembic.ini heads
+                 elif [ -f backend/alembic.ini ]; then
+                   cd backend
+-                  alembic heads
++                  alembic -c alembic.ini heads
+                 else
+                   echo "ALEMBIC_INI_NOT_FOUND"
++                  echo "Listing /app and /app/backend for debugging:"
++                  ls -la /app || true
++                  ls -la /app/backend || true
+                   exit 1
+                 fi
+               '
+-- 
+2.55.0
+

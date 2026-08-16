@@ -16,6 +16,10 @@ RUN python -m pip install --upgrade pip \
 
 COPY --chown=maap:maap backend /app/backend
 
+# copy CI entrypoint for migrate
+COPY backend/ci_migrate_entrypoint.sh /app/backend/ci_migrate_entrypoint.sh
+RUN chmod +x /app/backend/ci_migrate_entrypoint.sh
+
 USER maap
 
 EXPOSE 8000
