@@ -1,4 +1,6 @@
 import {
+  deleteCustomerAgent,
+  getCustomerAgent,
   updateCustomerAgent,
   type CustomerAgentUpdate,
 } from "@/lib/server/customer-resources-api";
@@ -18,6 +20,32 @@ type RouteContext = {
 };
 
 export const dynamic = "force-dynamic";
+
+function browserSafeAgent<T extends { tenant_id: string }>(agent: T): Omit<T, "tenant_id"> {
+  const safe: Partial<T> = { ...agent };
+  delete safe.tenant_id;
+  return safe as Omit<T, "tenant_id">;
+}
+
+export async function GET(_request: Request, context: RouteContext): Promise<Response> {
+  const { agentId } = await context.params;
+  try {
+    const agent = await withTenantAccessToken((token) => getCustomerAgent(token, agentId));
+    return Response.json(browserSafeAgent(agent), { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    return tenantApiErrorResponse(error);
+  }
+}
+
+export async function DELETE(_request: Request, context: RouteContext): Promise<Response> {
+  const { agentId } = await context.params;
+  try {
+    await withTenantAccessToken((token) => deleteCustomerAgent(token, agentId));
+    return new Response(null, { status: 204, headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    return tenantApiErrorResponse(error);
+  }
+}
 
 export async function PATCH(
   request: Request,
@@ -59,7 +87,7 @@ export async function PATCH(
       );
 
     return Response.json(
-      agent,
+      browserSafeAgent(agent),
       {
         status: 200,
         headers: {

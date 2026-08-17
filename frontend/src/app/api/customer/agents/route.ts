@@ -1,5 +1,6 @@
 import {
   createCustomerAgent,
+  listCustomerAgents,
   type CustomerAgentCreate,
 } from "@/lib/server/customer-resources-api";
 
@@ -11,7 +12,22 @@ import {
   withTenantAccessToken,
 } from "@/lib/server/tenant-session";
 
+function browserSafeAgent<T extends { tenant_id: string }>(agent: T): Omit<T, "tenant_id"> {
+  const safe: Partial<T> = { ...agent };
+  delete safe.tenant_id;
+  return safe as Omit<T, "tenant_id">;
+}
+
 export const dynamic = "force-dynamic";
+
+export async function GET(): Promise<Response> {
+  try {
+    const agents = await withTenantAccessToken(listCustomerAgents);
+    return Response.json(agents.map(browserSafeAgent), { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    return tenantApiErrorResponse(error);
+  }
+}
 
 export async function POST(
   request: Request,
@@ -47,7 +63,7 @@ export async function POST(
       );
 
     return Response.json(
-      agent,
+      browserSafeAgent(agent),
       {
         status: 201,
         headers: {

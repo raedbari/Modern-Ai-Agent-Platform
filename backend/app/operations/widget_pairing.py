@@ -60,7 +60,7 @@ async def create_widget_connector_pairing(
     agent_id: str,
     origin: str,
     connector_type: str,
-    created_by_admin_id: str,
+    created_by_admin_id: str | None,
     settings: Settings,
 ) -> tuple[WidgetConnectorPairing, str]:
     widget, allowed_origins = await get_widget_settings(

@@ -2,17 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Bot, BookOpen, Check, Code2, MessageSquareText, Palette, Play, Rocket, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, ArrowRight, Bot, BookOpen, Check, MessageSquareText, Sparkles } from "lucide-react";
 import styles from "./chatbot-wizard.module.css";
 
 const STEPS = [
   { title: "المعلومات", description: "اسم Chatbot والهدف الأساسي منه.", icon: Bot },
   { title: "المعرفة", description: "المصادر التي سيعتمد عليها Chatbot.", icon: BookOpen },
   { title: "طريقة الرد", description: "النبرة والتعليمات وطريقة التعامل مع الأسئلة.", icon: MessageSquareText },
-  { title: "المظهر", description: "الاسم والألوان ورسالة الترحيب.", icon: Palette },
-  { title: "التجربة", description: "اختبر Chatbot قبل نشره.", icon: Play },
-  { title: "النشر", description: "راجع الإعدادات واجعل Chatbot جاهزًا.", icon: Rocket },
-  { title: "الدمج", description: "أضف Chatbot إلى موقعك بخطوات بسيطة.", icon: Code2 },
 ];
 
 type WizardDraft = {
@@ -20,6 +17,9 @@ type WizardDraft = {
   knowledgeBaseId: string | null;
   name: string;
   purpose: string;
+  systemPrompt: string;
+  knowledgeMode: "required" | "preferred" | "disabled";
+  contactMessage: string;
   knowledgeName: string;
   knowledgeDescription: string;
   step: number;
@@ -63,9 +63,13 @@ function apiErrorMessage(
 }
 
 export function ChatbotWizard() {
+  const router = useRouter();
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [knowledgeMode, setKnowledgeMode] = useState<"required" | "preferred" | "disabled">("preferred");
+  const [contactMessage, setContactMessage] = useState("");
   const [agentId, setAgentId] = useState<string | null>(null);
   const [knowledgeBaseId, setKnowledgeBaseId] = useState<string | null>(null);
   const [knowledgeName, setKnowledgeName] = useState("");
@@ -126,6 +130,9 @@ export function ChatbotWizard() {
         ) {
           setPurpose(draft.purpose);
         }
+        if (typeof draft.systemPrompt === "string") setSystemPrompt(draft.systemPrompt);
+        if (draft.knowledgeMode === "required" || draft.knowledgeMode === "preferred" || draft.knowledgeMode === "disabled") setKnowledgeMode(draft.knowledgeMode);
+        if (typeof draft.contactMessage === "string") setContactMessage(draft.contactMessage);
 
         setAgentId(
           restoredAgentId,
@@ -190,6 +197,9 @@ export function ChatbotWizard() {
       knowledgeBaseId,
       name,
       purpose,
+      systemPrompt,
+      knowledgeMode,
+      contactMessage,
       knowledgeName,
       knowledgeDescription,
       step,
@@ -207,6 +217,9 @@ export function ChatbotWizard() {
     knowledgeName,
     name,
     purpose,
+    systemPrompt,
+    knowledgeMode,
+    contactMessage,
     step,
   ]);
 
@@ -218,10 +231,23 @@ export function ChatbotWizard() {
       return;
     }
 
+    if (step === 2 && agentId) {
+      setSaving(true); setSaveError(null);
+      try {
+        const response = await fetch(`/api/customer/agents/${encodeURIComponent(agentId)}`, { method: "PATCH", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ system_prompt: systemPrompt.trim() || null, knowledge_mode: knowledgeMode, contact_message: contactMessage.trim() || null }) });
+        const body = await response.json().catch(() => undefined) as { detail?: string } | undefined;
+        if (!response.ok) throw new Error(apiErrorMessage(body, response.status));
+        window.sessionStorage.removeItem(WIZARD_STORAGE_KEY);
+        router.push(`/app/chatbots/${encodeURIComponent(agentId)}`);
+      } catch (error) { setSaveError(error instanceof Error ? error.message : "تعذر حفظ طريقة الرد."); }
+      finally { setSaving(false); }
+      return;
+    }
+
     if (step === 1) {
       if (!agentId) {
         setSaveError(
-          "???? ????? Chatbot. ???? ??? ?????? ??????.",
+          "احفظ Chatbot أولًا قبل إعداد المعرفة.",
         );
         return;
       }
@@ -231,7 +257,7 @@ export function ChatbotWizard() {
 
       if (normalizedName.length < 2) {
         setSaveError(
-          "???? ????? ?????? ???????.",
+          "اكتب اسمًا صالحًا لقاعدة المعرفة.",
         );
         return;
       }
@@ -302,7 +328,7 @@ export function ChatbotWizard() {
           ).id !== "string"
         ) {
           throw new Error(
-            "???? ??? ????? ???????.",
+            "تعذر حفظ قاعدة المعرفة.",
           );
         }
 
@@ -338,22 +364,12 @@ export function ChatbotWizard() {
         setSaveError(
           error instanceof Error
             ? error.message
-            : "???? ??? ????? ???????.",
+            : "تعذر حفظ قاعدة المعرفة.",
         );
       } finally {
         setSaving(false);
       }
 
-      return;
-    }
-
-    if (step !== 0) {
-      setStep((value) =>
-        Math.min(
-          value + 1,
-          STEPS.length - 1,
-        ),
-      );
       return;
     }
 
@@ -384,6 +400,7 @@ export function ChatbotWizard() {
           },
           body: JSON.stringify({
             name: name.trim(),
+            system_prompt: systemPrompt.trim() || (purpose.trim() ? `أنت ${name.trim()}، ومهمتك: ${purpose.trim()}\nأجب بدقة ووضوح وفق المعرفة المتاحة.` : null),
           }),
         },
       );
@@ -425,6 +442,10 @@ export function ChatbotWizard() {
       setAgentId(
         agent.id,
       );
+
+      if (!systemPrompt.trim() && purpose.trim()) {
+        setSystemPrompt(`أنت ${name.trim()}، ومهمتك: ${purpose.trim()}\nأجب بدقة ووضوح وفق المعرفة المتاحة.`);
+      }
 
       if (
         typeof agent.name === "string"
@@ -511,14 +532,26 @@ export function ChatbotWizard() {
               <label className={styles.field}>
                 <span>ما الهدف من Chatbot؟</span>
                 <textarea onChange={(event) => setPurpose(event.target.value)} placeholder="مثال: الرد على أسئلة العملاء ومساعدتهم في معرفة الخدمات." rows={5} value={purpose} />
-                <small>اكتب وصفًا بسيطًا. سنستخدمه لاحقًا عند إعداد طريقة الرد.</small>
+                <small>مساعد لصياغة System Prompt فقط؛ لا يُحفظ كحقل مستقل.</small>
+              </label>
+            </div>
+          ) : step === 1 ? (
+            <div className={styles.form}>
+              <label className={styles.field}>
+                <span>اسم قاعدة المعرفة</span>
+                <input value={knowledgeName} onChange={(event) => setKnowledgeName(event.target.value)} placeholder="مثال: معلومات الخدمات" />
+                <small>تُنشأ مرة واحدة فقط؛ عند إعادة المحاولة يُحدّث المورد المحفوظ بدل إنشاء نسخة مكررة.</small>
+              </label>
+              <label className={styles.field}>
+                <span>الوصف</span>
+                <textarea rows={4} value={knowledgeDescription} onChange={(event) => setKnowledgeDescription(event.target.value)} />
               </label>
             </div>
           ) : (
-            <div className={styles.placeholder}>
-              <div className={styles.placeholderIcon}><CurrentIcon size={30} /></div>
-              <h3>{current.title}</h3>
-              <p>واجهة هذه الخطوة جاهزة ضمن مسار الـWizard، وسيتم ربطها بخدمات المنصة الحالية في الوحدة التالية.</p>
+            <div className={styles.form}>
+              <label className={styles.field}><span>System Prompt القابل للتحرير</span><textarea rows={8} value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} /><small>هذا النص وحده يُحفظ كتعليمات Chatbot.</small></label>
+              <label className={styles.field}><span>استخدام المعرفة</span><select value={knowledgeMode} onChange={(event) => setKnowledgeMode(event.target.value as "required" | "preferred" | "disabled")}><option value="required">المعرفة مطلوبة</option><option value="preferred">المعرفة مفضلة</option><option value="disabled">بدون معرفة</option></select></label>
+              <label className={styles.field}><span>رسالة عدم توفر إجابة</span><textarea rows={3} value={contactMessage} onChange={(event) => setContactMessage(event.target.value)} /></label>
             </div>
           )}
 
@@ -539,7 +572,7 @@ export function ChatbotWizard() {
                 {"جاري الحفظ…"}
               </span>
             ) : null}
-            <button className={styles.nextButton} disabled={!canContinue || saving} onClick={() => { void goNext(); }} type="button">{step === STEPS.length - 1 ? "إنهاء الإعداد" : "حفظ ومتابعة"}<ArrowLeft size={17} /></button>
+            <button className={styles.nextButton} disabled={!canContinue || saving} onClick={() => { void goNext(); }} type="button">{step === STEPS.length - 1 ? "حفظ وفتح الإدارة" : "حفظ ومتابعة"}<ArrowLeft size={17} /></button>
           </footer>
         </section>
       </div>

@@ -190,6 +190,35 @@ async def resolve_public_widget(
     ).one_or_none()
 
 
+async def resolve_preview_widget(
+    session: AsyncSession,
+    *,
+    tenant_id: str,
+    agent_id: str,
+    public_widget_id: str,
+) -> tuple[AgentWidgetSettings, Agent, Tenant] | None:
+    """Resolve an active tenant/agent Widget without requiring public enablement."""
+
+    return (
+        await session.execute(
+            select(AgentWidgetSettings, Agent, Tenant)
+            .join(
+                Agent,
+                (Agent.tenant_id == AgentWidgetSettings.tenant_id)
+                & (Agent.id == AgentWidgetSettings.agent_id),
+            )
+            .join(Tenant, Tenant.id == AgentWidgetSettings.tenant_id)
+            .where(
+                AgentWidgetSettings.tenant_id == tenant_id,
+                AgentWidgetSettings.agent_id == agent_id,
+                AgentWidgetSettings.public_widget_id == public_widget_id,
+                Agent.is_active.is_(True),
+                Tenant.is_active.is_(True),
+            )
+        )
+    ).one_or_none()
+
+
 async def is_widget_origin_allowed(
     session: AsyncSession,
     *,

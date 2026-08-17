@@ -1,5 +1,6 @@
 import {
   createCustomerKnowledgeBase,
+  listCustomerKnowledgeBases,
 } from "@/lib/server/customer-resources-api";
 
 import {
@@ -17,6 +18,15 @@ type CreatePayload = {
 };
 
 export const dynamic = "force-dynamic";
+
+export async function GET(): Promise<Response> {
+  try {
+    const items = await withTenantAccessToken(listCustomerKnowledgeBases);
+    return Response.json(items, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    return tenantApiErrorResponse(error);
+  }
+}
 
 export async function POST(
   request: Request,

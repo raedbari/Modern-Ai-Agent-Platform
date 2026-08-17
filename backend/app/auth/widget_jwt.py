@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 import jwt
@@ -29,6 +29,7 @@ class WidgetTokenContext:
     origin: str
     session_id: str
     jti: str
+    token_type: Literal["widget_session", "widget_preview_session"]
 
 
 def _secret(settings: Settings) -> str:
@@ -45,6 +46,10 @@ def create_widget_token(
     origin: str,
     session_id: str,
     settings: Settings,
+    token_type: Literal[
+        "widget_session",
+        "widget_preview_session",
+    ] = "widget_session",
 ) -> str:
     normalized_origin = normalize_origin(origin)
     if normalized_origin is None:
@@ -66,7 +71,7 @@ def create_widget_token(
         "agent_id": agent_id,
         "widget_id": public_widget_id,
         "origin": normalized_origin,
-        "token_type": "widget_session",
+        "token_type": token_type,
     }
     return jwt.encode(payload, _secret(settings), algorithm=_ALGORITHM)
 
@@ -102,7 +107,8 @@ def decode_widget_token(
     except (InvalidTokenError, WidgetTokenError) as exc:
         raise WidgetTokenError("Widget token is invalid or expired.") from exc
 
-    if payload.get("token_type") != "widget_session":
+    token_type = payload.get("token_type")
+    if token_type not in {"widget_session", "widget_preview_session"}:
         raise WidgetTokenError("Widget token type is invalid.")
 
     string_claims = {
@@ -138,4 +144,5 @@ def decode_widget_token(
         origin=normalized_origin,
         session_id=string_claims["sub"],
         jti=string_claims["jti"],
+        token_type=token_type,
     )

@@ -35,6 +35,7 @@ from backend.app.telemetry import StructuredLoggingTelemetrySink, TelemetrySink
 from backend.app.operations.widget import (
     is_widget_origin_allowed,
     resolve_public_widget,
+    resolve_preview_widget,
 )
 
 api_key_header = APIKeyHeader(
@@ -476,10 +477,18 @@ async def require_chat_context(
                 detail="Widget origin mismatch",
             )
 
-        resolved = await resolve_public_widget(
-            session,
-            widget_context.public_widget_id,
-        )
+        if widget_context.token_type == "widget_preview_session":
+            resolved = await resolve_preview_widget(
+                session,
+                tenant_id=widget_context.tenant_id,
+                agent_id=widget_context.agent_id,
+                public_widget_id=widget_context.public_widget_id,
+            )
+        else:
+            resolved = await resolve_public_widget(
+                session,
+                widget_context.public_widget_id,
+            )
         if resolved is None:
             raise _unauthorized()
         widget, agent, tenant = resolved
@@ -490,12 +499,15 @@ async def require_chat_context(
             or agent.id != widget_context.agent_id
         ):
             raise _unauthorized()
-        if not await is_widget_origin_allowed(
-            session,
-            tenant_id=tenant.id,
-            agent_id=agent.id,
-            origin=origin,
-            environment=settings.environment,
+        if (
+            widget_context.token_type == "widget_session"
+            and not await is_widget_origin_allowed(
+                session,
+                tenant_id=tenant.id,
+                agent_id=agent.id,
+                origin=origin,
+                environment=settings.environment,
+            )
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -607,6 +619,98 @@ async def require_chat_context(
     )
 
 
+async def _resolve_knowledge_context(
+    *,
+    session: AsyncSession,
+    raw_api_key: str | None,
+    settings: Settings,
+    credentials: HTTPAuthorizationCredentials | None,
+    agent_id: str | None,
+    require_management: bool,
+) -> ChatExecutionContext:
+    """Resolve dual-auth Knowledge context with the requested JWT permission."""
+
+    if credentials is None:
+        return await require_tenant_api_key_context(
+            session=session,
+            raw_api_key=raw_api_key,
+            agent_id=agent_id,
+        )
+
+    from backend.app.auth.tenant_context import (
+        InactiveTenantError,
+        NoActiveMembershipError,
+        TenantAuthError,
+        validate_tenant_user_context,
+    )
+    from backend.app.auth.tenant_rbac import TenantPermission
+
+    token = credentials.credentials.strip()
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid tenant user access token",
+        )
+
+    try:
+        tenant_context = await validate_tenant_user_context(
+            token,
+            session,
+            settings,
+        )
+    except (NoActiveMembershipError, InactiveTenantError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except TenantAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+
+    permission = (
+        TenantPermission.can_manage_knowledge
+        if require_management
+        else TenantPermission.can_read_knowledge
+    )
+    if not permission(tenant_context.role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied.",
+        )
+
+    normalized_agent_id = (agent_id or "").strip()
+    if not normalized_agent_id or len(normalized_agent_id) > 128:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Agent-ID is required",
+        )
+
+    agent = await session.scalar(
+        select(Agent).where(
+            Agent.id == normalized_agent_id,
+            Agent.tenant_id == tenant_context.tenant_id,
+            Agent.is_active.is_(True),
+        )
+    )
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found",
+        )
+
+    return ChatExecutionContext(
+        tenant_id=tenant_context.tenant_id,
+        agent_id=agent.id,
+        system_prompt=agent.system_prompt,
+        prompt_version=agent.prompt_version,
+        knowledge_mode=agent.knowledge_mode,
+        contact_message=agent.contact_message,
+        auth_method="tenant_jwt",  # type: ignore[arg-type]
+    )
+
+
 async def require_knowledge_context(
     session: Annotated[AsyncSession, Depends(get_db)],
     raw_api_key: Annotated[
@@ -631,104 +735,40 @@ async def require_knowledge_context(
         ),
     ] = None,
 ) -> ChatExecutionContext:
-    """Allow existing tenant API keys or live tenant-user JWTs.
+    """Allow API keys or tenant JWTs with Knowledge read permission."""
 
-    JWT authorization remains database-authoritative. X-Agent-ID is
-    verified against the authenticated tenant before a knowledge
-    execution context is produced.
-    """
-
-    if credentials is None:
-        return await require_tenant_api_key_context(
-            session=session,
-            raw_api_key=raw_api_key,
-            agent_id=agent_id,
-        )
-
-    from backend.app.auth.tenant_context import (
-        InactiveTenantError,
-        NoActiveMembershipError,
-        TenantAuthError,
-        validate_tenant_user_context,
-    )
-    from backend.app.auth.tenant_rbac import (
-        TenantPermission,
+    return await _resolve_knowledge_context(
+        session=session,
+        raw_api_key=raw_api_key,
+        settings=settings,
+        credentials=credentials,
+        agent_id=agent_id,
+        require_management=False,
     )
 
-    token = credentials.credentials.strip()
 
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid tenant user access token",
-        )
+async def require_knowledge_management_context(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    raw_api_key: Annotated[str | None, Security(api_key_header)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(tenant_bearer),
+    ] = None,
+    agent_id: Annotated[
+        str | None,
+        Header(alias="X-Agent-ID", description="Agent selected for the knowledge operation."),
+    ] = None,
+) -> ChatExecutionContext:
+    """Allow API keys or tenant JWTs with Knowledge management permission."""
 
-    try:
-        tenant_context = (
-            await validate_tenant_user_context(
-                token,
-                session,
-                settings,
-            )
-        )
-    except (
-        NoActiveMembershipError,
-        InactiveTenantError,
-    ) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(exc),
-        ) from exc
-    except TenantAuthError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(exc),
-        ) from exc
-
-    if not TenantPermission.can_read_knowledge(
-        tenant_context.role
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Permission denied.",
-        )
-
-    normalized_agent_id = (
-        agent_id or ""
-    ).strip()
-
-    if (
-        not normalized_agent_id
-        or len(normalized_agent_id) > 128
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="X-Agent-ID is required",
-        )
-
-    agent = await session.scalar(
-        select(Agent).where(
-            Agent.id == normalized_agent_id,
-            Agent.tenant_id
-            == tenant_context.tenant_id,
-            Agent.is_active.is_(True),
-        )
-    )
-
-    if agent is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found",
-        )
-
-    return ChatExecutionContext(
-        tenant_id=tenant_context.tenant_id,
-        agent_id=agent.id,
-        system_prompt=agent.system_prompt,
-        prompt_version=agent.prompt_version,
-        knowledge_mode=agent.knowledge_mode,
-        contact_message=agent.contact_message,
-        auth_method="tenant_jwt",  # type: ignore[arg-type]
+    return await _resolve_knowledge_context(
+        session=session,
+        raw_api_key=raw_api_key,
+        settings=settings,
+        credentials=credentials,
+        agent_id=agent_id,
+        require_management=True,
     )
 
 

@@ -102,6 +102,25 @@ def test_widget_token_round_trip_preserves_isolation_claims() -> None:
     assert context.public_widget_id == "wgt_secure_public_identifier_1234"
     assert context.origin == "https://example.com"
     assert context.session_id == session_id
+    assert context.token_type == "widget_session"
+
+
+def test_preview_token_round_trip_uses_distinct_type() -> None:
+    settings = _settings()
+    token = create_widget_token(
+        tenant_id="tenant-a",
+        agent_id="agent-a",
+        public_widget_id="wgt_secure_public_identifier_1234",
+        origin="https://portal.example.com",
+        session_id=str(uuid4()),
+        settings=settings,
+        token_type="widget_preview_session",
+    )
+
+    context = decode_widget_token(token, settings)
+
+    assert context.token_type == "widget_preview_session"
+    assert context.origin == "https://portal.example.com"
 
 
 def test_widget_token_signed_with_another_secret_is_rejected() -> None:
@@ -140,7 +159,8 @@ def test_widget_token_wrong_audience_is_rejected() -> None:
         )
 
 
-def test_expired_widget_token_is_rejected() -> None:
+@pytest.mark.parametrize("token_type", ["widget_session", "widget_preview_session"])
+def test_expired_widget_token_is_rejected(token_type: str) -> None:
     settings = _settings()
     now = datetime.now(timezone.utc)
     expired_payload = {
@@ -155,7 +175,7 @@ def test_expired_widget_token_is_rejected() -> None:
         "agent_id": "agent-a",
         "widget_id": "wgt_secure_public_identifier_1234",
         "origin": "https://example.com",
-        "token_type": "widget_session",
+        "token_type": token_type,
     }
     token = jwt.encode(
         expired_payload,

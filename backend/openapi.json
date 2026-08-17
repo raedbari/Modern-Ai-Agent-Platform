@@ -7040,6 +7040,62 @@
         ]
       }
     },
+    "/api/customer/agents/{agent_id}/knowledge-bases/{knowledge_base_id}": {
+      "put": {
+        "operationId": "assign_customer_knowledge_base_api_customer_agents__agent_id__knowledge_bases__knowledge_base_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Assign Customer Knowledge Base",
+        "tags": [
+          "customer-knowledge"
+        ]
+      }
+    },
     "/api/customer/agents/{agent_id}/widget-settings": {
       "get": {
         "description": "Get widget settings for a specific agent.\n\nReturns 404 if the agent doesn't exist or belongs to another tenant.\nRequires: Any approved role",
@@ -7139,6 +7195,126 @@
           }
         ],
         "summary": "Update Widget Settings",
+        "tags": [
+          "customer-widgets"
+        ]
+      }
+    },
+    "/api/customer/agents/{agent_id}/widget-settings/pairings": {
+      "post": {
+        "operationId": "create_customer_connector_pairing_api_customer_agents__agent_id__widget_settings_pairings_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetConnectorPairingCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetConnectorPairingCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Create Customer Connector Pairing",
+        "tags": [
+          "customer-widgets"
+        ]
+      }
+    },
+    "/api/customer/agents/{agent_id}/widget-settings/preview/bootstrap": {
+      "post": {
+        "operationId": "bootstrap_customer_widget_preview_api_customer_agents__agent_id__widget_settings_preview_bootstrap_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "title": "Origin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetBootstrapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Bootstrap Customer Widget Preview",
         "tags": [
           "customer-widgets"
         ]
@@ -7336,6 +7512,36 @@
         "summary": "List Customer Messages",
         "tags": [
           "customer-conversations"
+        ]
+      }
+    },
+    "/api/customer/knowledge-bases": {
+      "get": {
+        "operationId": "list_customer_knowledge_bases_api_customer_knowledge_bases_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeBaseResponse"
+                  },
+                  "title": "Response List Customer Knowledge Bases Api Customer Knowledge Bases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "List Customer Knowledge Bases",
+        "tags": [
+          "customer-knowledge"
         ]
       }
     },

@@ -110,6 +110,7 @@ class TenantScopedAgentRepository:
                 setattr(agent, key, value)
 
         await self.session.flush()
+        await self.session.refresh(agent)
         return agent
 
     async def delete(
@@ -146,6 +147,16 @@ class TenantScopedWidgetRepository:
                 Agent.tenant_id == tenant_id,
             )
         )
+
+    async def get_active_agent(
+        self,
+        agent_id: str,
+        tenant_id: str,
+    ) -> Agent | None:
+        agent = await self._agent(agent_id, tenant_id)
+        if agent is None or not agent.is_active:
+            return None
+        return agent
 
     async def _origins(
         self,
