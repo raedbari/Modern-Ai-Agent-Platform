@@ -174,7 +174,7 @@ class StubVoyageRerankProvider:
             # Default: return documents in reverse order (simulates reranking)
             indices = list(range(n - 1, -1, -1))[:top]
             scores = [1.0 - i * 0.1 for i in range(top)]
-        return RerankResult(ranked_indices=indices, relevance_scores=scores)
+        return RerankResult(ranked_indices=indices, scores=scores)
 
 
 class FailingRerankProvider:

@@ -216,7 +216,7 @@ async def test_chat_persists_messages_with_trusted_runtime_context(
         assert request.context.request_id == request_id
         assert request.context.product_id == "athkachatbots"
         assert request.context.conversation_id == payload["conversation_id"]
-        assert request.context.prompt_version is None
+        assert request.context.prompt_version == "v1"
         assert request.context.knowledge_version is None
         assert [message.role for message in request.messages] == [
             "system",

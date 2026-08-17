@@ -33,6 +33,7 @@ from typing import Any
 
 import httpx
 
+from backend.app.ai.ports import RerankRequest, RerankResult
 from backend.app.ai.contracts import EmbeddingRequest, EmbeddingResult
 from backend.app.core.config import Settings
 from backend.app.domain.exceptions import EmbeddingError, RetrievalError
@@ -57,27 +58,6 @@ _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 # Rerank data transfer objects
 # ---------------------------------------------------------------------------
 
-
-@dataclass(frozen=True)
-class RerankRequest:
-    """Input required to rerank a list of candidate documents."""
-
-    query: str
-    documents: list[str]
-    top_k: int
-
-
-@dataclass(frozen=True)
-class RerankResult:
-    """Reranked indices into the original ``documents`` list.
-
-    ``ranked_indices`` is ordered from most to least relevant.  Each value
-    is the zero-based index of the document in the original input list.
-    ``relevance_scores`` mirrors the same ordering.
-    """
-
-    ranked_indices: list[int]
-    relevance_scores: list[float]
 
 
 # ---------------------------------------------------------------------------
@@ -337,13 +317,17 @@ class VoyageRerankProvider:
             RetrievalError: When the Voyage API call fails.
         """
         if not request.documents:
-            return RerankResult(ranked_indices=[], relevance_scores=[])
+            return RerankResult(ranked_indices=[], scores=[])
 
         payload = {
             "query": request.query,
             "documents": request.documents,
             "model": self._model,
-            "top_k": min(request.top_k, len(request.documents)),
+            "top_k": (
+                len(request.documents)
+                if request.top_k is None
+                else min(request.top_k, len(request.documents))
+            ),
         }
 
         attempts = 0
@@ -391,5 +375,5 @@ class VoyageRerankProvider:
 
         return RerankResult(
             ranked_indices=ranked_indices,
-            relevance_scores=relevance_scores,
+            scores=relevance_scores,
         )

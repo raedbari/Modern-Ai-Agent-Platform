@@ -81,7 +81,7 @@ class DeterministicReranker:
         self.requests.append(request)
         return RerankResult(
             ranked_indices=list(range(min(request.top_k, len(request.documents)))),
-            relevance_scores=[0.99] * min(request.top_k, len(request.documents)),
+            scores=[0.99] * min(request.top_k, len(request.documents)),
         )
 
 

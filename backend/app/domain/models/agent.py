@@ -18,11 +18,14 @@ class Agent:
     Attributes:
         id:                 Unique, opaque identifier (UUID string).
         tenant_id:          Identifier of the owning Tenant.
+        prompt_version:     Prompt version identifier (default: "v1").
+                            Used for evaluation tracking and A/B testing.
         knowledge_base_ids: Identifiers of KnowledgeBases this agent may use.
     """
 
     id: str
     tenant_id: str
+    prompt_version: str = "v1"
     knowledge_base_ids: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Literal, Protocol, TypedDict
@@ -22,6 +23,7 @@ from backend.app.domain.exceptions import (
     RetrievalValidationError,
 )
 from backend.app.domain.ports.retrieval import (
+    RetrievalExecution,
     RetrievalPort,
     RetrievalQuery,
     RetrievedChunk,
@@ -52,6 +54,7 @@ TEMPORARY_FALLBACK_MESSAGE = (
 )
 
 INSUFFICIENT_EVIDENCE_SENTINEL = "__MAAP_INSUFFICIENT_EVIDENCE__"
+_CITATION_PATTERN = re.compile(r"\[S([1-9][0-9]*)\]")
 
 
 class GenerationRuntime(Protocol):
@@ -102,6 +105,9 @@ class ChatWorkflowResult:
     completion_tokens: int
     answer_status: AnswerStatus
     sources: tuple[ChatSource, ...]
+    supplied_sources: tuple[ChatSource, ...] = ()
+    cited_sources: tuple[ChatSource, ...] = ()
+    invalid_citation_ids: tuple[str, ...] = ()
     retrieval_count: int = 0
     rerank_count: int | None = None
 
@@ -129,6 +135,8 @@ class ChatWorkflowState(TypedDict, total=False):
     message: str
     history: tuple[ChatMessage, ...]
     retrieved: tuple[RetrievedChunk, ...]
+    retrieval_count: int
+    rerank_count: int | None
     retrieval_unavailable: bool
     sources: tuple[ChatSource, ...]
     request_messages: tuple[ChatMessage, ...]
@@ -159,37 +167,60 @@ async def _retrieve_node(
     if chat.knowledge_mode == "disabled":
         return {
             "retrieved": (),
+            "retrieval_count": 0,
+            "rerank_count": None,
             "retrieval_unavailable": False,
         }
     if context.retrieval is None:
         return {
             "retrieved": (),
+            "retrieval_count": 0,
+            "rerank_count": None,
             "retrieval_unavailable": chat.knowledge_mode == "required",
         }
 
     try:
-        chunks = await context.retrieval.retrieve(
-            RetrievalQuery(
-                tenant_id=chat.tenant_id,
-                agent_id=chat.agent_id,
-                query=state["message"],
-                top_k=context.retrieval_top_k,
-                min_similarity=context.retrieval_min_similarity,
-            )
+        query = RetrievalQuery(
+            tenant_id=chat.tenant_id,
+            agent_id=chat.agent_id,
+            query=state["message"],
+            top_k=context.retrieval_top_k,
+            min_similarity=context.retrieval_min_similarity,
         )
+        traced_retrieval = getattr(
+            context.retrieval,
+            "retrieve_with_trace",
+            None,
+        )
+        if traced_retrieval is None:
+            chunks = tuple(await context.retrieval.retrieve(query))
+            execution = RetrievalExecution(
+                chunks=chunks,
+                candidate_count=len(chunks),
+                rerank_result_count=None,
+                rerank_applied=False,
+            )
+        else:
+            execution = await traced_retrieval(query)
     except RetrievalValidationError:
         return {
             "retrieved": (),
+            "retrieval_count": 0,
+            "rerank_count": None,
             "retrieval_unavailable": False,
         }
     except (EmbeddingError, RetrievalError):
         return {
             "retrieved": (),
+            "retrieval_count": 0,
+            "rerank_count": None,
             "retrieval_unavailable": True,
         }
 
     return {
-        "retrieved": tuple(chunks),
+        "retrieved": execution.chunks,
+        "retrieval_count": execution.candidate_count,
+        "rerank_count": execution.rerank_result_count,
         "retrieval_unavailable": False,
     }
 
@@ -251,8 +282,8 @@ async def _generate_node(
             context=RuntimeContext(
                 tenant_id=chat.tenant_id,
                 agent_id=chat.agent_id,
-                request_id=chat.request_id,
                 product_id=chat.product_id,
+                request_id=chat.request_id,
                 conversation_id=chat.conversation_id,
                 prompt_version=chat.prompt_version,
                 knowledge_version=chat.knowledge_version,
@@ -275,15 +306,41 @@ async def _generate_node(
                 ),
                 model="platform-fallback",
                 finish_reason="fallback",
-                prompt_tokens=0,
-                completion_tokens=0,
+                prompt_tokens=generation.prompt_tokens,
+                completion_tokens=generation.completion_tokens,
                 answer_status="insufficient_knowledge",
                 sources=(),
-                retrieval_count=len(state.get("retrieved", ())),
+                supplied_sources=state.get("sources", ()),
+                retrieval_count=state.get("retrieval_count", 0),
+                rerank_count=state.get("rerank_count"),
             )
         }
 
     sources = state.get("sources", ())
+    cited_sources, invalid_citation_ids = _citation_observation(
+        assistant_content,
+        sources,
+    )
+    if sources and (not cited_sources or invalid_citation_ids):
+        return {
+            "result": ChatWorkflowResult(
+                reply=_fallback_text(
+                    context=chat,
+                    temporarily_unavailable=False,
+                ),
+                model="platform-fallback",
+                finish_reason="invalid_citations",
+                prompt_tokens=generation.prompt_tokens,
+                completion_tokens=generation.completion_tokens,
+                answer_status="insufficient_knowledge",
+                sources=(),
+                supplied_sources=sources,
+                cited_sources=cited_sources,
+                invalid_citation_ids=invalid_citation_ids,
+                retrieval_count=state.get("retrieval_count", 0),
+                rerank_count=state.get("rerank_count"),
+            )
+        }
     return {
         "result": ChatWorkflowResult(
             reply=assistant_content,
@@ -293,9 +350,30 @@ async def _generate_node(
             completion_tokens=generation.completion_tokens,
             answer_status="grounded" if sources else "generated",
             sources=sources,
-            retrieval_count=len(state.get("retrieved", ())),
+            supplied_sources=sources,
+            cited_sources=cited_sources,
+            invalid_citation_ids=invalid_citation_ids,
+            retrieval_count=state.get("retrieval_count", 0),
+            rerank_count=state.get("rerank_count"),
         )
     }
+
+
+def _citation_observation(
+    content: str,
+    sources: tuple[ChatSource, ...],
+) -> tuple[tuple[ChatSource, ...], tuple[str, ...]]:
+    """Return actually cited supplied sources and unknown citation IDs."""
+
+    cited = {f"S{number}" for number in _CITATION_PATTERN.findall(content)}
+    available = {source.citation_id: source for source in sources}
+    cited_sources = tuple(
+        source
+        for source in sources
+        if source.citation_id in cited
+    )
+    invalid = tuple(sorted(cited - available.keys()))
+    return cited_sources, invalid
 
 
 def _contact_fallback_node(
@@ -324,7 +402,8 @@ def _contact_fallback_node(
                 else "insufficient_knowledge"
             ),
             sources=(),
-            retrieval_count=len(state.get("retrieved", ())),
+            retrieval_count=state.get("retrieval_count", 0),
+            rerank_count=state.get("rerank_count"),
         )
     }
 
@@ -496,12 +575,19 @@ class ChatWorkflow:
                 error_type=type(exc).__name__,
             )
             raise
-
         self._emit_telemetry(
             context=context,
             result=result,
             latency_ms=(perf_counter() - started_at) * 1000,
-            error_type=None,
+            error_type=(
+                "retrieval_unavailable"
+                if result.answer_status == "temporarily_unavailable"
+                else (
+                    "invalid_citations"
+                    if result.finish_reason == "invalid_citations"
+                    else None
+                )
+            ),
         )
         return result
 
@@ -509,19 +595,16 @@ class ChatWorkflow:
         self,
         *,
         context: ChatExecutionContext,
-        result: ChatWorkflowResult | None,
         latency_ms: float,
-        error_type: str | None,
+        result: ChatWorkflowResult | None = None,
+        error_type: str | None = None,
     ) -> None:
-        """Emit one privacy-safe event for the completed workflow attempt."""
-
         if self._telemetry_sink is None:
             return
         request_id = context.request_id
         product_id = context.product_id
         if request_id is None or product_id is None:
             return
-
         emit_safely(
             self._telemetry_sink,
             AITelemetryEvent(
@@ -541,7 +624,9 @@ class ChatWorkflow:
                     result.rerank_count if result is not None else None
                 ),
                 source_count=(
-                    len(result.sources) if result is not None else None
+                    len(result.supplied_sources)
+                    if result is not None
+                    else None
                 ),
                 answer_status=(
                     result.answer_status

@@ -70,15 +70,12 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    # run the diagnostic migrate entrypoint built into the image
     command:
       [
-        "python",
-        "-m",
-        "alembic",
+        "sh",
         "-c",
-        "backend/alembic.ini",
-        "upgrade",
-        "head",
+        "/app/backend/ci_migrate_entrypoint.sh"
       ]
     restart: "no"
     env_file:

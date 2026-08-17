@@ -104,13 +104,13 @@ jobs:
         run: |
           set -euo pipefail
           OUTPUT="$(
-            docker compose               --env-file .env.compose.ci               -f compose.local.yaml               run --rm api               sh -lc '
+            docker compose               --env-file .env.compose.ci               -f compose.local.yaml               run --rm --no-deps api               sh -lc '
                 cd /app 2>/dev/null || true
                 if [ -f alembic.ini ]; then
-                  alembic heads
+                  alembic -c alembic.ini heads
                 elif [ -f backend/alembic.ini ]; then
                   cd backend
-                  alembic heads
+                  alembic -c alembic.ini heads
                 else
                   echo "ALEMBIC_INI_NOT_FOUND"
                   exit 1
@@ -123,13 +123,12 @@ jobs:
 
       - name: Full backend test suite - paid AI disabled
         run: |
-          docker compose             --env-file .env.compose.ci             -f compose.local.yaml             run --rm api             sh -lc '
+          docker compose             --env-file .env.compose.ci             -f compose.local.yaml             run --rm --no-deps api             sh -lc '
               unset MAAP_REDIS_URL
               unset MAAP_WIDGET_JWT_SECRET_KEY
               unset MAAP_VOYAGE_API_KEY
               unset MAAP_DEEPSEEK_API_KEY
-
-              python -m pytest                 backend/tests                 -q                 -p no:cacheprovider
+              python -m pytest backend/tests -q -p no:cacheprovider
             '
 
       - name: PostgreSQL pgvector Knowledge invariants

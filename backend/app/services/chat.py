@@ -130,6 +130,9 @@ class ChatService:
                 content=workflow_result.reply,
                 metadata_json={
                     "answer_status": workflow_result.answer_status,
+                    "prompt_version": context.prompt_version,
+                    "knowledge_version": context.knowledge_version,
+                    "model": workflow_result.model,
                     "sources": [
                         source.as_metadata()
                         for source in workflow_result.sources

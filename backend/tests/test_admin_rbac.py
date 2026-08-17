@@ -175,6 +175,7 @@ async def _open_admin_mgmt_app(
         argon2_memory_cost=8192,
         argon2_parallelism=1,
         _env_file=None,
+        redis_url=None,
     )
 
     app.dependency_overrides[get_db] = _override_db

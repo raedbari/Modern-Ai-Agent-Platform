@@ -12,7 +12,7 @@ Identifier = Annotated[
 
 
 class RuntimeContext(BaseModel):
-    """Identifies the tenant and agent executing the request."""
+    """Identifies and versions one provider-independent AI request."""
 
     model_config = ConfigDict(frozen=True)
 

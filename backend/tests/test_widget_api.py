@@ -406,6 +406,7 @@ async def test_bootstrap_returns_503_when_widget_signing_is_unconfigured(
     await _seed_widget(sessions)
     app.dependency_overrides[get_settings] = lambda: Settings(
         environment="test",
+        widget_jwt_secret_key=None,
         _env_file=None,
     )
     try:

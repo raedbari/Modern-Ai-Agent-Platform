@@ -67,6 +67,16 @@ class RetrievedChunk:
     similarity_score: float
 
 
+@dataclass(frozen=True)
+class RetrievalExecution:
+    """Chunks plus execution counts produced by the real retrieval pipeline."""
+
+    chunks: tuple[RetrievedChunk, ...]
+    candidate_count: int
+    rerank_result_count: int | None
+    rerank_applied: bool
+
+
 # ---------------------------------------------------------------------------
 # Port interface
 # ---------------------------------------------------------------------------
@@ -104,3 +114,21 @@ class RetrievalPort(ABC):
             RetrievalError:  When the vector search fails at the
                              infrastructure level.
         """
+
+    async def retrieve_with_trace(
+        self,
+        query: RetrievalQuery,
+    ) -> RetrievalExecution:
+        """Retrieve with optional execution data for runtime observability.
+
+        Existing implementations remain compatible. Implementations that own
+        candidate/rerank orchestration should override this method.
+        """
+
+        chunks = tuple(await self.retrieve(query))
+        return RetrievalExecution(
+            chunks=chunks,
+            candidate_count=len(chunks),
+            rerank_result_count=None,
+            rerank_applied=False,
+        )
