@@ -16,6 +16,7 @@ from backend.app.api.dependencies import (
     require_knowledge_context,
     require_knowledge_management_context,
 )
+from backend.app.api.routes.knowledge import router as knowledge_router
 from backend.app.auth.context import ChatExecutionContext
 from backend.app.auth.tenant_rbac import TenantPermission
 from backend.app.db.base import get_db
@@ -135,7 +136,6 @@ def test_bearer_only_request_cannot_use_tenant_key_dependency() -> None:
 
 
 def test_knowledge_routes_separate_read_and_management_dependencies() -> None:
-    app = create_app()
     read_operations = {
         ("GET", "/api/knowledge-bases"),
         ("GET", "/api/knowledge-bases/{knowledge_base_id}"),
@@ -145,8 +145,8 @@ def test_knowledge_routes_separate_read_and_management_dependencies() -> None:
     }
     checked: set[tuple[str, str]] = set()
 
-    for route in app.routes:
-        if not isinstance(route, APIRoute) or not route.path.startswith("/api/knowledge-bases"):
+    for route in knowledge_router.routes:
+        if not isinstance(route, APIRoute):
             continue
         dependency_calls = {dependency.call for dependency in route.dependant.dependencies}
         for method in route.methods:
