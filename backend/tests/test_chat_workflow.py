@@ -15,6 +15,7 @@ from backend.app.domain.ports.retrieval import (
     RetrievalQuery,
     RetrievedChunk,
 )
+from backend.app.telemetry import InMemoryTelemetrySink
 
 
 class TenantAwareRetrieval:
@@ -116,6 +117,7 @@ async def test_one_compiled_graph_keeps_tenant_runtime_context_isolated() -> Non
     request_b = generation.generate.await_args_list[1].args[0]
     assert request_a.context.tenant_id == "tenant-a"
     assert request_a.context.agent_id == "chatbot-a"
+    assert request_a.context.request_id is None
     assert request_a.messages[0].content == "Instructions A"
     assert "tenant-a.txt" in request_a.messages[1].content
     assert "tenant-b" not in request_a.messages[1].content
@@ -149,3 +151,90 @@ async def test_grounded_generation_requires_valid_citations(content: str) -> Non
     assert result.model == "platform-fallback"
     assert result.finish_reason == "invalid_citations"
     assert result.sources == ()
+@pytest.mark.asyncio
+async def test_workflow_emits_one_correlated_success_event() -> None:
+    generation = AsyncMock()
+    generation.generate.return_value = GenerationResult(
+        content="Verified answer [S1]",
+        model="test-model",
+        prompt_tokens=13,
+        completion_tokens=5,
+    )
+    sink = InMemoryTelemetrySink()
+    workflow = ChatWorkflow(
+        generation,
+        retrieval=TenantAwareRetrieval(),
+        telemetry_sink=sink,
+    )
+    context = ChatExecutionContext(
+        tenant_id="tenant-a",
+        agent_id="agent-a",
+        system_prompt="Use verified evidence.",
+        request_id="request-a",
+        product_id="athkachatbots",
+        conversation_id="conversation-a",
+        prompt_version="prompt-v2",
+        knowledge_version="knowledge-v7",
+        model_provider="provider-a",
+        knowledge_mode="required",
+    )
+
+    result = await workflow.execute(context=context, message="Question")
+
+    assert result.answer_status == "grounded"
+    assert len(sink.events) == 1
+    event = sink.events[0]
+    assert event.request_id == "request-a"
+    assert event.tenant_id == "tenant-a"
+    assert event.product_id == "athkachatbots"
+    assert event.agent_id == "agent-a"
+    assert event.conversation_id == "conversation-a"
+    assert event.provider == "provider-a"
+    assert event.model == "test-model"
+    assert event.prompt_version == "prompt-v2"
+    assert event.knowledge_version == "knowledge-v7"
+    assert event.retrieval_count == 1
+    assert event.rerank_count is None
+    assert event.source_count == 1
+    assert event.answer_status == "grounded"
+    assert event.input_tokens == 13
+    assert event.output_tokens == 5
+    assert event.latency_ms >= 0
+    assert event.error_type is None
+
+
+@pytest.mark.asyncio
+async def test_workflow_emits_one_sanitized_failure_event() -> None:
+    generation = AsyncMock()
+    generation.generate.side_effect = RuntimeError(
+        "secret provider response"
+    )
+    sink = InMemoryTelemetrySink()
+    workflow = ChatWorkflow(generation, telemetry_sink=sink)
+    context = ChatExecutionContext(
+        tenant_id="tenant-a",
+        agent_id="agent-a",
+        system_prompt=None,
+        request_id="request-failed",
+        product_id="athkachatbots",
+        conversation_id="conversation-failed",
+        model_provider="provider-a",
+    )
+
+    with pytest.raises(RuntimeError, match="secret provider response"):
+        await workflow.execute(
+            context=context,
+            message="private customer question",
+        )
+
+    assert len(sink.events) == 1
+    event = sink.events[0]
+    assert event.request_id == "request-failed"
+    assert event.answer_status == "failed"
+    assert event.error_type == "RuntimeError"
+    assert event.model is None
+    assert event.input_tokens is None
+    assert event.output_tokens is None
+    serialized = event.model_dump_json()
+    assert "secret provider response" not in serialized
+    assert "private customer question" not in serialized

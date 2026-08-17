@@ -159,7 +159,7 @@ class ChunkingService:
         *,
         document_id: str,
         tenant_id: str,
-        agent_id: str,
+        agent_id: str | None,
         knowledge_base_id: str,
         source_name: str,
     ) -> list[Chunk]:

@@ -113,7 +113,7 @@ export interface components {
             /** Conversation Id */
             conversation_id: string;
             /** Finish Reason */
-            finish_reason?: string | null;
+            finish_reason?: null | string;
             /** Message Id */
             message_id: string;
             /** Model */
@@ -188,8 +188,12 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
-            loc: (string | number)[];
+            loc: (number | string)[];
             /** Message */
             msg: string;
             /** Error Type */
@@ -221,7 +225,7 @@ export interface components {
             /** Display Name */
             display_name: string;
             /** Greeting */
-            greeting: string | null;
+            greeting: null | string;
             theme: components["schemas"]["WidgetTheme"];
             /** Widget Id */
             widget_id: string;
@@ -279,8 +283,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-request-id"?: null | string;
                 /** @description Agent selector authorized against the API-key tenant. */
-                "X-Agent-ID"?: string | null;
+                "X-Agent-ID"?: null | string;
             };
             path?: never;
             cookie?: never;
@@ -315,7 +320,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                Origin?: string | null;
+                Origin?: null | string;
             };
             path?: never;
             cookie?: never;

@@ -244,7 +244,7 @@ async def test_admin_upload_queues_source_job_and_audit_without_embeddings(
 
         assert document is not None
         assert document.tenant_id == "tenant-a"
-        assert document.agent_id == "agent-a"
+        assert document.agent_id is None
         assert document.knowledge_base_id == "kb-a"
         assert document.status == "pending"
 
@@ -354,8 +354,9 @@ async def test_admin_replacement_preserves_active_document_and_blocks_second_job
             )
 
         assert queued.status_code == 202, queued.text
-        assert queued.json()["document_id"] == "document-a"
-        assert queued.json()["document_status"] == "ready"
+        replacement_id = queued.json()["document_id"]
+        assert replacement_id != "document-a"
+        assert queued.json()["document_status"] == "pending"
         assert queued.json()["job"]["status"] == "pending"
         assert conflict.status_code == 409
         assert cross_tenant.status_code == 404
@@ -364,6 +365,7 @@ async def test_admin_replacement_preserves_active_document_and_blocks_second_job
         job_id = queued.json()["job"]["id"]
         async with sessions() as session:
             document = await session.get(DocumentModel, "document-a")
+            replacement = await session.get(DocumentModel, replacement_id)
             old_chunk = await session.get(ChunkModel, "chunk-old")
             job = await session.get(IngestionJob, job_id)
             active_job_count = await session.scalar(
@@ -371,7 +373,7 @@ async def test_admin_replacement_preserves_active_document_and_blocks_second_job
                 .select_from(IngestionJob)
                 .where(
                     IngestionJob.tenant_id == "tenant-a",
-                    IngestionJob.document_id == "document-a",
+                    IngestionJob.document_id == replacement_id,
                     IngestionJob.status.in_(("pending", "processing")),
                 )
             )
@@ -379,7 +381,7 @@ async def test_admin_replacement_preserves_active_document_and_blocks_second_job
                 select(AdminAuditLog).where(
                     AdminAuditLog.event_type
                     == "knowledge_document_replacement_queued",
-                    AdminAuditLog.target_id == "document-a",
+                    AdminAuditLog.target_id == replacement_id,
                 )
             )
 
@@ -391,6 +393,10 @@ async def test_admin_replacement_preserves_active_document_and_blocks_second_job
         assert document.content_hash == hashlib.sha256(OLD_CONTENT).hexdigest()
         assert old_chunk is not None
         assert old_chunk.content == OLD_CONTENT.decode()
+        assert replacement is not None
+        assert replacement.status == "pending"
+        assert replacement.predecessor_id == document.id
+        assert replacement.version_number == 2
         assert active_job_count == 1
 
         assert job is not None

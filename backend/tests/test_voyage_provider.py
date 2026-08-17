@@ -10,10 +10,12 @@ from unittest.mock import AsyncMock
 from backend.app.ai.contracts import EmbeddingRequest, RuntimeContext
 from backend.app.ai.providers.voyage import (
     VoyageEmbeddingProvider,
+    VoyageRerankProvider,
+    RerankRequest,
     VOYAGE_EMBEDDING_DIMENSION,
 )
 from backend.app.core.config import Settings
-from backend.app.domain.exceptions import EmbeddingError
+from backend.app.domain.exceptions import EmbeddingError, RetrievalError
 
 
 def _mock_voyage_response(embeddings: list[list[float]]) -> bytes:
@@ -315,3 +317,108 @@ async def test_voyage_provider_exhausts_retries(
 
     with pytest.raises(EmbeddingError, match="temporarily unavailable"):
         await provider.embed(request)
+
+
+@pytest.mark.asyncio
+async def test_voyage_embedding_request_endpoint_path(
+    settings_with_voyage_key: Settings,
+) -> None:
+    """Verify that embedding requests POST to /embeddings endpoint path."""
+    captured_request: httpx.Request | None = None
+
+    async def mock_handle(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_request
+        captured_request = request
+        return httpx.Response(
+            status_code=200,
+            content=_mock_voyage_response([[0.1] * VOYAGE_EMBEDDING_DIMENSION]),
+            headers={"content-type": "application/json"},
+        )
+
+    transport = AsyncMock(spec=httpx.AsyncBaseTransport)
+    transport.handle_async_request = mock_handle
+
+    provider = VoyageEmbeddingProvider(
+        settings_with_voyage_key,
+        transport=transport,
+    )
+
+    request = EmbeddingRequest(
+        context=RuntimeContext(tenant_id="t1", agent_id="a1"),
+        texts=["test"],
+    )
+
+    await provider.embed(request)
+
+    assert captured_request is not None
+    assert captured_request.url.path.endswith("/embeddings")
+
+
+@pytest.mark.asyncio
+async def test_voyage_rerank_request_endpoint_path(
+    settings_with_voyage_key: Settings,
+) -> None:
+    """Verify that reranking requests POST to /rerank endpoint path."""
+    captured_request: httpx.Request | None = None
+
+    async def mock_handle(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_request
+        captured_request = request
+        rerank_body = json.dumps({
+            "data": [{"index": 0, "relevance_score": 0.9}],
+            "model": "rerank-2.5",
+        }).encode()
+        return httpx.Response(
+            status_code=200,
+            content=rerank_body,
+            headers={"content-type": "application/json"},
+        )
+
+    transport = AsyncMock(spec=httpx.AsyncBaseTransport)
+    transport.handle_async_request = mock_handle
+
+    provider = VoyageRerankProvider(
+        settings_with_voyage_key,
+        transport=transport,
+    )
+
+    request = RerankRequest(
+        query="test query",
+        documents=["doc1"],
+        top_k=1,
+    )
+
+    await provider.rerank(request)
+
+    assert captured_request is not None
+    assert captured_request.url.path.endswith("/rerank")
+
+
+@pytest.mark.asyncio
+async def test_voyage_embedding_provider_aclose_closes_client(
+    settings_with_voyage_key: Settings,
+) -> None:
+    """Verify that await provider.aclose() closes the AsyncClient for embedding provider."""
+    transport = _mock_transport()
+    provider = VoyageEmbeddingProvider(
+        settings_with_voyage_key,
+        transport=transport,
+    )
+    assert not provider._client.is_closed
+    await provider.aclose()
+    assert provider._client.is_closed
+
+
+@pytest.mark.asyncio
+async def test_voyage_rerank_provider_aclose_closes_client(
+    settings_with_voyage_key: Settings,
+) -> None:
+    """Verify that await provider.aclose() closes the AsyncClient for rerank provider."""
+    transport = _mock_transport()
+    provider = VoyageRerankProvider(
+        settings_with_voyage_key,
+        transport=transport,
+    )
+    assert not provider._client.is_closed
+    await provider.aclose()
+    assert provider._client.is_closed

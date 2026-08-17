@@ -31,6 +31,7 @@ from backend.app.db.models import (
     Tenant,
 )
 from backend.app.services.chat import GenerationRuntime
+from backend.app.telemetry import StructuredLoggingTelemetrySink, TelemetrySink
 from backend.app.operations.widget import (
     is_widget_origin_allowed,
     resolve_public_widget,
@@ -434,6 +435,10 @@ async def require_chat_context(
         HTTPAuthorizationCredentials | None,
         Security(widget_bearer),
     ] = None,
+    tenant_credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(tenant_bearer),
+    ] = None,
     agent_id: Annotated[
         str | None,
         Header(
@@ -442,7 +447,7 @@ async def require_chat_context(
         ),
     ] = None,
 ) -> ChatExecutionContext:
-    """Authenticate either a browser Widget JWT or a server-side API key."""
+    """Authenticate a Widget JWT, tenant-user JWT, or server API key."""
 
     authorization = request.headers.get("Authorization", "")
     if authorization:
@@ -453,8 +458,16 @@ async def require_chat_context(
             raise _unauthorized()
         try:
             widget_context = decode_widget_token(raw_widget_token, settings)
-        except WidgetTokenError as exc:
-            raise _unauthorized() from exc
+        except WidgetTokenError:
+            if tenant_credentials is None:
+                raise _unauthorized()
+            return await require_knowledge_context(
+                session=session,
+                raw_api_key=None,
+                settings=settings,
+                credentials=tenant_credentials,
+                agent_id=agent_id,
+            )
 
         origin = normalize_origin(request.headers.get("Origin"))
         if origin is None or origin != widget_context.origin:
@@ -740,12 +753,19 @@ def get_core_ai_runtime() -> GenerationRuntime:
 
 
 @lru_cache
+def get_telemetry_sink() -> TelemetrySink:
+    """Return the replaceable Platform Core telemetry output port."""
+
+    return StructuredLoggingTelemetrySink()
+
+
+@lru_cache
 def get_embedding_provider() -> EmbeddingProvider:
     """Build embeddings without requiring a generation-provider API key."""
 
     from backend.app.ai.providers.voyage import VoyageEmbeddingProvider
 
-    return VoyageEmbeddingProvider(get_settings())
+    return VoyageEmbeddingProvider(get_settings(), input_type="document")
 
 
 

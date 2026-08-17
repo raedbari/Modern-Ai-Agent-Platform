@@ -45,6 +45,11 @@ def _document_to_domain(row: DocumentModel) -> Document:
         content_hash=row.content_hash,
         status=DocumentProcessingStatus(row.status),
         failure_reason=row.failure_reason,
+        version_number=row.version_number,
+        version_family_id=row.version_family_id,
+        predecessor_id=row.predecessor_id,
+        superseded_by_id=row.superseded_by_id,
+        created_by=row.created_by,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -72,6 +77,7 @@ def _knowledge_base_to_domain(row: KnowledgeBaseModel) -> KnowledgeBase:
         name=row.name,
         description=row.description,
         status=KnowledgeBaseStatus(row.status),
+        classification=row.classification,
     )
 
 
@@ -94,6 +100,11 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             content_hash=document.content_hash,
             status=document.status.value,
             failure_reason=document.failure_reason,
+            version_number=document.version_number,
+            version_family_id=document.version_family_id or document.id,
+            predecessor_id=document.predecessor_id,
+            superseded_by_id=document.superseded_by_id,
+            created_by=document.created_by,
             created_at=document.created_at,
             updated_at=document.updated_at,
         )
@@ -115,6 +126,11 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         row.content_hash = document.content_hash
         row.status = document.status.value
         row.failure_reason = document.failure_reason
+        row.version_number = document.version_number
+        row.version_family_id = document.version_family_id or document.id
+        row.predecessor_id = document.predecessor_id
+        row.superseded_by_id = document.superseded_by_id
+        row.created_by = document.created_by
         row.updated_at = document.updated_at
         await self._session.flush()
         return _document_to_domain(row)
@@ -206,6 +222,22 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         await self._session.flush()
         return result.rowcount == 1
 
+    async def lock_version_family(
+        self, *, tenant_id: str, knowledge_base_id: str, version_family_id: str
+    ) -> list[Document]:
+        rows = list((await self._session.scalars(
+            select(DocumentModel)
+            .where(
+                DocumentModel.tenant_id == tenant_id,
+                DocumentModel.knowledge_base_id == knowledge_base_id,
+                DocumentModel.version_family_id == version_family_id,
+            )
+            .order_by(DocumentModel.version_number)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )).all())
+        return [_document_to_domain(row) for row in rows]
+
     async def _get_row(
         self,
         document_id: str,
@@ -241,13 +273,13 @@ class SQLAlchemyChunkRepository(ChunkRepository):
 
         scope = (
             records[0].chunk.tenant_id,
-            records[0].chunk.agent_id,
+            records[0].chunk.knowledge_base_id,
         )
         rows: list[ChunkModel] = []
         for record in records:
             if (
                 record.chunk.tenant_id,
-                record.chunk.agent_id,
+                record.chunk.knowledge_base_id,
             ) != scope:
                 raise ValueError(
                     "All chunks in one batch must share tenant and agent."
@@ -257,7 +289,7 @@ class SQLAlchemyChunkRepository(ChunkRepository):
                 ChunkModel(
                     id=record.chunk.id,
                     tenant_id=record.chunk.tenant_id,
-                    agent_id=record.chunk.agent_id,
+                    agent_id=None,
                     knowledge_base_id=record.chunk.knowledge_base_id,
                     document_id=record.chunk.document_id,
                     source_name=record.chunk.source_name,
@@ -286,6 +318,31 @@ class SQLAlchemyChunkRepository(ChunkRepository):
         )
         await self._session.flush()
         return int(result.rowcount or 0)
+
+    async def replace_for_document(
+        self,
+        document_id: str,
+        tenant_id: str,
+        new_records: list[ChunkWrite],
+    ) -> list[Chunk]:
+        """Delete all existing chunks and insert new_records in one transaction.
+
+        The caller's SQLAlchemy session is already inside a unit-of-work
+        transaction (managed by the FastAPI dependency or the calling service).
+        Both the DELETE and the subsequent INSERT are flushed within the same
+        session — they will be committed or rolled back together, guaranteeing
+        that no window exists where the document has zero chunks.
+        """
+        await self._session.execute(
+            delete(ChunkModel).where(
+                ChunkModel.document_id == document_id,
+                ChunkModel.tenant_id == tenant_id,
+            )
+        )
+        await self._session.flush()
+
+        # Re-use the bulk insert logic from create_many
+        return await self.create_many(new_records)
 
     async def list_by_document(
         self,
@@ -362,11 +419,9 @@ class SQLAlchemyChunkRepository(ChunkRepository):
                 )
                 .where(
                     ChunkModel.tenant_id == tenant_id,
-                    ChunkModel.agent_id == agent_id,
                     ChunkModel.knowledge_base_id
                     == knowledge_base_id,
                     DocumentModel.tenant_id == tenant_id,
-                    DocumentModel.agent_id == agent_id,
                     DocumentModel.knowledge_base_id
                     == knowledge_base_id,
                     DocumentModel.status
@@ -416,11 +471,9 @@ class SQLAlchemyChunkRepository(ChunkRepository):
                     )
                     .where(
                         ChunkModel.tenant_id == tenant_id,
-                        ChunkModel.agent_id == agent_id,
                         ChunkModel.knowledge_base_id
                         == knowledge_base_id,
                         DocumentModel.tenant_id == tenant_id,
-                        DocumentModel.agent_id == agent_id,
                         DocumentModel.knowledge_base_id
                         == knowledge_base_id,
                         DocumentModel.status
@@ -517,6 +570,7 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
             name=knowledge_base.name,
             description=knowledge_base.description,
             status=knowledge_base.status.value,
+            classification=knowledge_base.classification,
         )
         self._session.add(row)
         await self._session.flush()
@@ -545,6 +599,7 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
         row.name = knowledge_base.name
         row.description = knowledge_base.description
         row.status = knowledge_base.status.value
+        row.classification = knowledge_base.classification
         await self._session.flush()
         return _knowledge_base_to_domain(row)
 

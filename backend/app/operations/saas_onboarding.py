@@ -218,6 +218,53 @@ async def verify_email(session: AsyncSession, *, raw_token: str) -> TenantApplic
     await session.flush()
     return application
 
+
+async def resubmit_application(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    company_name: str,
+    requested_plan: str,
+    client_ip: str | None,
+) -> TenantApplication:
+    """Apply customer corrections and return the application to review."""
+
+    application = await session.scalar(
+        select(TenantApplication)
+        .where(TenantApplication.user_id == user_id)
+        .order_by(TenantApplication.created_at.desc())
+        .with_for_update()
+    )
+
+    if application is None:
+        raise ApplicationNotFoundError(
+            "Tenant application not found."
+        )
+
+    if application.status != "changes_requested":
+        raise ApplicationStateConflictError(
+            "Application cannot be resubmitted in its current state."
+        )
+
+    application.company_name = company_name.strip()
+    application.requested_plan = requested_plan.strip().casefold()
+    application.status = "under_review"
+    application.submitted_at = datetime.now(timezone.utc)
+
+    await AuditService.write(
+        session,
+        event_type="tenant_application_resubmitted",
+        outcome="success",
+        admin_id=None,
+        target_type="tenant_application",
+        target_id=application.id,
+        client_ip=client_ip,
+        detail={"user_id": user_id},
+    )
+
+    await session.flush()
+    return application
+
 async def list_applications(session: AsyncSession) -> list[tuple[TenantApplication, User]]:
     return list((await session.execute(
         select(TenantApplication, User)

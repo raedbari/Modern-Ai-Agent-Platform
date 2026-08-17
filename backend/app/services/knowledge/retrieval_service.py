@@ -133,14 +133,18 @@ class RetrievalService(RetrievalPort):
         *,
         rerank_provider: RerankProvider | None = None,
         retrieval_candidate_count: int = DEFAULT_CANDIDATE_COUNT,
+        retrieval_final_count: int = DEFAULT_FINAL_COUNT,
     ) -> None:
         if retrieval_candidate_count <= 0:
             raise ValueError("retrieval_candidate_count must be positive.")
+        if retrieval_final_count <= 0:
+            raise ValueError("retrieval_final_count must be positive.")
         self._embedding_provider = embedding_provider
         self._chunk_repository = chunk_repository
         self._kb_repository = kb_repository
         self._rerank_provider = rerank_provider
         self._retrieval_candidate_count = retrieval_candidate_count
+        self._retrieval_final_count = retrieval_final_count
 
     # ------------------------------------------------------------------
     # RetrievalPort implementation
@@ -202,7 +206,9 @@ class RetrievalService(RetrievalPort):
             )
 
         # Second-stage: Voyage reranking (optional — falls back safely).
-        final_count = query.top_k
+        # Honour the configured final evidence limit while preserving
+        # runtime rerank observations used by evaluation/telemetry.
+        final_count = min(query.top_k, self._retrieval_final_count)
         ranked, rerank_applied = await self._rerank_candidates_with_trace(
             query=query,
             candidates=candidates,
@@ -284,6 +290,7 @@ class RetrievalService(RetrievalPort):
                 agent_id=query.agent_id,
             ),
             texts=[query.query],
+            input_type="query",
         )
         try:
             result = await self._embedding_provider.embed(request)

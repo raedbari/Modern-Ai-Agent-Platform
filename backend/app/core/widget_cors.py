@@ -34,6 +34,7 @@ def apply_widget_cors(response: Response, origin: str) -> None:
     response.headers["Access-Control-Allow-Headers"] = (
         "Authorization, Content-Type"
     )
+    response.headers["Access-Control-Expose-Headers"] = "X-Request-ID"
     response.headers["Access-Control-Max-Age"] = "600"
     _append_vary(response, "Origin")
 

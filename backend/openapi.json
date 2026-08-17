@@ -6,10 +6,10 @@
           "admin_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Admin Id"
@@ -17,10 +17,10 @@
           "client_ip": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Client Ip"
@@ -61,10 +61,10 @@
           "target_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Target Id"
@@ -72,10 +72,10 @@
           "target_type": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Target Type"
@@ -294,10 +294,10 @@
           "contact_message": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Contact Message"
@@ -326,10 +326,10 @@
           "system_prompt": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "System Prompt"
@@ -458,10 +458,10 @@
           "contact_message": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Contact Message"
@@ -490,10 +490,10 @@
           "system_prompt": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "System Prompt"
@@ -622,10 +622,10 @@
           "name": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Name"
@@ -688,7 +688,7 @@
             "type": "string"
           },
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -710,7 +710,7 @@
       "Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -731,7 +731,7 @@
       "Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -752,7 +752,7 @@
       "Body_reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -773,7 +773,7 @@
       "Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -864,10 +864,10 @@
           "finish_reason": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Finish Reason"
@@ -1005,10 +1005,10 @@
           "last_message_preview": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Last Message Preview"
@@ -1059,10 +1059,10 @@
           "user_identifier": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "User Identifier"
@@ -1148,10 +1148,10 @@
           "last_message_preview": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Last Message Preview"
@@ -1159,10 +1159,10 @@
           "last_message_role": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Last Message Role"
@@ -1195,10 +1195,10 @@
           "user_identifier": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "User Identifier"
@@ -1264,10 +1264,10 @@
           "agent_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Agent Id"
@@ -1282,13 +1282,24 @@
             "title": "Created At",
             "type": "string"
           },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Created By"
+          },
           "failure_reason": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Failure Reason"
@@ -1324,6 +1335,17 @@
             "title": "Original Filename",
             "type": "string"
           },
+          "predecessor_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Predecessor Id"
+          },
           "source_name": {
             "title": "Source Name",
             "type": "string"
@@ -1333,10 +1355,23 @@
               "pending",
               "processing",
               "ready",
-              "failed"
+              "failed",
+              "superseded",
+              "archived"
             ],
             "title": "Status",
             "type": "string"
+          },
+          "superseded_by_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Superseded By Id"
           },
           "tenant_id": {
             "title": "Tenant Id",
@@ -1346,6 +1381,15 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "version_family_id": {
+            "title": "Version Family Id",
+            "type": "string"
+          },
+          "version_number": {
+            "minimum": 1.0,
+            "title": "Version Number",
+            "type": "integer"
           }
         },
         "required": [
@@ -1359,6 +1403,11 @@
           "file_size_bytes",
           "status",
           "failure_reason",
+          "version_number",
+          "version_family_id",
+          "predecessor_id",
+          "superseded_by_id",
+          "created_by",
           "created_at",
           "updated_at",
           "chunk_count",
@@ -1379,6 +1428,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Created By"
+          },
           "duplicate": {
             "title": "Duplicate",
             "type": "boolean"
@@ -1386,10 +1446,10 @@
           "failure_reason": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Failure Reason"
@@ -1415,6 +1475,17 @@
             "title": "Original Filename",
             "type": "string"
           },
+          "predecessor_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Predecessor Id"
+          },
           "source_name": {
             "title": "Source Name",
             "type": "string"
@@ -1422,10 +1493,30 @@
           "status": {
             "$ref": "#/components/schemas/DocumentProcessingStatus"
           },
+          "superseded_by_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Superseded By Id"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "version_family_id": {
+            "title": "Version Family Id",
+            "type": "string"
+          },
+          "version_number": {
+            "minimum": 1.0,
+            "title": "Version Number",
+            "type": "integer"
           }
         },
         "required": [
@@ -1437,6 +1528,11 @@
           "file_size_bytes",
           "status",
           "failure_reason",
+          "version_number",
+          "version_family_id",
+          "predecessor_id",
+          "superseded_by_id",
+          "created_by",
           "created_at",
           "updated_at",
           "chunks_persisted",
@@ -1457,7 +1553,9 @@
               "pending",
               "processing",
               "ready",
-              "failed"
+              "failed",
+              "superseded",
+              "archived"
             ],
             "title": "Document Status",
             "type": "string"
@@ -1527,10 +1625,10 @@
           "job_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Job Id"
@@ -1538,10 +1636,10 @@
           "last_error": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Last Error"
@@ -1591,12 +1689,14 @@
         "type": "object"
       },
       "DocumentProcessingStatus": {
-        "description": "Lifecycle states for a Document moving through the ingestion pipeline.\n\nValues are intentionally lowercase strings so they serialise naturally\nto JSON without any extra conversion at the API boundary.",
+        "description": "Lifecycle states for a Document moving through the ingestion pipeline.\n\nValues are intentionally lowercase strings so they serialise naturally\nto JSON without any extra conversion at the API boundary.\n\nStates (6 total):\n- PENDING    : document has been accepted and is queued for ingestion.\n- PROCESSING : ingestion pipeline is actively parsing, chunking, and embedding.\n- READY      : ingestion complete; document is active and available for retrieval.\n- FAILED     : ingestion encountered an unrecoverable error.\n- SUPERSEDED : a newer version of this document has been atomically reindexed;\n               this version is no longer served for retrieval but is retained for\n               audit and rollback purposes.\n- ARCHIVED   : document has been soft-deleted or explicitly archived by a\n               tenant administrator; excluded from retrieval and normal listings.",
         "enum": [
           "pending",
           "processing",
           "ready",
-          "failed"
+          "failed",
+          "superseded",
+          "archived"
         ],
         "title": "DocumentProcessingStatus",
         "type": "string"
@@ -1608,13 +1708,24 @@
             "title": "Created At",
             "type": "string"
           },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Created By"
+          },
           "failure_reason": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Failure Reason"
@@ -1640,6 +1751,17 @@
             "title": "Original Filename",
             "type": "string"
           },
+          "predecessor_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Predecessor Id"
+          },
           "source_name": {
             "title": "Source Name",
             "type": "string"
@@ -1647,10 +1769,30 @@
           "status": {
             "$ref": "#/components/schemas/DocumentProcessingStatus"
           },
+          "superseded_by_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Superseded By Id"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "version_family_id": {
+            "title": "Version Family Id",
+            "type": "string"
+          },
+          "version_number": {
+            "minimum": 1.0,
+            "title": "Version Number",
+            "type": "integer"
           }
         },
         "required": [
@@ -1662,6 +1804,11 @@
           "file_size_bytes",
           "status",
           "failure_reason",
+          "version_number",
+          "version_family_id",
+          "predecessor_id",
+          "superseded_by_id",
+          "created_by",
           "created_at",
           "updated_at"
         ],
@@ -1755,10 +1902,10 @@
           "last_error": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Last Error"
@@ -1820,6 +1967,16 @@
             "title": "Assigned Agent Ids",
             "type": "array"
           },
+          "classification": {
+            "default": "internal",
+            "enum": [
+              "public",
+              "internal",
+              "restricted"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
           "description": {
             "default": "",
             "maxLength": 4000,
@@ -1862,6 +2019,15 @@
             "minimum": 0.0,
             "title": "Chunk Count",
             "type": "integer"
+          },
+          "classification": {
+            "enum": [
+              "public",
+              "internal",
+              "restricted"
+            ],
+            "title": "Classification",
+            "type": "string"
           },
           "created_at": {
             "format": "date-time",
@@ -1944,6 +2110,7 @@
           "name",
           "description",
           "status",
+          "classification",
           "created_at",
           "updated_at",
           "document_count",
@@ -1963,6 +2130,22 @@
         "additionalProperties": false,
         "description": "Update mutable knowledge-base fields.",
         "properties": {
+          "classification": {
+            "anyOf": [
+              {
+                "enum": [
+                  "public",
+                  "internal",
+                  "restricted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
           "description": {
             "anyOf": [
               {
@@ -2029,6 +2212,16 @@
         "additionalProperties": false,
         "description": "Create input; ownership always comes from authenticated context.",
         "properties": {
+          "classification": {
+            "default": "internal",
+            "enum": [
+              "public",
+              "internal",
+              "restricted"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
           "description": {
             "default": "",
             "maxLength": 4000,
@@ -2050,6 +2243,15 @@
       },
       "KnowledgeBaseResponse": {
         "properties": {
+          "classification": {
+            "enum": [
+              "public",
+              "internal",
+              "restricted"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -2070,7 +2272,8 @@
           "id",
           "name",
           "description",
-          "status"
+          "status",
+          "classification"
         ],
         "title": "KnowledgeBaseResponse",
         "type": "object"
@@ -2088,6 +2291,22 @@
         "additionalProperties": false,
         "description": "Mutable knowledge-base fields.",
         "properties": {
+          "classification": {
+            "anyOf": [
+              {
+                "enum": [
+                  "public",
+                  "internal",
+                  "restricted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
           "description": {
             "anyOf": [
               {
@@ -2464,16 +2683,40 @@
           "verification_token": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Verification Token"
           }
         },
         "title": "ResendVerificationResponse",
+        "type": "object"
+      },
+      "ResubmitApplicationRequest": {
+        "additionalProperties": false,
+        "description": "Customer corrections before resubmitting an application.",
+        "properties": {
+          "company_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Company Name",
+            "type": "string"
+          },
+          "requested_plan": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Requested Plan",
+            "type": "string"
+          }
+        },
+        "required": [
+          "company_name",
+          "requested_plan"
+        ],
+        "title": "ResubmitApplicationRequest",
         "type": "object"
       },
       "ReviewNoteRequest": {
@@ -2593,10 +2836,10 @@
           "verification_token": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Verification Token"
@@ -2679,10 +2922,10 @@
           "approved_tenant_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Approved Tenant Id"
@@ -2711,10 +2954,10 @@
           "review_note": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Review Note"
@@ -2734,10 +2977,10 @@
           "reviewed_by": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Reviewed By"
@@ -2811,10 +3054,10 @@
           "review_note": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "description": "Latest Athka review note",
@@ -2858,10 +3101,10 @@
           "error_code": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "description": "Optional error code for client handling",
@@ -2918,10 +3161,10 @@
           "role": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "description": "Current role when one tenant is selected",
@@ -2930,10 +3173,10 @@
           "tenant_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "description": "Selected tenant ID when unambiguous",
@@ -3063,10 +3306,10 @@
           "display_name": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "description": "User display name",
@@ -3157,14 +3400,21 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "integer"
                 },
                 {
-                  "type": "integer"
+                  "type": "string"
                 }
               ]
             },
@@ -3416,10 +3666,10 @@
           "greeting": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Greeting"
@@ -3707,10 +3957,10 @@
           "display_name": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Display Name"
@@ -3718,10 +3968,10 @@
           "greeting": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Greeting"
@@ -3798,10 +4048,10 @@
           "display_name": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Display Name"
@@ -3809,10 +4059,10 @@
           "greeting": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "null"
               },
               {
-                "type": "null"
+                "type": "string"
               }
             ],
             "title": "Greeting"
@@ -6488,6 +6738,22 @@
         "operationId": "chat_api_chat_post",
         "parameters": [
           {
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
+          },
+          {
             "description": "Agent selector authorized against the API-key tenant.",
             "in": "header",
             "name": "X-Agent-ID",
@@ -6495,10 +6761,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selector authorized against the API-key tenant.",
@@ -6544,6 +6810,9 @@
           },
           {
             "WidgetToken": []
+          },
+          {
+            "TenantUserJWT": []
           }
         ],
         "summary": "Chat",
@@ -7082,10 +7351,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selected for the knowledge operation.",
@@ -7143,10 +7412,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selected for the knowledge operation.",
@@ -7221,10 +7490,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selected for the knowledge operation.",
@@ -7280,10 +7549,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selected for the knowledge operation.",
@@ -7346,10 +7615,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selected for the knowledge operation.",
@@ -7425,10 +7694,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selected for the knowledge operation.",
@@ -7513,10 +7782,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selected for the knowledge operation.",
@@ -7581,10 +7850,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selected for the knowledge operation.",
@@ -7651,10 +7920,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selected for the knowledge operation.",
@@ -7738,10 +8007,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selected for the knowledge operation.",
@@ -7806,10 +8075,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selected for the knowledge operation.",
@@ -7853,6 +8122,83 @@
         ]
       }
     },
+    "/api/knowledge-bases/{knowledge_base_id}/documents/{document_id}/archive": {
+      "post": {
+        "operationId": "archive_document_api_knowledge_bases__knowledge_base_id__documents__document_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Agent selected for the knowledge operation.",
+            "in": "header",
+            "name": "X-Agent-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "description": "Agent selected for the knowledge operation.",
+              "title": "X-Agent-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Archive Document",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
     "/api/knowledge-bases/{knowledge_base_id}/documents/{document_id}/reindex": {
       "post": {
         "operationId": "reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post",
@@ -7883,10 +8229,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "description": "Agent selected for the knowledge operation.",
@@ -7937,6 +8283,53 @@
         "summary": "Reindex Document",
         "tags": [
           "knowledge"
+        ]
+      }
+    },
+    "/api/saas/application/resubmit": {
+      "post": {
+        "description": "Resubmit the authenticated customer's corrected application.",
+        "operationId": "resubmit_application_route_api_saas_application_resubmit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResubmitApplicationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Resubmit Application Route",
+        "tags": [
+          "saas-onboarding"
         ]
       }
     },
@@ -8264,10 +8657,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "title": "Origin"
@@ -8324,10 +8717,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "title": "Origin"
@@ -8383,10 +8776,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "null"
                 },
                 {
-                  "type": "null"
+                  "type": "string"
                 }
               ],
               "title": "Origin"

@@ -21,6 +21,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -1053,6 +1054,10 @@ class KnowledgeBaseModel(Base):
             "status IN ('active', 'inactive')",
             name="ck_knowledge_bases_status",
         ),
+        CheckConstraint(
+            "classification IN ('public', 'internal', 'restricted')",
+            name="ck_knowledge_bases_classification",
+        ),
         Index(
             "ix_knowledge_bases_tenant_status",
             "tenant_id",
@@ -1078,6 +1083,13 @@ class KnowledgeBaseModel(Base):
         nullable=False,
         default="active",
         server_default="active",
+    )
+    # Governance metadata — added in migration e1f2a3b4c5d6
+    classification: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="internal",
+        server_default="internal",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -1173,7 +1185,7 @@ class DocumentModel(Base):
             name="fk_documents_tenant_agent",
         ),
         CheckConstraint(
-            "status IN ('pending', 'processing', 'ready', 'failed')",
+            "status IN ('pending', 'processing', 'ready', 'failed', 'active', 'superseded', 'archived')",
             name="ck_documents_status",
         ),
         CheckConstraint(
@@ -1185,6 +1197,22 @@ class DocumentModel(Base):
             "tenant_id",
             "knowledge_base_id",
             "status",
+        ),
+        # Governance: only one ACTIVE/READY document per (tenant, kb, filename).
+        # Added in migration e1f2a3b4c5d6.
+        Index(
+            "uq_documents_active_per_tenant_kb_family",
+            "tenant_id",
+            "knowledge_base_id",
+            "version_family_id",
+            unique=True,
+            postgresql_where=text("status IN ('ready', 'active')"),
+            sqlite_where=text("status IN ('ready', 'active')"),
+        ),
+        Index(
+            "ix_documents_tenant_kb_family_version",
+            "tenant_id", "knowledge_base_id", "version_family_id", "version_number",
+            unique=True,
         ),
     )
 
@@ -1214,6 +1242,26 @@ class DocumentModel(Base):
         server_default="pending",
     )
     failure_reason: Mapped[str | None] = mapped_column(Text)
+    # Governance metadata — added in migration e1f2a3b4c5d6
+    version_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+    )
+    version_family_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    predecessor_id: Mapped[str | None] = mapped_column(
+        String(128), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+    superseded_by_id: Mapped[str | None] = mapped_column(
+        String(128),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_by: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -1225,6 +1273,12 @@ class DocumentModel(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+@event.listens_for(DocumentModel, "before_insert")
+def _default_document_version_family(_mapper, _connection, target: DocumentModel) -> None:
+    if target.version_family_id is None:
+        target.version_family_id = target.id
 
 
 class IngestionJob(Base):
@@ -1409,7 +1463,7 @@ class ChunkModel(Base):
         ForeignKey("tenants.id", ondelete="CASCADE"),
         nullable=False,
     )
-    agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    agent_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     knowledge_base_id: Mapped[str] = mapped_column(
         String(128),
         nullable=False,

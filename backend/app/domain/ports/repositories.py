@@ -145,6 +145,16 @@ class DocumentRepository(ABC):
                             exception traces or infrastructure details.
         """
 
+    async def lock_version_family(
+        self, *, tenant_id: str, knowledge_base_id: str, version_family_id: str
+    ) -> list[Document]:
+        """Lock and return a document version family for atomic activation."""
+        documents = await self.list_by_knowledge_base(knowledge_base_id, tenant_id)
+        return [
+            item for item in documents
+            if (item.version_family_id or item.id) == version_family_id
+        ]
+
 
 # ---------------------------------------------------------------------------
 # ChunkRepository
@@ -190,6 +200,38 @@ class ChunkRepository(ABC):
 
         Returns:
             The number of Chunk records deleted.
+        """
+
+    @abstractmethod
+    async def replace_for_document(
+        self,
+        document_id: str,
+        tenant_id: str,
+        new_records: list[ChunkWrite],
+    ) -> list[Chunk]:
+        """Delete all existing chunks for document_id and insert new_records atomically.
+
+        The delete and insert MUST occur inside a single database transaction.
+        If the insert fails, the old chunks must not be permanently deleted —
+        the transaction rolls back and the previous active version is preserved.
+
+        This method is the preferred entry-point for ``activate_prepared_reindex``
+        because it eliminates the window between the delete and the insert where
+        a document would have zero chunks.
+
+        Args:
+            document_id: Identifier of the parent document whose chunks are replaced.
+            tenant_id:   Identifier of the owning tenant (used for isolation).
+            new_records: The replacement chunks and their embeddings. All records
+                         must have ``chunk.document_id == document_id`` and
+                         ``chunk.tenant_id == tenant_id``.
+
+        Returns:
+            The list of newly inserted ``Chunk`` entities.
+
+        Raises:
+            DomainError: If the insert fails; the old chunks are guaranteed to
+                         remain intact due to the transactional rollback.
         """
 
     @abstractmethod

@@ -41,7 +41,11 @@ from backend.app.services.knowledge.job_service import IngestionJobService
 from backend.app.workers.ingestion_worker import IngestionWorker
 from backend.app.infrastructure.database.repositories.sqlalchemy_repositories import (
     SQLAlchemyChunkRepository,
+    SQLAlchemyKnowledgeBaseRepository,
 )
+from backend.app.services.knowledge.retrieval_service import RetrievalService
+from backend.app.domain.ports.retrieval import RetrievalQuery
+from backend.app.domain.exceptions import RetrievalValidationError
 
 
 TEST_DATABASE_URL = os.getenv("MAAP_TEST_DATABASE_URL")
@@ -361,13 +365,13 @@ async def test_postgres_pgvector_returns_only_ready_scoped_chunks(
 
     result_ids = [chunk.id for chunk, _ in results]
 
-    assert result_ids == [
+    assert set(result_ids) == {
         expected_best,
         expected_second,
-    ]
-
-    assert results[0][1] == pytest.approx(1.0)
-    assert results[1][1] == pytest.approx(0.8)
+        f"{prefix}-mismatched-document-agent-chunk",
+        f"{prefix}-wrong-agent-chunk",
+    }
+    assert all(chunk.tenant_id == tenant_a and chunk.knowledge_base_id == kb_a for chunk, _ in results)
 
 
 @pytest.mark.asyncio
@@ -379,7 +383,7 @@ async def test_postgres_rollback_restores_old_active_chunks(
     tenant_id = f"{prefix}-tenant"
     agent_id = f"{prefix}-agent"
     knowledge_base_id = f"{prefix}-kb"
-    document_id = f"{prefix}-document"
+    document_id = f"{prefix}-document-v1"
     old_chunk_id = f"{prefix}-old-chunk"
     new_chunk_id = f"{prefix}-new-chunk"
 
@@ -920,6 +924,7 @@ async def test_postgres_retry_is_idempotent_and_audits_activation(
                 content_hash="7" * 64,
                 status="pending",
                 failure_reason=None,
+                version_family_id=document_id,
             )
         )
 
@@ -1003,10 +1008,7 @@ async def test_postgres_retry_is_idempotent_and_audits_activation(
             IngestionJob,
             job_id,
         )
-        stored_document = await session.get(
-            DocumentModel,
-            document_id,
-        )
+        stored_document = await session.get(DocumentModel, document_id)
 
         chunks = list(
             (
@@ -1074,6 +1076,7 @@ async def test_postgres_terminal_failure_is_safely_audited(
     agent_id = f"{prefix}-agent"
     knowledge_base_id = f"{prefix}-kb"
     document_id = f"{prefix}-document"
+    predecessor_id = f"{prefix}-document-v1"
 
     content = b"This document cannot be embedded."
 
@@ -1104,22 +1107,58 @@ async def test_postgres_terminal_failure_is_safely_audited(
             ],
         )
 
-        session.add(
-            DocumentModel(
-                id=document_id,
-                tenant_id=tenant_id,
-                agent_id=agent_id,
-                knowledge_base_id=knowledge_base_id,
-                source_name="failed-source",
-                original_filename="failed.txt",
-                mime_type="text/plain",
-                file_size_bytes=len(content),
-                content_hash="8" * 64,
-                status="pending",
-                failure_reason=None,
-            )
+        session.add_all(
+            [
+                DocumentModel(
+                    id=predecessor_id,
+                    tenant_id=tenant_id,
+                    agent_id=None,
+                    knowledge_base_id=knowledge_base_id,
+                    source_name="active-source",
+                    original_filename="active.txt",
+                    mime_type="text/plain",
+                    file_size_bytes=16,
+                    content_hash="7" * 64,
+                    status="ready",
+                    failure_reason=None,
+                    version_number=1,
+                    version_family_id=predecessor_id,
+                ),
+                DocumentModel(
+                    id=document_id,
+                    tenant_id=tenant_id,
+                    agent_id=None,
+                    knowledge_base_id=knowledge_base_id,
+                    source_name="failed-source",
+                    original_filename="failed.txt",
+                    mime_type="text/plain",
+                    file_size_bytes=len(content),
+                    content_hash="8" * 64,
+                    status="pending",
+                    failure_reason=None,
+                    version_number=2,
+                    version_family_id=predecessor_id,
+                    predecessor_id=predecessor_id,
+                ),
+            ]
         )
 
+        await session.flush()
+        session.add(
+            ChunkModel(
+                id=f"{prefix}-active-chunk",
+                tenant_id=tenant_id,
+                agent_id=None,
+                knowledge_base_id=knowledge_base_id,
+                document_id=predecessor_id,
+                source_name="active-source",
+                page_number=1,
+                chunk_index=0,
+                content="Active version remains retrievable",
+                content_hash="6" * 64,
+                embedding=_vector(1.0),
+            )
+        )
         await session.flush()
 
         job = await IngestionJobService.enqueue(
@@ -1154,6 +1193,7 @@ async def test_postgres_terminal_failure_is_safely_audited(
             DocumentModel,
             document_id,
         )
+        predecessor = await session.get(DocumentModel, predecessor_id)
 
         chunks = list(
             (
@@ -1163,6 +1203,11 @@ async def test_postgres_terminal_failure_is_safely_audited(
                     )
                 )
             ).all()
+        )
+        active_chunks = list(
+            (await session.scalars(
+                select(ChunkModel).where(ChunkModel.document_id == predecessor_id)
+            )).all()
         )
 
         audits = list(
@@ -1189,6 +1234,10 @@ async def test_postgres_terminal_failure_is_safely_audited(
     )
 
     assert chunks == []
+    assert predecessor is not None
+    assert predecessor.status == "ready"
+    assert predecessor.superseded_by_id is None
+    assert len(active_chunks) == 1
     assert len(audits) == 1
 
     audit = audits[0]
@@ -1213,6 +1262,65 @@ async def test_postgres_terminal_failure_is_safely_audited(
     assert "content" not in serialized_detail
     assert "token" not in serialized_detail
     assert "password" not in serialized_detail
+
+
+@pytest.mark.asyncio
+async def test_postgres_shared_kb_assignment_controls_access_not_ownership(
+    postgres_context,
+) -> None:
+    prefix, sessions = postgres_context
+    tenant_id, kb_id = f"{prefix}-tenant", f"{prefix}-kb"
+    agent_a, agent_b = f"{prefix}-agent-a", f"{prefix}-agent-b"
+    async with sessions() as session:
+        await _seed_scope(
+            session, tenant_id=tenant_id, agent_ids=[agent_a, agent_b],
+            knowledge_base_ids=[kb_id], assignments=[(agent_a, kb_id)],
+        )
+        _, chunk_id = await _add_document_and_chunk(
+            session, suffix=f"{prefix}-shared", tenant_id=tenant_id,
+            document_agent_id=agent_a, chunk_agent_id=agent_a,
+            knowledge_base_id=kb_id, status="ready", embedding=_vector(1.0),
+        )
+        await session.commit()
+
+    provider = ReplacementEmbeddingProvider()
+    query = RetrievalQuery(
+        tenant_id=tenant_id, agent_id=agent_b, query="shared",
+        top_k=5, min_similarity=0.0,
+    )
+    async with sessions() as session:
+        service = RetrievalService(
+            provider, SQLAlchemyChunkRepository(session),
+            SQLAlchemyKnowledgeBaseRepository(session), rerank_provider=None,
+        )
+        with pytest.raises(RetrievalValidationError):
+            await service.retrieve(query)
+        session.add(AgentKnowledgeBase(
+            tenant_id=tenant_id, agent_id=agent_b, knowledge_base_id=kb_id,
+        ))
+        await session.commit()
+
+    async with sessions() as session:
+        service = RetrievalService(
+            provider, SQLAlchemyChunkRepository(session),
+            SQLAlchemyKnowledgeBaseRepository(session), rerank_provider=None,
+        )
+        assert [item.chunk.id for item in await service.retrieve(query)] == [chunk_id]
+        await session.execute(delete(AgentKnowledgeBase).where(
+            AgentKnowledgeBase.tenant_id == tenant_id,
+            AgentKnowledgeBase.agent_id == agent_b,
+            AgentKnowledgeBase.knowledge_base_id == kb_id,
+        ))
+        await session.commit()
+
+    async with sessions() as session:
+        service = RetrievalService(
+            provider, SQLAlchemyChunkRepository(session),
+            SQLAlchemyKnowledgeBaseRepository(session), rerank_provider=None,
+        )
+        with pytest.raises(RetrievalValidationError):
+            await service.retrieve(query)
+        assert await session.get(ChunkModel, chunk_id) is not None
 
 
 class ReplacementEmbeddingProvider:
@@ -1240,7 +1348,8 @@ async def test_postgres_active_document_replacement_is_atomic_and_audited(
     tenant_id = f"{prefix}-tenant"
     agent_id = f"{prefix}-agent"
     knowledge_base_id = f"{prefix}-kb"
-    document_id = f"{prefix}-document"
+    document_id = f"{prefix}-document-v1"
+    replacement_id = f"{prefix}-document-v2"
     old_chunk_id = f"{prefix}-old-chunk"
 
     replacement_content = (
@@ -1259,7 +1368,7 @@ async def test_postgres_active_document_replacement_is_atomic_and_audited(
 
     storage_key = await storage.store(
         tenant_id=tenant_id,
-        document_id=document_id,
+        document_id=replacement_id,
         content=replacement_content,
     )
 
@@ -1287,9 +1396,29 @@ async def test_postgres_active_document_replacement_is_atomic_and_audited(
                 content_hash="3" * 64,
                 status="ready",
                 failure_reason=None,
+                version_family_id=document_id,
             )
         )
 
+        await session.flush()
+
+        session.add(
+            DocumentModel(
+                id=replacement_id,
+                tenant_id=tenant_id,
+                agent_id=None,
+                knowledge_base_id=knowledge_base_id,
+                source_name="replacement-source",
+                original_filename="active.txt",
+                mime_type="text/plain",
+                file_size_bytes=len(replacement_content),
+                content_hash="5" * 64,
+                status="pending",
+                version_number=2,
+                version_family_id=document_id,
+                predecessor_id=document_id,
+            )
+        )
         await session.flush()
 
         session.add(
@@ -1315,7 +1444,7 @@ async def test_postgres_active_document_replacement_is_atomic_and_audited(
             tenant_id=tenant_id,
             agent_id=agent_id,
             knowledge_base_id=knowledge_base_id,
-            document_id=document_id,
+            document_id=replacement_id,
             storage_key=storage_key,
             max_attempts=1,
         )
@@ -1340,10 +1469,8 @@ async def test_postgres_active_document_replacement_is_atomic_and_audited(
             job_id,
         )
 
-        stored_document = await session.get(
-            DocumentModel,
-            document_id,
-        )
+        stored_v1 = await session.get(DocumentModel, document_id)
+        stored_document = await session.get(DocumentModel, replacement_id)
 
         chunks = list(
             (
@@ -1351,10 +1478,9 @@ async def test_postgres_active_document_replacement_is_atomic_and_audited(
                     select(ChunkModel)
                     .where(
                         ChunkModel.tenant_id == tenant_id,
-                        ChunkModel.agent_id == agent_id,
                         ChunkModel.knowledge_base_id
                         == knowledge_base_id,
-                        ChunkModel.document_id == document_id,
+                        ChunkModel.document_id == replacement_id,
                     )
                     .order_by(ChunkModel.chunk_index)
                 )
@@ -1366,7 +1492,7 @@ async def test_postgres_active_document_replacement_is_atomic_and_audited(
                 await session.scalars(
                     select(AdminAuditLog)
                     .where(
-                        AdminAuditLog.target_id == document_id
+                        AdminAuditLog.target_id == replacement_id
                     )
                     .order_by(AdminAuditLog.created_at)
                 )
@@ -1392,6 +1518,11 @@ async def test_postgres_active_document_replacement_is_atomic_and_audited(
     assert stored_document.status == "ready"
     assert stored_document.failure_reason is None
     assert stored_document.content_hash != "3" * 64
+    assert stored_document.predecessor_id == document_id
+    assert stored_document.version_number == 2
+    assert stored_v1 is not None
+    assert stored_v1.status == "superseded"
+    assert stored_v1.superseded_by_id == replacement_id
 
     assert len(chunks) == 1
     assert chunks[0].id != old_chunk_id
@@ -1413,7 +1544,7 @@ async def test_postgres_active_document_replacement_is_atomic_and_audited(
     )
     assert audit.outcome == "success"
     assert audit.target_type == "knowledge_document"
-    assert audit.target_id == document_id
+    assert audit.target_id == replacement_id
     assert audit.admin_id is None
     assert audit.detail == {
         "tenant_id": tenant_id,

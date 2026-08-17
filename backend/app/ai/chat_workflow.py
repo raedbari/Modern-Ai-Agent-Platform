@@ -56,6 +56,7 @@ TEMPORARY_FALLBACK_MESSAGE = (
 INSUFFICIENT_EVIDENCE_SENTINEL = "__MAAP_INSUFFICIENT_EVIDENCE__"
 _CITATION_PATTERN = re.compile(r"\[S([1-9][0-9]*)\]")
 
+
 class GenerationRuntime(Protocol):
     """The generation capability required by the chat workflow."""
 

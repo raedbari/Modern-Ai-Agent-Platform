@@ -71,6 +71,7 @@ def _knowledge_response(item: KnowledgeBase) -> KnowledgeBaseResponse:
         name=item.name,
         description=item.description,
         status=item.status,
+        classification=item.classification,
     )
 
 
@@ -84,6 +85,11 @@ def _document_response(item: Document) -> DocumentResponse:
         file_size_bytes=item.file_size_bytes,
         status=item.status,
         failure_reason=item.failure_reason,
+        version_number=item.version_number,
+        version_family_id=item.version_family_id or item.id,
+        predecessor_id=item.predecessor_id,
+        superseded_by_id=item.superseded_by_id,
+        created_by=item.created_by,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -297,7 +303,8 @@ async def create_knowledge_base(
             id=str(uuid4()),
             tenant_id=context.tenant_id,
             name=payload.name,
-            description=payload.description,
+        description=payload.description,
+        classification=payload.classification,
         ),
         agent_id=context.agent_id,
     )
@@ -373,6 +380,8 @@ async def update_knowledge_base(
         item.description = payload.description
     if payload.status is not None:
         item.status = payload.status
+    if payload.classification is not None:
+        item.classification = payload.classification
     item = await repository.update(item)
     await session.commit()
     return _knowledge_response(item)
@@ -410,6 +419,19 @@ async def delete_knowledge_base(
     await repository.delete_by_id(
         knowledge_base_id=knowledge_base_id,
         tenant_id=context.tenant_id,
+    )
+    await AuditService.write(
+        session,
+        event_type="knowledge_base_deleted",
+        outcome="success",
+        admin_id=None,
+        target_type="knowledge_base",
+        target_id=knowledge_base_id,
+        detail={
+            "tenant_id": context.tenant_id,
+            "agent_id": context.agent_id,
+            "storage_cleanup_keys": storage_keys,
+        },
     )
     await session.commit()
     await _delete_stored_uploads(
@@ -746,7 +768,6 @@ async def delete_document(
     if (
         document is None
         or document.knowledge_base_id != knowledge_base_id
-        or document.agent_id != context.agent_id
     ):
         await session.rollback()
         raise HTTPException(
@@ -759,7 +780,6 @@ async def delete_document(
             await session.scalars(
                 select(IngestionJob.storage_key).where(
                     IngestionJob.tenant_id == context.tenant_id,
-                    IngestionJob.agent_id == context.agent_id,
                     IngestionJob.knowledge_base_id
                     == knowledge_base_id,
                     IngestionJob.document_id == document_id,
@@ -792,6 +812,9 @@ async def delete_document(
             "tenant_id": context.tenant_id,
             "agent_id": context.agent_id,
             "knowledge_base_id": knowledge_base_id,
+            # The audit row survives document deletion and is the durable,
+            # scoped retry manifest if best-effort object cleanup fails.
+            "storage_cleanup_keys": storage_keys,
         },
     )
 
@@ -803,6 +826,38 @@ async def delete_document(
     )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/{knowledge_base_id}/documents/{document_id}/archive",
+    response_model=DocumentResponse,
+)
+async def archive_document(
+    knowledge_base_id: str,
+    document_id: str,
+    context: Annotated[ChatExecutionContext, Depends(require_knowledge_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> DocumentResponse:
+    await _require_assigned_knowledge_base(
+        SQLAlchemyKnowledgeBaseRepository(session), context, knowledge_base_id
+    )
+    repository = SQLAlchemyDocumentRepository(session)
+    document = await repository.get_by_id(document_id, context.tenant_id)
+    if document is None or document.knowledge_base_id != knowledge_base_id:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if document.status not in {DocumentProcessingStatus.READY, DocumentProcessingStatus.FAILED}:
+        raise HTTPException(status_code=409, detail="Document cannot be archived")
+    await repository.update_processing_status(
+        document.id, context.tenant_id, DocumentProcessingStatus.ARCHIVED
+    )
+    document.status = DocumentProcessingStatus.ARCHIVED
+    await AuditService.write(
+        session, event_type="knowledge_document_archived", outcome="success",
+        admin_id=None, target_type="knowledge_document", target_id=document.id,
+        detail={"tenant_id": context.tenant_id, "knowledge_base_id": knowledge_base_id},
+    )
+    await session.commit()
+    return _document_response(document)
 
 
 @router.post(
@@ -856,16 +911,22 @@ async def reindex_document(
     was_active = False
 
     try:
-        document = await service.validate_reindex_target(
+        predecessor = await service.validate_reindex_target(
             document_id=document_id,
             request=request,
         )
 
         validated = True
         was_active = (
-            document.status
+            predecessor.status
             == DocumentProcessingStatus.READY
         )
+
+        document = await service.create_replacement(
+            document_id=document_id, request=request
+        )
+        document_id = document.id
+        await session.commit()
 
         # End all validation reads before external processing.
         await session.rollback()
@@ -876,7 +937,7 @@ async def reindex_document(
         )
 
         result = await service.activate_prepared_reindex(
-            document_id=document_id,
+            document_id=document.id,
             request=request,
             prepared=prepared,
         )
@@ -891,7 +952,7 @@ async def reindex_document(
             outcome="success",
             admin_id=None,
             target_type="knowledge_document",
-            target_id=document_id,
+                target_id=document.id,
             detail={
                 "tenant_id": context.tenant_id,
                 "agent_id": context.agent_id,
@@ -910,7 +971,7 @@ async def reindex_document(
                 session=session,
                 context=context,
                 knowledge_base_id=knowledge_base_id,
-                document_id=document_id,
+                document_id=document.id,
                 # A failed replacement must preserve an old active
                 # document. Non-active documents receive FAILED.
                 mark_document_failed=not was_active,

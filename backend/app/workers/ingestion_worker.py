@@ -12,7 +12,6 @@ from uuid import uuid4
 from sqlalchemy import select
 
 from backend.app.ai.ports import EmbeddingProvider
-from backend.app.ai.providers.voyage import VoyageEmbeddingProvider
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import AsyncSessionLocal
 from backend.app.db.models import DocumentModel, IngestionJob
@@ -46,9 +45,11 @@ class IngestionWorker:
         self._storage = storage or LocalUploadStorage(
             settings.upload_storage_root
         )
-        self._embedding_provider = (
-            embedding_provider or VoyageEmbeddingProvider(settings)
-        )
+        if embedding_provider is not None:
+            self._embedding_provider = embedding_provider
+        else:
+            from backend.app.ai.providers.voyage import VoyageEmbeddingProvider
+            self._embedding_provider = VoyageEmbeddingProvider(settings)
 
     async def recover_stale_jobs(self) -> int:
         async with self._sessions() as session:
@@ -101,7 +102,6 @@ class IngestionWorker:
                 or document.tenant_id != job.tenant_id
                 or document.knowledge_base_id
                 != job.knowledge_base_id
-                or document.agent_id != job.agent_id
             ):
                 raise RuntimeError(
                     "Queued document scope is invalid."
@@ -124,10 +124,7 @@ class IngestionWorker:
             tenant_id = job.tenant_id
             agent_id = job.agent_id
             knowledge_base_id = job.knowledge_base_id
-            was_active = (
-                document.status
-                == DocumentProcessingStatus.READY.value
-            )
+            was_active = document.predecessor_id is not None
 
             await session.rollback()
 

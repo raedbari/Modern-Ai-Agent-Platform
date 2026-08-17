@@ -24,6 +24,8 @@ DocumentAdminStatus = Literal[
     "processing",
     "ready",
     "failed",
+    "superseded",
+    "archived",
 ]
 
 IngestionJobAdminStatus = Literal[
@@ -42,6 +44,7 @@ class KnowledgeBaseAdminResponse(BaseModel):
     name: str
     description: str
     status: KnowledgeBaseAdminStatus
+    classification: Literal["public", "internal", "restricted"]
     created_at: datetime
     updated_at: datetime
     assigned_agent_ids: list[str] = Field(
@@ -98,6 +101,11 @@ class DocumentAdminResponse(BaseModel):
     file_size_bytes: int = Field(ge=0)
     status: DocumentAdminStatus
     failure_reason: str | None
+    version_number: int = Field(ge=1)
+    version_family_id: str
+    predecessor_id: str | None
+    superseded_by_id: str | None
+    created_by: str | None
     created_at: datetime
     updated_at: datetime
     chunk_count: int = Field(ge=0)
@@ -134,6 +142,7 @@ class KnowledgeBaseAdminCreate(BaseModel):
     name: KnowledgeBaseAdminName
     description: KnowledgeBaseAdminDescription = ""
     status: KnowledgeBaseAdminStatus = "active"
+    classification: Literal["public", "internal", "restricted"] = "internal"
     assigned_agent_ids: list[KnowledgeAgentIdentifier] = Field(
         default_factory=list,
         max_length=100,
@@ -152,6 +161,7 @@ class KnowledgeBaseAdminUpdate(BaseModel):
     name: KnowledgeBaseAdminName | None = None
     description: KnowledgeBaseAdminDescription | None = None
     status: KnowledgeBaseAdminStatus | None = None
+    classification: Literal["public", "internal", "restricted"] | None = None
 
     def has_changes(self) -> bool:
         return bool(self.model_fields_set)

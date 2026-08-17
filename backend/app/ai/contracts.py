@@ -18,8 +18,8 @@ class RuntimeContext(BaseModel):
 
     tenant_id: Identifier
     agent_id: Identifier
-    product_id: Identifier | None = None
     request_id: Identifier | None = None
+    product_id: Identifier | None = None
     conversation_id: Identifier | None = None
     prompt_version: Identifier | None = None
     knowledge_version: Identifier | None = None
@@ -55,10 +55,20 @@ class GenerationResult(BaseModel):
 
 
 class EmbeddingRequest(BaseModel):
-    """Texts that must be embedded for one tenant and agent."""
+    """Texts that must be embedded for one tenant and agent.
+
+    Attributes:
+        context:    Tenant/agent scoping for the request.
+        texts:      List of texts to embed (1–64 items).
+        input_type: Voyage AI ``input_type`` hint.  Use ``"document"`` when
+                    embedding document chunks for storage in the vector store,
+                    and ``"query"`` when embedding a retrieval query.
+                    Defaults to ``"document"`` (the safer default for storage).
+    """
 
     context: RuntimeContext
     texts: list[str] = Field(min_length=1, max_length=64)
+    input_type: Literal["document", "query"] = "document"
 
 
 class EmbeddingResult(BaseModel):

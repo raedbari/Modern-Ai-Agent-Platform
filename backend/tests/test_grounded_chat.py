@@ -199,7 +199,7 @@ async def test_required_mode_falls_back_without_calling_generation(
         assert assistant is not None
         assert assistant.metadata_json == {
             "answer_status": "insufficient_knowledge",
-            "prompt_version": "v1",
+            "prompt_version": None,
             "knowledge_version": None,
             "model": "platform-fallback",
             "sources": [],

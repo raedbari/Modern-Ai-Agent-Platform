@@ -37,6 +37,13 @@ class Document:
         failure_reason:    Safe, human-readable message explaining why processing
                            failed.  Must never contain raw exception traces or
                            internal infrastructure details.
+        version_number:    Monotonically increasing integer starting at 1.
+                           Incremented each time the document is reindexed.
+        superseded_by_id:  ID of the Document that replaces this one, when this
+                           document has been superseded by a newer version.
+                           None while this is the current version.
+        created_by:        Identifier of the user or system that created this
+                           document record (optional).
         created_at:        UTC timestamp of record creation.
         updated_at:        UTC timestamp of the last status change.
     """
@@ -52,6 +59,11 @@ class Document:
     agent_id: str | None = None
     status: DocumentProcessingStatus = DocumentProcessingStatus.PENDING
     failure_reason: str | None = None
+    version_number: int = 1
+    version_family_id: str | None = None
+    predecessor_id: str | None = None
+    superseded_by_id: str | None = None
+    created_by: str | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(tz=timezone.utc)
     )
@@ -83,4 +95,18 @@ class Document:
         if self.agent_id is not None and not self.agent_id.strip():
             raise ValueError(
                 "Document.agent_id must be None or a non-empty string."
+            )
+        if self.version_number < 1:
+            raise ValueError(
+                f"Document.version_number must be >= 1, got {self.version_number}."
+            )
+        if self.version_family_id is None:
+            self.version_family_id = self.id
+        if not self.version_family_id.strip():
+            raise ValueError("Document.version_family_id must not be empty.")
+        if self.predecessor_id is not None and not self.predecessor_id.strip():
+            raise ValueError("Document.predecessor_id must be non-empty when set.")
+        if self.superseded_by_id is not None and not self.superseded_by_id.strip():
+            raise ValueError(
+                "Document.superseded_by_id must be None or a non-empty string."
             )

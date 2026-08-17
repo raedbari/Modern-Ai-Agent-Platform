@@ -46,6 +46,26 @@ def configure_generation_environment() -> None:
         sys.path.insert(0, repository_path)
 
 
+def normalize_schema(obj: Any) -> Any:
+    """Ensure deterministic schema ordering across Python and Pydantic versions."""
+    if isinstance(obj, dict):
+        normalized = {}
+        for key in sorted(obj.keys()):
+            val = obj[key]
+            if key == "anyOf" and isinstance(val, list):
+                sorted_items = sorted(
+                    [normalize_schema(item) for item in val],
+                    key=lambda x: json.dumps(x, sort_keys=True),
+                )
+                normalized[key] = sorted_items
+            else:
+                normalized[key] = normalize_schema(val)
+        return normalized
+    elif isinstance(obj, list):
+        return [normalize_schema(item) for item in obj]
+    return obj
+
+
 def build_openapi_schema() -> dict[str, Any]:
     """Build the contract from the current FastAPI application."""
 
@@ -63,7 +83,7 @@ def build_openapi_schema() -> dict[str, Any]:
     if not isinstance(schema, dict):
         raise TypeError("FastAPI returned a non-object OpenAPI schema.")
 
-    return schema
+    return normalize_schema(schema)
 
 
 def serialize_openapi_schema(

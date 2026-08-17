@@ -167,6 +167,49 @@ class InMemoryChunkRepository(ChunkRepository):
         ]
         return before - len(self.records)
 
+    async def replace_for_document(
+        self,
+        document_id: str,
+        tenant_id: str,
+        new_records: list[ChunkWrite],
+    ) -> list[Chunk]:
+        """Atomically replace old chunks with new ones (in-memory simulation).
+
+        In a real implementation this would be wrapped in a DB transaction.
+        Here we simulate it by only committing the swap after the insert
+        succeeds — old records are restored if the insert raises.
+        """
+        # Save old state for rollback simulation
+        old_records = [
+            record
+            for record in self.records
+            if record.chunk.document_id == document_id
+            and record.chunk.tenant_id == tenant_id
+        ]
+        # Remove old chunks for this document
+        self.records = [
+            record
+            for record in self.records
+            if not (
+                record.chunk.document_id == document_id
+                and record.chunk.tenant_id == tenant_id
+            )
+        ]
+        try:
+            self.records.extend(new_records)
+            return [record.chunk for record in new_records]
+        except Exception:
+            # Rollback: restore old records
+            self.records = [
+                record
+                for record in self.records
+                if not (
+                    record.chunk.document_id == document_id
+                    and record.chunk.tenant_id == tenant_id
+                )
+            ] + old_records
+            raise
+
     async def list_by_document(
         self,
         document_id: str,
@@ -525,7 +568,9 @@ async def test_reindex_keeps_ready_document_active_during_embedding() -> None:
     )
     assert DocumentProcessingStatus.PROCESSING not in documents.statuses
 
-    assert result.document.id == document.id
+    assert result.document.id != document.id
+    assert result.document.predecessor_id == document.id
+    assert document.status == DocumentProcessingStatus.SUPERSEDED
     assert result.document.status == DocumentProcessingStatus.READY
     assert result.document.original_filename == "replacement-policy.txt"
 
@@ -534,8 +579,8 @@ async def test_reindex_keeps_ready_document_active_during_embedding() -> None:
         for record in chunks.records
     }
 
-    assert "chunk-old" not in persisted_ids
-    assert result.chunks_persisted == len(chunks.records) > 0
+    assert "chunk-old" in persisted_ids
+    assert result.chunks_persisted > 0
 
 
 @pytest.mark.asyncio

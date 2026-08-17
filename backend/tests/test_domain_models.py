@@ -62,7 +62,7 @@ def _chunk(**overrides) -> Chunk:
 class TestDocumentProcessingStatus:
     def test_all_statuses_present(self) -> None:
         statuses = {s.value for s in DocumentProcessingStatus}
-        assert statuses == {"pending", "processing", "ready", "failed"}
+        assert statuses == {"pending", "processing", "ready", "failed", "superseded", "archived"}
 
     def test_values_are_lowercase_strings(self) -> None:
         for status in DocumentProcessingStatus:
@@ -183,6 +183,28 @@ class TestKnowledgeBase:
         with pytest.raises(ValueError, match="KnowledgeBase.name"):
             KnowledgeBase(id="kb-1", tenant_id="t-1", name="   ")
 
+    # --- governance: classification ---
+
+    def test_default_classification_is_internal(self) -> None:
+        kb = KnowledgeBase(id="kb-1", tenant_id="t-1", name="Docs")
+        assert kb.classification == "internal"
+
+    def test_classification_public_is_valid(self) -> None:
+        kb = KnowledgeBase(id="kb-1", tenant_id="t-1", name="Docs", classification="public")
+        assert kb.classification == "public"
+
+    def test_classification_restricted_is_valid(self) -> None:
+        kb = KnowledgeBase(id="kb-1", tenant_id="t-1", name="Docs", classification="restricted")
+        assert kb.classification == "restricted"
+
+    def test_invalid_classification_raises(self) -> None:
+        with pytest.raises(ValueError, match="KnowledgeBase.classification"):
+            KnowledgeBase(id="kb-1", tenant_id="t-1", name="Docs", classification="top-secret")
+
+    def test_empty_classification_raises(self) -> None:
+        with pytest.raises(ValueError, match="KnowledgeBase.classification"):
+            KnowledgeBase(id="kb-1", tenant_id="t-1", name="Docs", classification="")
+
 
 # ---------------------------------------------------------------------------
 # Document
@@ -257,6 +279,52 @@ class TestDocument:
         )
         assert doc.status == DocumentProcessingStatus.FAILED
         assert doc.failure_reason == "Unsupported file format."
+
+    # --- governance: version_number ---
+
+    def test_default_version_number_is_one(self) -> None:
+        doc = _document()
+        assert doc.version_number == 1
+
+    def test_version_number_above_one_is_valid(self) -> None:
+        doc = _document(version_number=5)
+        assert doc.version_number == 5
+
+    def test_version_number_zero_raises(self) -> None:
+        with pytest.raises(ValueError, match="version_number"):
+            _document(version_number=0)
+
+    def test_version_number_negative_raises(self) -> None:
+        with pytest.raises(ValueError, match="version_number"):
+            _document(version_number=-3)
+
+    # --- governance: superseded_by_id ---
+
+    def test_default_superseded_by_id_is_none(self) -> None:
+        doc = _document()
+        assert doc.superseded_by_id is None
+
+    def test_superseded_by_id_non_empty_string_is_valid(self) -> None:
+        doc = _document(superseded_by_id="doc-2")
+        assert doc.superseded_by_id == "doc-2"
+
+    def test_superseded_by_id_whitespace_raises(self) -> None:
+        with pytest.raises(ValueError, match="superseded_by_id"):
+            _document(superseded_by_id="   ")
+
+    def test_superseded_by_id_empty_string_raises(self) -> None:
+        with pytest.raises(ValueError, match="superseded_by_id"):
+            _document(superseded_by_id="")
+
+    # --- governance: created_by ---
+
+    def test_default_created_by_is_none(self) -> None:
+        doc = _document()
+        assert doc.created_by is None
+
+    def test_created_by_string_is_valid(self) -> None:
+        doc = _document(created_by="user-abc")
+        assert doc.created_by == "user-abc"
 
 
 # ---------------------------------------------------------------------------

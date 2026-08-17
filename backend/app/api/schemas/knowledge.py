@@ -27,6 +27,7 @@ class KnowledgeBaseCreate(BaseModel):
 
     name: Name
     description: Description = ""
+    classification: Literal["public", "internal", "restricted"] = "internal"
 
 
 class KnowledgeBaseUpdate(BaseModel):
@@ -37,6 +38,7 @@ class KnowledgeBaseUpdate(BaseModel):
     name: Name | None = None
     description: Description | None = None
     status: KnowledgeBaseStatus | None = None
+    classification: Literal["public", "internal", "restricted"] | None = None
 
     def has_changes(self) -> bool:
         return bool(self.model_fields_set)
@@ -47,6 +49,7 @@ class KnowledgeBaseResponse(BaseModel):
     name: str
     description: str
     status: KnowledgeBaseStatus
+    classification: Literal["public", "internal", "restricted"]
 
 
 class DocumentResponse(BaseModel):
@@ -58,6 +61,11 @@ class DocumentResponse(BaseModel):
     file_size_bytes: int = Field(ge=0)
     status: DocumentProcessingStatus
     failure_reason: str | None
+    version_number: int = Field(ge=1)
+    version_family_id: str
+    predecessor_id: str | None
+    superseded_by_id: str | None
+    created_by: str | None
     created_at: datetime
     updated_at: datetime
 
