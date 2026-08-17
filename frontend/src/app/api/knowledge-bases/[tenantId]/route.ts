@@ -96,6 +96,7 @@ export async function POST(
       description?: unknown;
       status?: unknown;
       assigned_agent_ids?: unknown;
+    classification?: unknown;
     } | null;
 
   const name =
@@ -134,6 +135,11 @@ export async function POST(
               payload?.status === "inactive"
                 ? "inactive"
                 : "active",
+            classification:
+              payload?.classification === "public" ||
+              payload?.classification === "restricted"
+                ? payload.classification
+                : "internal",
             assigned_agent_ids:
               assignedAgentIds,
           },
