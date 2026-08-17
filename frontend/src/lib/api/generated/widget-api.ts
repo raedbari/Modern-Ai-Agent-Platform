@@ -283,6 +283,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-request-id"?: null | string;
                 /** @description Agent selector authorized against the API-key tenant. */
                 "X-Agent-ID"?: null | string;
             };

@@ -18,6 +18,11 @@ class RuntimeContext(BaseModel):
 
     tenant_id: Identifier
     agent_id: Identifier
+    request_id: Identifier | None = None
+    product_id: Identifier | None = None
+    conversation_id: Identifier | None = None
+    prompt_version: Identifier | None = None
+    knowledge_version: Identifier | None = None
 
 
 class ChatMessage(BaseModel):

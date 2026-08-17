@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -22,6 +22,7 @@ from backend.app.ai.contracts import (
 from backend.app.auth.context import ChatExecutionContext
 from backend.app.db.models import Conversation, Message
 from backend.app.domain.ports.retrieval import RetrievalPort
+from backend.app.telemetry import StructuredLoggingTelemetrySink, TelemetrySink
 
 
 class ConversationNotFoundError(Exception):
@@ -30,6 +31,7 @@ class ConversationNotFoundError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class ChatResult:
+    request_id: str
     conversation_id: str
     message_id: str
     reply: str
@@ -52,6 +54,9 @@ class ChatService:
         retrieval_top_k: int = 5,
         retrieval_min_similarity: float = 0.5,
         max_context_chars: int = 12000,
+        telemetry_sink: TelemetrySink | None = None,
+        product_id: str = "athkachatbots",
+        provider: str | None = None,
     ) -> None:
         self._workflow = ChatWorkflow(
             runtime,
@@ -59,7 +64,12 @@ class ChatService:
             retrieval_top_k=retrieval_top_k,
             retrieval_min_similarity=retrieval_min_similarity,
             max_context_chars=max_context_chars,
+            telemetry_sink=(
+                telemetry_sink or StructuredLoggingTelemetrySink()
+            ),
         )
+        self._product_id = product_id
+        self._provider = provider
 
     async def execute(
         self,
@@ -67,17 +77,26 @@ class ChatService:
         context: ChatExecutionContext,
         message: str,
         conversation_id: str | None,
+        request_id: str | None = None,
     ) -> ChatResult:
         """Execute one atomic, tenant-scoped, evidence-first chat turn."""
 
+        correlation_id = request_id or str(uuid4())
         try:
             conversation, history = await self._load_or_create_conversation(
                 session=session,
                 context=context,
                 conversation_id=conversation_id,
             )
+            workflow_context = replace(
+                context,
+                request_id=correlation_id,
+                product_id=self._product_id,
+                conversation_id=conversation.id,
+                model_provider=self._provider,
+            )
             workflow_result = await self._workflow.execute(
-                context=context,
+                context=workflow_context,
                 message=message,
                 history=tuple(
                     ChatMessage(
@@ -129,6 +148,7 @@ class ChatService:
             raise
 
         return ChatResult(
+            request_id=correlation_id,
             conversation_id=conversation.id,
             message_id=assistant_message.id,
             reply=workflow_result.reply,

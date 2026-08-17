@@ -570,6 +570,10 @@ async def test_widget_chat_persists_session_binding_and_blocks_other_session(
 
         assert first.status_code == 200
         assert first.headers["Access-Control-Allow-Origin"] == _ORIGIN
+        assert first.headers["Access-Control-Expose-Headers"] == (
+            "X-Request-ID"
+        )
+        assert first.headers["X-Request-ID"]
         assert cross_session.status_code == 404
         assert cross_session.headers["Access-Control-Allow-Origin"] == _ORIGIN
         async with sessions() as session:

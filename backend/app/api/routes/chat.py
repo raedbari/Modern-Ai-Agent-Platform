@@ -2,12 +2,15 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from uuid import UUID, uuid4
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.dependencies import (
     get_core_ai_runtime,
     get_rerank_provider,
+    get_telemetry_sink,
     require_chat_context,
 )
 from backend.app.api.schemas.chat import (
@@ -30,6 +33,7 @@ from backend.app.services.chat import (
     GenerationRuntime,
 )
 from backend.app.services.knowledge.retrieval_service import RetrievalService
+from backend.app.telemetry import TelemetrySink
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -47,10 +51,15 @@ async def chat(
         Depends(get_core_ai_runtime),
     ],
     settings: Annotated[Settings, Depends(get_settings)],
+    response: Response,
     rerank_provider=Depends(get_rerank_provider),
+    telemetry_sink: TelemetrySink = Depends(get_telemetry_sink),
+    x_request_id: Annotated[str | None, Header()] = None,
 ) -> ChatResponse:
     """Generate and persist one authenticated chat turn."""
 
+    request_id = _request_id(x_request_id)
+    response.headers["X-Request-ID"] = request_id
     try:
         retrieval = RetrievalService(
             embedding_provider=runtime,
@@ -70,21 +79,26 @@ async def chat(
             retrieval_top_k=settings.retrieval_top_k,
             retrieval_min_similarity=settings.retrieval_min_similarity,
             max_context_chars=settings.rag_max_context_chars,
+            telemetry_sink=telemetry_sink,
+            provider="deepseek",
         ).execute(
             session=session,
             context=context,
             message=payload.message,
             conversation_id=payload.conversation_id,
+            request_id=request_id,
         )
     except ConversationNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found",
+            headers={"X-Request-ID": request_id},
         ) from exc
     except EmptyGenerationError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Generation provider returned no response",
+            headers={"X-Request-ID": request_id},
         ) from exc
 
     return ChatResponse(
@@ -109,3 +123,14 @@ async def chat(
             for source in result.sources
         ],
     )
+
+
+def _request_id(candidate: str | None) -> str:
+    """Accept canonical UUID correlation IDs; replace unsafe input."""
+
+    if candidate is not None:
+        try:
+            return str(UUID(candidate))
+        except (ValueError, AttributeError):
+            pass
+    return str(uuid4())
