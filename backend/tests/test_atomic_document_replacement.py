@@ -312,8 +312,7 @@ def _service(
 
 @pytest.mark.asyncio
 async def test_successful_replacement_v2_ready_v1_superseded() -> None:
-    """Scenario 1: After a successful reindex the document is READY and the
-    previous READY state is recorded as SUPERSEDED in the status log."""
+    """A successful replacement persists distinct, linked V1 and V2 rows."""
     doc = _ready_document()
     doc_repo = InMemoryDocumentRepository(existing=doc)
     chunk_repo = InMemoryChunkRepository()
@@ -323,13 +322,13 @@ async def test_successful_replacement_v2_ready_v1_superseded() -> None:
 
     result = await svc.reindex(document_id=doc.id, request=_replacement_request())
 
-    # V2 is now READY
+    assert result.document.id != doc.id
+    assert result.document.predecessor_id == doc.id
+    assert result.document.version_number == 2
     assert result.document.status == DocumentProcessingStatus.READY
     assert result.chunks_persisted > 0
-
-    # The status sequence must pass through SUPERSEDED then end at READY
-    assert DocumentProcessingStatus.SUPERSEDED in doc_repo.statuses
-    assert doc_repo.statuses[-1] == DocumentProcessingStatus.READY
+    assert doc.status == DocumentProcessingStatus.SUPERSEDED
+    assert doc.superseded_by_id == result.document.id
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +363,7 @@ async def test_parse_failure_leaves_v1_ready() -> None:
 
     # V1 is still READY with no status mutations
     assert doc.status == DocumentProcessingStatus.READY
-    assert doc_repo.statuses == []
+    assert list(doc_repo.documents) == [doc.id]
     # Old chunk is untouched
     assert any(r.chunk.id == "chunk-v1" for r in chunk_repo.records)
 
@@ -396,7 +395,7 @@ async def test_embed_failure_leaves_v1_ready_chunks_intact() -> None:
     # V1 is unchanged
     assert doc.status == DocumentProcessingStatus.READY
     assert doc.failure_reason is None
-    assert doc_repo.statuses == []
+    assert all(item.status != DocumentProcessingStatus.READY for key, item in doc_repo.documents.items() if key != doc.id)
 
     # Old chunks are intact — no partial new chunks leaked in
     assert chunk_repo.records == [old_record]
@@ -427,7 +426,7 @@ async def test_retry_after_embed_failure_succeeds() -> None:
 
     # Sanity: V1 still READY after failure
     assert doc.status == DocumentProcessingStatus.READY
-    assert doc_repo.statuses == []
+    assert doc.status == DocumentProcessingStatus.READY
 
     # Second attempt — good provider
     good_svc, _, _ = _service(
@@ -439,8 +438,8 @@ async def test_retry_after_embed_failure_succeeds() -> None:
 
     assert result.document.status == DocumentProcessingStatus.READY
     assert result.chunks_persisted > 0
-    assert DocumentProcessingStatus.SUPERSEDED in doc_repo.statuses
-    assert doc_repo.statuses[-1] == DocumentProcessingStatus.READY
+    assert doc.status == DocumentProcessingStatus.SUPERSEDED
+    assert result.document.predecessor_id == doc.id
 
 
 # ---------------------------------------------------------------------------
@@ -483,12 +482,11 @@ async def test_no_mixed_chunks_after_successful_replacement() -> None:
     svc, _, _ = _service(document_repository=doc_repo, chunk_repository=chunk_repo)
     await svc.reindex(document_id=doc.id, request=_replacement_request())
 
-    chunk_ids = {r.chunk.id for r in chunk_repo.records if r.chunk.document_id == doc.id}
-
-    # The original chunk must be gone
-    assert "chunk-v1" not in chunk_ids
-    # And there are only new chunks (the replacement produced at least one)
-    assert len(chunk_ids) > 0
+    old_ids = {r.chunk.id for r in chunk_repo.records if r.chunk.document_id == doc.id}
+    new_records = [r for r in chunk_repo.records if r.chunk.document_id != doc.id]
+    assert old_ids == {"chunk-v1"}
+    assert new_records
+    assert all(r.chunk.document_id != doc.id for r in new_records)
 
 
 @pytest.mark.asyncio

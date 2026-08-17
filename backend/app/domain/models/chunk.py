@@ -33,7 +33,7 @@ class Chunk:
 
     id: str
     tenant_id: str
-    agent_id: str
+    agent_id: str | None
     knowledge_base_id: str
     document_id: str
     source_name: str
@@ -48,8 +48,8 @@ class Chunk:
             raise ValueError("Chunk.id must not be empty.")
         if not self.tenant_id or not self.tenant_id.strip():
             raise ValueError("Chunk.tenant_id must not be empty.")
-        if not self.agent_id or not self.agent_id.strip():
-            raise ValueError("Chunk.agent_id must not be empty.")
+        if self.agent_id is not None and not self.agent_id.strip():
+            raise ValueError("Chunk.agent_id must be non-empty when set.")
         if not self.knowledge_base_id or not self.knowledge_base_id.strip():
             raise ValueError("Chunk.knowledge_base_id must not be empty.")
         if not self.document_id or not self.document_id.strip():

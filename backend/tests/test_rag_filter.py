@@ -273,16 +273,17 @@ async def test_search_enforces_tenant_agent_and_knowledge_base_scope(
                 min_similarity=0.0,
             )
 
-        assert [chunk.id for chunk, _ in results] == [
-            "chunk-exact"
-        ]
+        assert {chunk.id for chunk, _ in results} == {
+            "chunk-exact",
+            "chunk-wrong-agent",
+        }
 
     finally:
         await engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_document_agent_must_match_chunk_agent(
+async def test_document_and_chunk_agent_metadata_does_not_override_kb_scope(
     tmp_path: Path,
 ) -> None:
     sessions, engine = await _open_sessions(
@@ -318,7 +319,9 @@ async def test_document_agent_must_match_chunk_agent(
                 min_similarity=0.0,
             )
 
-        assert results == []
+        assert [chunk.id for chunk, _ in results] == [
+            "chunk-mismatched-agent"
+        ]
 
     finally:
         await engine.dispose()

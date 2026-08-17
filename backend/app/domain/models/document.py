@@ -60,6 +60,8 @@ class Document:
     status: DocumentProcessingStatus = DocumentProcessingStatus.PENDING
     failure_reason: str | None = None
     version_number: int = 1
+    version_family_id: str | None = None
+    predecessor_id: str | None = None
     superseded_by_id: str | None = None
     created_by: str | None = None
     created_at: datetime = field(
@@ -98,6 +100,12 @@ class Document:
             raise ValueError(
                 f"Document.version_number must be >= 1, got {self.version_number}."
             )
+        if self.version_family_id is None:
+            self.version_family_id = self.id
+        if not self.version_family_id.strip():
+            raise ValueError("Document.version_family_id must not be empty.")
+        if self.predecessor_id is not None and not self.predecessor_id.strip():
+            raise ValueError("Document.predecessor_id must be non-empty when set.")
         if self.superseded_by_id is not None and not self.superseded_by_id.strip():
             raise ValueError(
                 "Document.superseded_by_id must be None or a non-empty string."

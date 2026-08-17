@@ -162,7 +162,7 @@ class IngestionService:
             id=str(uuid4()),
             tenant_id=request.tenant_id,
             knowledge_base_id=request.knowledge_base_id,
-            agent_id=request.agent_id,
+            agent_id=None,
             source_name=request.source_name,
             original_filename=request.filename,
             mime_type=mime_type,
@@ -175,6 +175,45 @@ class IngestionService:
             chunks_persisted=0,
             duplicate=False,
         )
+
+    async def create_replacement(
+        self, *, document_id: str, request: IngestionRequest, created_by: str | None = None
+    ) -> Document:
+        """Persist a non-active successor without mutating the active version."""
+        predecessor = await self.validate_reindex_target(
+            document_id=document_id, request=request
+        )
+        if predecessor.status != DocumentProcessingStatus.READY:
+            raise DomainError("Only an active document can be replaced.")
+        content_hash = hashlib.sha256(request.content).hexdigest()
+        duplicate = await self._document_repository.get_by_content_hash(
+            content_hash=content_hash,
+            tenant_id=request.tenant_id,
+            knowledge_base_id=request.knowledge_base_id,
+        )
+        if duplicate is not None:
+            if (
+                duplicate.predecessor_id == predecessor.id
+                and duplicate.status in {
+                    DocumentProcessingStatus.PENDING,
+                    DocumentProcessingStatus.FAILED,
+                }
+            ):
+                if duplicate.status == DocumentProcessingStatus.FAILED:
+                    await self._set_status(duplicate, DocumentProcessingStatus.PENDING)
+                return duplicate
+            raise DomainError("An identical document already exists in this knowledge base.")
+        successor = Document(
+            id=str(uuid4()), tenant_id=request.tenant_id,
+            knowledge_base_id=request.knowledge_base_id, agent_id=None,
+            source_name=request.source_name, original_filename=request.filename,
+            mime_type=self._normalise_mime(request.mime_type),
+            file_size_bytes=len(request.content), content_hash=content_hash,
+            version_number=predecessor.version_number + 1,
+            version_family_id=predecessor.version_family_id or predecessor.id,
+            predecessor_id=predecessor.id, created_by=created_by,
+        )
+        return await self._document_repository.create(successor)
 
     async def validate_reindex_target(
         self,
@@ -196,7 +235,6 @@ class IngestionService:
             document is None
             or document.knowledge_base_id
             != request.knowledge_base_id
-            or document.agent_id != request.agent_id
         ):
             raise DocumentNotFoundError(
                 "The document is unavailable for this agent."
@@ -210,7 +248,17 @@ class IngestionService:
             knowledge_base_id=request.knowledge_base_id,
         )
 
-        if duplicate is not None and duplicate.id != document.id:
+        if (
+            duplicate is not None
+            and duplicate.id != document.id
+            and not (
+                duplicate.predecessor_id == document.id
+                and duplicate.status in {
+                    DocumentProcessingStatus.PENDING,
+                    DocumentProcessingStatus.FAILED,
+                }
+            )
+        ):
             raise DomainError(
                 "An identical document already exists "
                 "in this knowledge base."
@@ -232,7 +280,6 @@ class IngestionService:
             document.tenant_id != request.tenant_id
             or document.knowledge_base_id
             != request.knowledge_base_id
-            or document.agent_id != request.agent_id
         ):
             raise DocumentNotFoundError(
                 "The document is unavailable for this agent."
@@ -272,13 +319,11 @@ class IngestionService:
             )
 
         document = await self.validate_reindex_target(
-            document_id=document_id,
-            request=request,
+            document_id=document_id, request=request
         )
 
         expected_scope = (
             document.tenant_id,
-            document.agent_id,
             document.knowledge_base_id,
             document.id,
         )
@@ -286,7 +331,6 @@ class IngestionService:
         for record in prepared.records:
             actual_scope = (
                 record.chunk.tenant_id,
-                record.chunk.agent_id,
                 record.chunk.knowledge_base_id,
                 record.chunk.document_id,
             )
@@ -296,47 +340,37 @@ class IngestionService:
                     "Prepared replacement chunk scope is invalid."
                 )
 
-        # Remember the current active status so we can mark the previous
-        # version as SUPERSEDED after the atomic chunk swap succeeds.
-        was_ready = document.status == DocumentProcessingStatus.READY
-
-        # Atomically swap old chunks for new ones inside a single DB
-        # transaction.  If the insert fails the old chunks are preserved and
-        # no mixed/empty state is ever visible to readers.
-        persisted = await self._chunk_repository.replace_for_document(
-            document_id=document.id,
+        family = await self._document_repository.lock_version_family(
             tenant_id=document.tenant_id,
-            new_records=list(prepared.records),
+            knowledge_base_id=document.knowledge_base_id,
+            version_family_id=document.version_family_id or document.id,
         )
+        current = [item for item in family if item.status == DocumentProcessingStatus.READY]
+        if document.predecessor_id is None:
+            if current and current[0].id != document.id:
+                raise DomainError("Another document version is already active.")
+        else:
+            if len(current) != 1 or current[0].id != document.predecessor_id:
+                raise DomainError("The active document version changed during replacement.")
 
-        # If there was an active (READY) version before, mark it SUPERSEDED
-        # now that new chunks are safely in place.
-        if was_ready:
-            await self._document_repository.update_processing_status(
-                document_id=document.id,
-                tenant_id=document.tenant_id,
-                status=DocumentProcessingStatus.SUPERSEDED,
-            )
-            document.status = DocumentProcessingStatus.SUPERSEDED
-
+        # Candidate chunks are isolated under the new document id. All writes
+        # and both lifecycle transitions share the caller's transaction.
+        persisted = await self._chunk_repository.create_many(list(prepared.records))
+        if document.predecessor_id is not None:
+            predecessor = current[0]
+            predecessor.status = DocumentProcessingStatus.SUPERSEDED
+            predecessor.superseded_by_id = document.id
+            predecessor.updated_at = datetime.now(timezone.utc)
+            await self._document_repository.update(predecessor)
         document.source_name = request.source_name
         document.original_filename = request.filename
         document.mime_type = mime_type
         document.file_size_bytes = len(request.content)
         document.content_hash = content_hash
+        document.status = DocumentProcessingStatus.READY
         document.failure_reason = None
-        document.version_number = document.version_number + 1
         document.updated_at = datetime.now(timezone.utc)
-
-        document = await self._document_repository.update(
-            document
-        )
-
-        # Transition the document to READY — the new version is now live.
-        await self._set_status(
-            document,
-            DocumentProcessingStatus.READY,
-        )
+        document = await self._document_repository.update(document)
 
         return IngestionResult(
             document=document,
@@ -356,9 +390,8 @@ class IngestionService:
         final write transaction.
         """
 
-        document = await self.validate_reindex_target(
-            document_id=document_id,
-            request=request,
+        document = await self.create_replacement(
+            document_id=document_id, request=request
         )
 
         prepared = await self.prepare_reindex(
@@ -367,7 +400,7 @@ class IngestionService:
         )
 
         return await self.activate_prepared_reindex(
-            document_id=document_id,
+            document_id=document.id,
             request=request,
             prepared=prepared,
         )

@@ -1282,6 +1282,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Created By"
+          },
           "failure_reason": {
             "anyOf": [
               {
@@ -1324,6 +1335,17 @@
             "title": "Original Filename",
             "type": "string"
           },
+          "predecessor_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Predecessor Id"
+          },
           "source_name": {
             "title": "Source Name",
             "type": "string"
@@ -1333,10 +1355,23 @@
               "pending",
               "processing",
               "ready",
-              "failed"
+              "failed",
+              "superseded",
+              "archived"
             ],
             "title": "Status",
             "type": "string"
+          },
+          "superseded_by_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Superseded By Id"
           },
           "tenant_id": {
             "title": "Tenant Id",
@@ -1346,6 +1381,15 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "version_family_id": {
+            "title": "Version Family Id",
+            "type": "string"
+          },
+          "version_number": {
+            "minimum": 1.0,
+            "title": "Version Number",
+            "type": "integer"
           }
         },
         "required": [
@@ -1359,6 +1403,11 @@
           "file_size_bytes",
           "status",
           "failure_reason",
+          "version_number",
+          "version_family_id",
+          "predecessor_id",
+          "superseded_by_id",
+          "created_by",
           "created_at",
           "updated_at",
           "chunk_count",
@@ -1378,6 +1427,17 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Created By"
           },
           "duplicate": {
             "title": "Duplicate",
@@ -1415,6 +1475,17 @@
             "title": "Original Filename",
             "type": "string"
           },
+          "predecessor_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Predecessor Id"
+          },
           "source_name": {
             "title": "Source Name",
             "type": "string"
@@ -1422,10 +1493,30 @@
           "status": {
             "$ref": "#/components/schemas/DocumentProcessingStatus"
           },
+          "superseded_by_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Superseded By Id"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "version_family_id": {
+            "title": "Version Family Id",
+            "type": "string"
+          },
+          "version_number": {
+            "minimum": 1.0,
+            "title": "Version Number",
+            "type": "integer"
           }
         },
         "required": [
@@ -1437,6 +1528,11 @@
           "file_size_bytes",
           "status",
           "failure_reason",
+          "version_number",
+          "version_family_id",
+          "predecessor_id",
+          "superseded_by_id",
+          "created_by",
           "created_at",
           "updated_at",
           "chunks_persisted",
@@ -1457,7 +1553,9 @@
               "pending",
               "processing",
               "ready",
-              "failed"
+              "failed",
+              "superseded",
+              "archived"
             ],
             "title": "Document Status",
             "type": "string"
@@ -1610,6 +1708,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Created By"
+          },
           "failure_reason": {
             "anyOf": [
               {
@@ -1642,6 +1751,17 @@
             "title": "Original Filename",
             "type": "string"
           },
+          "predecessor_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Predecessor Id"
+          },
           "source_name": {
             "title": "Source Name",
             "type": "string"
@@ -1649,10 +1769,30 @@
           "status": {
             "$ref": "#/components/schemas/DocumentProcessingStatus"
           },
+          "superseded_by_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Superseded By Id"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "version_family_id": {
+            "title": "Version Family Id",
+            "type": "string"
+          },
+          "version_number": {
+            "minimum": 1.0,
+            "title": "Version Number",
+            "type": "integer"
           }
         },
         "required": [
@@ -1664,6 +1804,11 @@
           "file_size_bytes",
           "status",
           "failure_reason",
+          "version_number",
+          "version_family_id",
+          "predecessor_id",
+          "superseded_by_id",
+          "created_by",
           "created_at",
           "updated_at"
         ],
@@ -1822,6 +1967,16 @@
             "title": "Assigned Agent Ids",
             "type": "array"
           },
+          "classification": {
+            "default": "internal",
+            "enum": [
+              "public",
+              "internal",
+              "restricted"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
           "description": {
             "default": "",
             "maxLength": 4000,
@@ -1864,6 +2019,15 @@
             "minimum": 0.0,
             "title": "Chunk Count",
             "type": "integer"
+          },
+          "classification": {
+            "enum": [
+              "public",
+              "internal",
+              "restricted"
+            ],
+            "title": "Classification",
+            "type": "string"
           },
           "created_at": {
             "format": "date-time",
@@ -1946,6 +2110,7 @@
           "name",
           "description",
           "status",
+          "classification",
           "created_at",
           "updated_at",
           "document_count",
@@ -1965,6 +2130,22 @@
         "additionalProperties": false,
         "description": "Update mutable knowledge-base fields.",
         "properties": {
+          "classification": {
+            "anyOf": [
+              {
+                "enum": [
+                  "public",
+                  "internal",
+                  "restricted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
           "description": {
             "anyOf": [
               {
@@ -2031,6 +2212,16 @@
         "additionalProperties": false,
         "description": "Create input; ownership always comes from authenticated context.",
         "properties": {
+          "classification": {
+            "default": "internal",
+            "enum": [
+              "public",
+              "internal",
+              "restricted"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
           "description": {
             "default": "",
             "maxLength": 4000,
@@ -2052,6 +2243,15 @@
       },
       "KnowledgeBaseResponse": {
         "properties": {
+          "classification": {
+            "enum": [
+              "public",
+              "internal",
+              "restricted"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -2072,7 +2272,8 @@
           "id",
           "name",
           "description",
-          "status"
+          "status",
+          "classification"
         ],
         "title": "KnowledgeBaseResponse",
         "type": "object"
@@ -2090,6 +2291,22 @@
         "additionalProperties": false,
         "description": "Mutable knowledge-base fields.",
         "properties": {
+          "classification": {
+            "anyOf": [
+              {
+                "enum": [
+                  "public",
+                  "internal",
+                  "restricted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
           "description": {
             "anyOf": [
               {
@@ -7900,6 +8117,83 @@
           }
         ],
         "summary": "Get Document",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/knowledge-bases/{knowledge_base_id}/documents/{document_id}/archive": {
+      "post": {
+        "operationId": "archive_document_api_knowledge_bases__knowledge_base_id__documents__document_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Agent selected for the knowledge operation.",
+            "in": "header",
+            "name": "X-Agent-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "description": "Agent selected for the knowledge operation.",
+              "title": "X-Agent-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "TenantApiKey": []
+          },
+          {
+            "TenantUserJWT": []
+          }
+        ],
+        "summary": "Archive Document",
         "tags": [
           "knowledge"
         ]

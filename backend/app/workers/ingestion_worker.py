@@ -102,7 +102,6 @@ class IngestionWorker:
                 or document.tenant_id != job.tenant_id
                 or document.knowledge_base_id
                 != job.knowledge_base_id
-                or document.agent_id != job.agent_id
             ):
                 raise RuntimeError(
                     "Queued document scope is invalid."
@@ -125,10 +124,7 @@ class IngestionWorker:
             tenant_id = job.tenant_id
             agent_id = job.agent_id
             knowledge_base_id = job.knowledge_base_id
-            was_active = (
-                document.status
-                == DocumentProcessingStatus.READY.value
-            )
+            was_active = document.predecessor_id is not None
 
             await session.rollback()
 

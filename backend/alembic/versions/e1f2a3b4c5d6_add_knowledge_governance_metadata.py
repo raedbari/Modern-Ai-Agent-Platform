@@ -1,7 +1,7 @@
 """add knowledge governance metadata
 
 Revision ID: e1f2a3b4c5d6
-Revises: f4a2b7c9d011
+Revises: b13c7a9e42f6
 Create Date: 2025-01-01 00:00:00.000000
 
 """
@@ -78,14 +78,14 @@ def upgrade() -> None:
     )
 
     # -------------------------------------------------------------------------
-    # documents: partial unique index — one ACTIVE/READY document per
-    # (tenant_id, knowledge_base_id, original_filename)
+    # Transitional lookup index. Filename is not a version-family key and
+    # existing installations may legitimately contain duplicate filenames.
     # -------------------------------------------------------------------------
     op.create_index(
         "uq_documents_active_per_tenant_kb_filename",
         "documents",
         ["tenant_id", "knowledge_base_id", "original_filename"],
-        unique=True,
+        unique=False,
         postgresql_where=sa.text("status IN ('ready', 'active')"),
     )
 
