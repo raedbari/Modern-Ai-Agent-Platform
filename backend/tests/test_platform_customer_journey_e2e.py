@@ -308,11 +308,10 @@ async def test_complete_athkachatbots_customer_journey(
             document = await session.get(DocumentModel, document_id)
             chunks = list(
                 (
-                    await session.scalars(
-                        select(ChunkModel).where(
-                            ChunkModel.tenant_id == tenant_id,
-                            ChunkModel.agent_id == agent_id,
-                            ChunkModel.document_id == document_id,
+                        await session.scalars(
+                            select(ChunkModel).where(
+                                ChunkModel.tenant_id == tenant_id,
+                                ChunkModel.document_id == document_id,
                         )
                     )
                 ).all()
@@ -349,6 +348,7 @@ async def test_complete_athkachatbots_customer_journey(
         assert assignment is not None
         assert document is not None and document.status == "ready"
         assert chunks and all(chunk.tenant_id == tenant_id for chunk in chunks)
+        assert all(chunk.agent_id is None for chunk in chunks)
         assert len(conversations) == 2
         assert len(messages) == 4
         assistant_messages = [message for message in messages if message.role == "assistant"]

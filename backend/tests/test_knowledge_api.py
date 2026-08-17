@@ -484,7 +484,7 @@ async def test_embedding_failure_persists_safe_failed_status(
 
 
 @pytest.mark.asyncio
-async def test_reindex_replaces_chunks_and_keeps_document_identity(
+async def test_reindex_creates_linked_document_version(
     tmp_path: Path,
 ) -> None:
     app, engine, session_factory, runtime = await _open_test_app(
@@ -533,7 +533,10 @@ async def test_reindex_replaces_chunks_and_keeps_document_identity(
             )
 
         assert reindexed.status_code == 200, reindexed.text
-        assert reindexed.json()["id"] == document_id
+        replacement_id = reindexed.json()["id"]
+        assert replacement_id != document_id
+        assert reindexed.json()["predecessor_id"] == document_id
+        assert reindexed.json()["version_number"] == 2
         assert reindexed.json()["original_filename"] == "guide-v2.txt"
         assert reindexed.json()["status"] == "ready"
         assert runtime.embed.await_count == 2
@@ -543,7 +546,7 @@ async def test_reindex_replaces_chunks_and_keeps_document_identity(
                 (
                     await session.scalars(
                         select(ChunkModel).where(
-                            ChunkModel.document_id == document_id
+                            ChunkModel.document_id == replacement_id
                         )
                     )
                 ).all()
@@ -617,6 +620,38 @@ async def test_delete_document_and_knowledge_base_are_cascaded(
 
 
 @pytest.mark.asyncio
+async def test_archive_retains_metadata_and_excludes_retrieval(tmp_path: Path) -> None:
+    app, engine, sessions, _ = await _open_test_app(tmp_path / "archive.sqlite3")
+    try:
+        issued = await _seed_tenant(sessions, tenant_id="tenant-archive", agent_ids=("agent-a",))
+        headers = _headers(issued, "agent-a")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            kb_id = await _create_knowledge_base(client, headers)
+            uploaded = await client.post(
+                f"/api/knowledge-bases/{kb_id}/documents", headers=headers,
+                files={"file": ("archive.txt", b"Archive this knowledge.", "text/plain")},
+            )
+            document_id = uploaded.json()["id"]
+            archived = await client.post(
+                f"/api/knowledge-bases/{kb_id}/documents/{document_id}/archive",
+                headers=headers,
+            )
+        assert archived.status_code == 200
+        assert archived.json()["status"] == "archived"
+        async with sessions() as session:
+            document = await session.get(DocumentModel, document_id)
+            assert document is not None and document.status == "archived"
+            chunks = await SQLAlchemyChunkRepository(session).semantic_search(
+                query_embedding=[1.0] + [0.0] * 1023,
+                tenant_id="tenant-archive", agent_id="agent-a",
+                knowledge_base_id=kb_id, top_k=5, min_similarity=0.0,
+            )
+            assert chunks == []
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_delete_document_enforces_agent_scope_audits_and_removes_from_rag(
     tmp_path: Path,
 ) -> None:
@@ -669,8 +704,7 @@ async def test_delete_document_enforces_agent_scope_audits_and_removes_from_rag(
         assert uploaded.status_code == 201, uploaded.text
         document_id = uploaded.json()["id"]
 
-        # Assign the same KB to another agent. The document itself still
-        # belongs only to agent-owner.
+        # Assignment grants KB permission without changing knowledge ownership.
         async with session_factory() as session:
             session.add(
                 AgentKnowledgeBase(
@@ -685,7 +719,7 @@ async def test_delete_document_enforces_agent_scope_audits_and_removes_from_rag(
             transport=ASGITransport(app=app),
             base_url="http://test",
         ) as client:
-            forbidden = await client.delete(
+            deleted = await client.delete(
                 (
                     f"/api/knowledge-bases/{knowledge_base_id}"
                     f"/documents/{document_id}"
@@ -693,13 +727,13 @@ async def test_delete_document_enforces_agent_scope_audits_and_removes_from_rag(
                 headers=other_headers,
             )
 
-        assert forbidden.status_code == 404
+        assert deleted.status_code == 204
 
         async with session_factory() as session:
             assert await session.get(
                 DocumentModel,
                 document_id,
-            ) is not None
+            ) is None
 
             forbidden_audits = await session.scalar(
                 select(func.count())
@@ -711,27 +745,10 @@ async def test_delete_document_enforces_agent_scope_audits_and_removes_from_rag(
                 )
             )
 
-        assert forbidden_audits == 0
-
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-        ) as client:
-            deleted = await client.delete(
-                (
-                    f"/api/knowledge-bases/{knowledge_base_id}"
-                    f"/documents/{document_id}"
-                ),
-                headers=owner_headers,
-            )
-
-        assert deleted.status_code == 204
+        assert forbidden_audits == 1
 
         async with session_factory() as session:
-            assert await session.get(
-                DocumentModel,
-                document_id,
-            ) is None
+            assert await session.get(DocumentModel, document_id) is None
 
             chunk_count = await session.scalar(
                 select(func.count())
@@ -769,8 +786,9 @@ async def test_delete_document_enforces_agent_scope_audits_and_removes_from_rag(
         assert audit.outcome == "success"
         assert audit.detail == {
             "tenant_id": "tenant-delete",
-            "agent_id": "agent-owner",
+            "agent_id": "agent-other",
             "knowledge_base_id": knowledge_base_id,
+            "storage_cleanup_keys": [],
         }
 
         serialized_detail = str(audit.detail).lower()

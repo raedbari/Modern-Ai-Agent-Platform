@@ -467,6 +467,7 @@ async def _knowledge_base_responses(
                 name=item.name,
                 description=item.description,
                 status=item.status,
+                classification=item.classification,
                 created_at=item.created_at,
                 updated_at=item.updated_at,
                 assigned_agent_ids=list(
@@ -729,6 +730,11 @@ async def list_admin_documents(
             failure_reason=(
                 document.failure_reason
             ),
+            version_number=document.version_number,
+            version_family_id=document.version_family_id,
+            predecessor_id=document.predecessor_id,
+            superseded_by_id=document.superseded_by_id,
+            created_by=document.created_by,
             created_at=document.created_at,
             updated_at=document.updated_at,
             chunk_count=chunk_counts.get(
@@ -837,6 +843,7 @@ async def create_admin_knowledge_base(
             name=payload.name,
             description=payload.description,
             status=payload.status,
+            classification=payload.classification,
         )
         session.add(knowledge_base)
         await session.flush()
@@ -915,6 +922,8 @@ async def update_admin_knowledge_base(
         knowledge_base.description = payload.description
     if payload.status is not None:
         knowledge_base.status = payload.status
+    if payload.classification is not None:
+        knowledge_base.classification = payload.classification
 
     await session.flush()
     await _audit_mutation(
@@ -1186,14 +1195,23 @@ async def queue_admin_document_replacement(
         knowledge_base_id=knowledge_base_id,
         document_id=document_id,
     )
-    if document.agent_id is None:
-        raise _conflict("Document is not assigned to an agent.")
+    replacement_agent_id = document.agent_id or await session.scalar(
+        select(AgentKnowledgeBase.agent_id)
+        .where(
+            AgentKnowledgeBase.tenant_id == tenant_id,
+            AgentKnowledgeBase.knowledge_base_id == knowledge_base_id,
+        )
+        .order_by(AgentKnowledgeBase.agent_id)
+        .limit(1)
+    )
+    if replacement_agent_id is None:
+        raise _conflict("Knowledge base is not assigned to an agent.")
 
     await _require_assigned_agent(
         session,
         tenant_id=tenant_id,
         knowledge_base_id=knowledge_base_id,
-        agent_id=document.agent_id,
+        agent_id=replacement_agent_id,
     )
     active_job = await IngestionJobService.get_active_for_document(
         session,
@@ -1214,7 +1232,7 @@ async def queue_admin_document_replacement(
         filename=file.filename or "upload",
         mime_type=file.content_type or "application/octet-stream",
         tenant_id=tenant_id,
-        agent_id=document.agent_id,
+        agent_id=replacement_agent_id,
         knowledge_base_id=knowledge_base_id,
         source_name=source_name,
     )
@@ -1228,13 +1246,15 @@ async def queue_admin_document_replacement(
     job_id = str(uuid4())
 
     try:
-        validated = await service.validate_reindex_target(
+        await service.validate_reindex_target(
             document_id=document_id,
             request=ingestion_request,
         )
-        preserved_status = validated.status
-        await session.rollback()
-
+        successor = await service.create_replacement(
+            document_id=document_id,
+            request=ingestion_request,
+            created_by=context.admin_id if context is not None else None,
+        )
         storage_key = await storage.store(
             tenant_id=tenant_id,
             document_id=job_id,
@@ -1245,7 +1265,7 @@ async def queue_admin_document_replacement(
             tenant_id=tenant_id,
             agent_id=ingestion_request.agent_id,
             knowledge_base_id=knowledge_base_id,
-            document_id=document_id,
+            document_id=successor.id,
             storage_key=storage_key,
             max_attempts=settings.ingestion_job_max_attempts,
             source_filename=ingestion_request.filename,
@@ -1260,18 +1280,19 @@ async def queue_admin_document_replacement(
             settings=settings,
             event_type="knowledge_document_replacement_queued",
             target_type="knowledge_document",
-            target_id=document_id,
+            target_id=successor.id,
             detail={
                 "tenant_id": tenant_id,
                 "agent_id": ingestion_request.agent_id,
                 "knowledge_base_id": knowledge_base_id,
                 "job_id": job.id,
+                "predecessor_id": document_id,
             },
         )
         await session.commit()
         return _document_job_response(
-            document_id=document_id,
-            document_status=preserved_status,
+            document_id=successor.id,
+            document_status=successor.status,
             job=job,
         )
     except DomainError as exc:

@@ -145,6 +145,16 @@ class DocumentRepository(ABC):
                             exception traces or infrastructure details.
         """
 
+    async def lock_version_family(
+        self, *, tenant_id: str, knowledge_base_id: str, version_family_id: str
+    ) -> list[Document]:
+        """Lock and return a document version family for atomic activation."""
+        documents = await self.list_by_knowledge_base(knowledge_base_id, tenant_id)
+        return [
+            item for item in documents
+            if (item.version_family_id or item.id) == version_family_id
+        ]
+
 
 # ---------------------------------------------------------------------------
 # ChunkRepository

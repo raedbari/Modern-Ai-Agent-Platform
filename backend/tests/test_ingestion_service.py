@@ -568,7 +568,9 @@ async def test_reindex_keeps_ready_document_active_during_embedding() -> None:
     )
     assert DocumentProcessingStatus.PROCESSING not in documents.statuses
 
-    assert result.document.id == document.id
+    assert result.document.id != document.id
+    assert result.document.predecessor_id == document.id
+    assert document.status == DocumentProcessingStatus.SUPERSEDED
     assert result.document.status == DocumentProcessingStatus.READY
     assert result.document.original_filename == "replacement-policy.txt"
 
@@ -577,8 +579,8 @@ async def test_reindex_keeps_ready_document_active_during_embedding() -> None:
         for record in chunks.records
     }
 
-    assert "chunk-old" not in persisted_ids
-    assert result.chunks_persisted == len(chunks.records) > 0
+    assert "chunk-old" in persisted_ids
+    assert result.chunks_persisted > 0
 
 
 @pytest.mark.asyncio

@@ -158,7 +158,6 @@ def test_postgresql_semantic_query_uses_cosine_and_all_scope_filters() -> None:
         select(ChunkModel, similarity)
         .where(
             ChunkModel.tenant_id == "tenant-a",
-            ChunkModel.agent_id == "agent-a",
             ChunkModel.knowledge_base_id == "kb-a",
             similarity >= 0.5,
         )
@@ -169,7 +168,7 @@ def test_postgresql_semantic_query_uses_cosine_and_all_scope_filters() -> None:
     sql = str(statement.compile(dialect=postgresql.dialect()))
     assert "<=>" in sql
     assert "chunks.tenant_id" in sql
-    assert "chunks.agent_id" in sql
+    assert "chunks.agent_id =" not in sql
     assert "chunks.knowledge_base_id" in sql
     assert "ORDER BY chunks.embedding <=>" in sql
 
@@ -393,3 +392,46 @@ async def test_chunk_repository_rejects_invalid_embedding_dimension(
                 top_k=5,
                 min_similarity=0.5,
             )
+
+
+@pytest.mark.asyncio
+async def test_governance_fields_round_trip_through_sqlalchemy(database) -> None:
+    _, session_factory = database
+    async with session_factory() as session:
+        await _seed_knowledge_scope(
+            session, tenant_id="tenant-g", agent_id="agent-g",
+            knowledge_base_id="kb-g",
+        )
+        kb_repository = SQLAlchemyKnowledgeBaseRepository(session)
+        kb = await kb_repository.get_by_id("kb-g", "tenant-g")
+        assert kb is not None
+        kb.classification = "restricted"
+        await kb_repository.update(kb)
+        documents = SQLAlchemyDocumentRepository(session)
+        v1 = _document(
+            document_id="doc-g-v1", tenant_id="tenant-g",
+            knowledge_base_id="kb-g", agent_id="agent-g", content_hash="c" * 64,
+        )
+        v1.version_family_id = "family-g"
+        v1.created_by = "operator-g"
+        await documents.create(v1)
+        v2 = _document(
+            document_id="doc-g-v2", tenant_id="tenant-g",
+            knowledge_base_id="kb-g", agent_id="agent-g", content_hash="d" * 64,
+        )
+        v2.version_family_id = "family-g"
+        v2.version_number = 4
+        v2.predecessor_id = v1.id
+        await documents.create(v2)
+        v1.version_number = 3
+        v1.superseded_by_id = v2.id
+        await documents.update(v1)
+        await session.commit()
+    async with session_factory() as session:
+        loaded_kb = await SQLAlchemyKnowledgeBaseRepository(session).get_by_id("kb-g", "tenant-g")
+        loaded_v1 = await SQLAlchemyDocumentRepository(session).get_by_id("doc-g-v1", "tenant-g")
+        loaded_v2 = await SQLAlchemyDocumentRepository(session).get_by_id("doc-g-v2", "tenant-g")
+        assert loaded_kb is not None and loaded_kb.classification == "restricted"
+        assert loaded_v1 is not None
+        assert (loaded_v1.version_number, loaded_v1.version_family_id, loaded_v1.superseded_by_id, loaded_v1.created_by) == (3, "family-g", "doc-g-v2", "operator-g")
+        assert loaded_v2 is not None and loaded_v2.predecessor_id == "doc-g-v1"

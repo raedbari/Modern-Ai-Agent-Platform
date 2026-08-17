@@ -749,6 +749,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/knowledge-bases/{knowledge_base_id}/documents/{document_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Document */
+        post: operations["archive_document_api_knowledge_bases__knowledge_base_id__documents__document_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/knowledge-bases/{knowledge_base_id}/documents/{document_id}/reindex": {
         parameters: {
             query?: never;
@@ -1156,6 +1173,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Created By */
+            created_by: null | string;
             /** Failure Reason */
             failure_reason: null | string;
             /** File Size Bytes */
@@ -1169,13 +1188,17 @@ export interface components {
             mime_type: string;
             /** Original Filename */
             original_filename: string;
+            /** Predecessor Id */
+            predecessor_id: null | string;
             /** Source Name */
             source_name: string;
             /**
              * Status
              * @enum {string}
              */
-            status: "pending" | "processing" | "ready" | "failed";
+            status: "pending" | "processing" | "ready" | "failed" | "superseded" | "archived";
+            /** Superseded By Id */
+            superseded_by_id: null | string;
             /** Tenant Id */
             tenant_id: string;
             /**
@@ -1183,6 +1206,10 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Version Family Id */
+            version_family_id: string;
+            /** Version Number */
+            version_number: number;
         };
         /** DocumentIngestionResponse */
         DocumentIngestionResponse: {
@@ -1193,6 +1220,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Created By */
+            created_by: null | string;
             /** Duplicate */
             duplicate: boolean;
             /** Failure Reason */
@@ -1207,14 +1236,22 @@ export interface components {
             mime_type: string;
             /** Original Filename */
             original_filename: string;
+            /** Predecessor Id */
+            predecessor_id: null | string;
             /** Source Name */
             source_name: string;
             status: components["schemas"]["DocumentProcessingStatus"];
+            /** Superseded By Id */
+            superseded_by_id: null | string;
             /**
              * Updated At
              * Format: date-time
              */
             updated_at: string;
+            /** Version Family Id */
+            version_family_id: string;
+            /** Version Number */
+            version_number: number;
         };
         /**
          * DocumentJobAdminResponse
@@ -1227,7 +1264,7 @@ export interface components {
              * Document Status
              * @enum {string}
              */
-            document_status: "pending" | "processing" | "ready" | "failed";
+            document_status: "pending" | "processing" | "ready" | "failed" | "superseded" | "archived";
             /**
              * Duplicate
              * @default false
@@ -1290,6 +1327,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Created By */
+            created_by: null | string;
             /** Failure Reason */
             failure_reason: null | string;
             /** File Size Bytes */
@@ -1302,14 +1341,22 @@ export interface components {
             mime_type: string;
             /** Original Filename */
             original_filename: string;
+            /** Predecessor Id */
+            predecessor_id: null | string;
             /** Source Name */
             source_name: string;
             status: components["schemas"]["DocumentProcessingStatus"];
+            /** Superseded By Id */
+            superseded_by_id: null | string;
             /**
              * Updated At
              * Format: date-time
              */
             updated_at: string;
+            /** Version Family Id */
+            version_family_id: string;
+            /** Version Number */
+            version_number: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1383,6 +1430,12 @@ export interface components {
             /** Assigned Agent Ids */
             assigned_agent_ids?: string[];
             /**
+             * Classification
+             * @default internal
+             * @enum {string}
+             */
+            classification: "public" | "internal" | "restricted";
+            /**
              * Description
              * @default
              */
@@ -1405,6 +1458,11 @@ export interface components {
             assigned_agent_ids?: string[];
             /** Chunk Count */
             chunk_count: number;
+            /**
+             * Classification
+             * @enum {string}
+             */
+            classification: "public" | "internal" | "restricted";
             /**
              * Created At
              * Format: date-time
@@ -1450,6 +1508,8 @@ export interface components {
          * @description Update mutable knowledge-base fields.
          */
         KnowledgeBaseAdminUpdate: {
+            /** Classification */
+            classification?: ("public" | "internal" | "restricted") | null;
             /** Description */
             description?: string | null;
             /** Name */
@@ -1471,6 +1531,12 @@ export interface components {
          */
         KnowledgeBaseCreate: {
             /**
+             * Classification
+             * @default internal
+             * @enum {string}
+             */
+            classification: "public" | "internal" | "restricted";
+            /**
              * Description
              * @default
              */
@@ -1480,6 +1546,11 @@ export interface components {
         };
         /** KnowledgeBaseResponse */
         KnowledgeBaseResponse: {
+            /**
+             * Classification
+             * @enum {string}
+             */
+            classification: "public" | "internal" | "restricted";
             /** Description */
             description: string;
             /** Id */
@@ -1502,6 +1573,8 @@ export interface components {
          * @description Mutable knowledge-base fields.
          */
         KnowledgeBaseUpdate: {
+            /** Classification */
+            classification?: ("public" | "internal" | "restricted") | null;
             /** Description */
             description?: string | null;
             /** Name */
@@ -3648,6 +3721,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_document_api_knowledge_bases__knowledge_base_id__documents__document_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Agent selected for the knowledge operation. */
+                "X-Agent-ID"?: null | string;
+            };
+            path: {
+                knowledge_base_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
