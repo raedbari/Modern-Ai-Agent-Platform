@@ -227,6 +227,21 @@ function MessageBubble({ message }: { message: ConversationMessageRecord }) {
       <p dir="auto" className={styles.bubbleContent}>
         {message.content}
       </p>
+      {message.metadata ? (
+        <div className={styles.bubbleContent}>
+          {typeof message.metadata.answer_status === "string" ? (
+            <small>حالة الإجابة: {message.metadata.answer_status}</small>
+          ) : null}
+          {Array.isArray(message.metadata.sources) ? message.metadata.sources.map((source, index) => {
+            if (!source || typeof source !== "object") return null;
+            const record = source as Record<string, unknown>;
+            const citation = typeof record.citation_id === "string" ? record.citation_id : `S${index + 1}`;
+            const sourceName = typeof record.source_name === "string" ? record.source_name : "مصدر";
+            const page = typeof record.page_number === "number" ? ` — صفحة ${record.page_number}` : "";
+            return <small key={`${citation}-${index}`}>[{citation}] {sourceName}{page}</small>;
+          }) : null}
+        </div>
+      ) : null}
     </article>
   );
 }

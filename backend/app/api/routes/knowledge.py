@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.api.dependencies import (
     get_embedding_provider,
     require_knowledge_context,
+    require_knowledge_management_context,
 )
 from backend.app.api.schemas.knowledge import (
     DocumentIngestionResponse,
@@ -293,7 +294,7 @@ async def create_knowledge_base(
     payload: KnowledgeBaseCreate,
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_knowledge_context),
+        Depends(require_knowledge_management_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> KnowledgeBaseResponse:
@@ -359,7 +360,7 @@ async def update_knowledge_base(
     payload: KnowledgeBaseUpdate,
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_knowledge_context),
+        Depends(require_knowledge_management_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> KnowledgeBaseResponse:
@@ -395,7 +396,7 @@ async def delete_knowledge_base(
     knowledge_base_id: str,
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_knowledge_context),
+        Depends(require_knowledge_management_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -478,7 +479,7 @@ async def upload_document(
     file: Annotated[UploadFile, File()],
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_knowledge_context),
+        Depends(require_knowledge_management_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
     runtime: Annotated[
@@ -590,7 +591,7 @@ async def queue_document(
     file: Annotated[UploadFile, File()],
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_knowledge_context),
+        Depends(require_knowledge_management_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
     runtime: Annotated[
@@ -747,7 +748,7 @@ async def delete_document(
     document_id: str,
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_knowledge_context),
+        Depends(require_knowledge_management_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -835,7 +836,10 @@ async def delete_document(
 async def archive_document(
     knowledge_base_id: str,
     document_id: str,
-    context: Annotated[ChatExecutionContext, Depends(require_knowledge_context)],
+    context: Annotated[
+        ChatExecutionContext,
+        Depends(require_knowledge_management_context),
+    ],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> DocumentResponse:
     await _require_assigned_knowledge_base(
@@ -870,7 +874,7 @@ async def reindex_document(
     file: Annotated[UploadFile, File()],
     context: Annotated[
         ChatExecutionContext,
-        Depends(require_knowledge_context),
+        Depends(require_knowledge_management_context),
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
     runtime: Annotated[

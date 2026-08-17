@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import (
 
 from backend.app.ai.contracts import GenerationResult
 from backend.app.api.dependencies import get_core_ai_runtime
+from backend.app.api.dependencies import require_tenant_user_jwt
+from backend.app.auth.tenant_context import TenantUserContext
 from backend.app.auth.widget_jwt import (
     create_widget_token,
     decode_widget_token,
@@ -44,6 +46,20 @@ from backend.app.operations.widget_pairing import pairing_code_digest
 _WIDGET_ID = "wgt_customer_widget_identifier_1234"
 _ORIGIN = "https://customer.example"
 _WIDGET_SECRET = "widget-api-test-secret-key-with-at-least-32-bytes!"
+
+
+def _tenant_context(tenant_id: str = "tenant-a") -> TenantUserContext:
+    return TenantUserContext(
+        user_id="user-a",
+        email="owner@example.test",
+        display_name="Owner",
+        tenant_id=tenant_id,
+        membership_id="membership-a",
+        role="tenant_owner",
+        auth_method="jwt",
+        session_family_id="family-a",
+        jti="jti-a",
+    )
 
 
 class AllowingLimiter:
@@ -324,6 +340,108 @@ async def test_bootstrap_hides_disabled_resource_state(
                 headers={"Origin": _ORIGIN},
             )
         assert response.status_code == 404
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_customer_preview_allows_disabled_widget_without_public_exposure(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, settings = await _open_widget_app(
+        tmp_path / "customer-preview.sqlite3"
+    )
+    await _seed_widget(sessions, widget_enabled=False)
+    app.dependency_overrides[require_tenant_user_jwt] = _tenant_context
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            public = await client.post(
+                "/api/widget/bootstrap",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": _ORIGIN},
+            )
+            preview = await client.post(
+                "/api/customer/agents/agent-a/widget-settings/preview/bootstrap",
+                headers={"Origin": _ORIGIN},
+            )
+            assert public.status_code == 404
+            assert preview.status_code == 200, preview.text
+            token = preview.json()["session_token"]
+            assert decode_widget_token(token, settings).token_type == "widget_preview_session"
+
+            chat = await client.post(
+                "/api/chat",
+                json={"message": "Hello"},
+                headers={"Authorization": f"Bearer {token}", "Origin": _ORIGIN},
+            )
+            mismatch = await client.post(
+                "/api/chat",
+                json={"message": "Hello"},
+                headers={"Authorization": f"Bearer {token}", "Origin": "https://attacker.example"},
+            )
+
+        assert chat.status_code == 200, chat.text
+        assert mismatch.status_code == 403
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_customer_preview_and_pairing_hide_cross_tenant_resources(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path / "customer-widget-cross-tenant.sqlite3"
+    )
+    await _seed_widget(sessions)
+    app.dependency_overrides[require_tenant_user_jwt] = lambda: _tenant_context("tenant-b")
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            preview = await client.post(
+                "/api/customer/agents/agent-a/widget-settings/preview/bootstrap",
+                headers={"Origin": _ORIGIN},
+            )
+            pairing = await client.post(
+                "/api/customer/agents/agent-a/widget-settings/pairings",
+                json={"origin": _ORIGIN, "connector_type": "custom"},
+            )
+        assert preview.status_code == 404
+        assert pairing.status_code == 404
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_customer_pairing_uses_existing_digest_only_service(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path / "customer-pairing.sqlite3"
+    )
+    await _seed_widget(sessions)
+    app.dependency_overrides[require_tenant_user_jwt] = _tenant_context
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/api/customer/agents/agent-a/widget-settings/pairings",
+                json={"origin": _ORIGIN, "connector_type": "custom"},
+            )
+        assert response.status_code == 201, response.text
+        pairing_code = response.json()["pairing_code"]
+        assert response.json()["expires_in"] == 600
+        async with sessions() as session:
+            pairing = await session.scalar(
+                select(WidgetConnectorPairing).where(
+                    WidgetConnectorPairing.id == response.json()["pairing_id"]
+                )
+            )
+            assert pairing is not None
+            assert pairing.code_digest == pairing_code_digest(pairing_code)
+            assert pairing_code not in pairing.code_digest
+            assert pairing.created_by_admin_id is None
     finally:
         await engine.dispose()
 

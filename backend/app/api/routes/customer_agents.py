@@ -207,11 +207,11 @@ async def update_agent(
     updates = {}
     if request.name is not None:
         updates["name"] = request.name
-    if request.system_prompt is not None:
+    if "system_prompt" in request.model_fields_set:
         updates["system_prompt"] = request.system_prompt
     if request.knowledge_mode is not None:
         updates["knowledge_mode"] = request.knowledge_mode
-    if request.contact_message is not None:
+    if "contact_message" in request.model_fields_set:
         updates["contact_message"] = request.contact_message
 
     agent = await repo.update(agent_id, context.tenant_id, updates)

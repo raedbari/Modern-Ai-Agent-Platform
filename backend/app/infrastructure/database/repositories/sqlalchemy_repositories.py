@@ -685,6 +685,63 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
         )
         return [_knowledge_base_to_domain(row) for row in rows]
 
+    async def list_by_tenant(self, tenant_id: str) -> list[KnowledgeBase]:
+        """Return every knowledge base owned by one authenticated tenant."""
+
+        rows = list(
+            (
+                await self._session.scalars(
+                    select(KnowledgeBaseModel)
+                    .where(KnowledgeBaseModel.tenant_id == tenant_id)
+                    .order_by(KnowledgeBaseModel.name, KnowledgeBaseModel.id)
+                )
+            ).all()
+        )
+        return [_knowledge_base_to_domain(row) for row in rows]
+
+    async def assign_to_agent(
+        self,
+        *,
+        knowledge_base_id: str,
+        agent_id: str,
+        tenant_id: str,
+    ) -> bool:
+        """Idempotently assign a tenant-owned knowledge base to an active agent."""
+
+        knowledge_base = await self._session.scalar(
+            select(KnowledgeBaseModel.id).where(
+                KnowledgeBaseModel.id == knowledge_base_id,
+                KnowledgeBaseModel.tenant_id == tenant_id,
+            )
+        )
+        agent = await self._session.scalar(
+            select(Agent.id).where(
+                Agent.id == agent_id,
+                Agent.tenant_id == tenant_id,
+                Agent.is_active.is_(True),
+            )
+        )
+        if knowledge_base is None or agent is None:
+            return False
+
+        existing = await self._session.scalar(
+            select(AgentKnowledgeBase.knowledge_base_id).where(
+                AgentKnowledgeBase.tenant_id == tenant_id,
+                AgentKnowledgeBase.agent_id == agent_id,
+                AgentKnowledgeBase.knowledge_base_id == knowledge_base_id,
+            )
+        )
+        if existing is None:
+            self._session.add(
+                AgentKnowledgeBase(
+                    tenant_id=tenant_id,
+                    agent_id=agent_id,
+                    knowledge_base_id=knowledge_base_id,
+                )
+            )
+            await self._session.flush()
+        return True
+
     async def exists_for_tenant(
         self,
         knowledge_base_id: str,
