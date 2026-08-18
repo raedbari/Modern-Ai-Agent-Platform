@@ -186,6 +186,51 @@ class AdminAuditLog(Base):
     detail: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
+class EvaluationRunRecord(Base):
+    """Durable administrative record of one evaluation execution."""
+
+    __tablename__ = "evaluation_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'completed', 'failed')",
+            name="ck_evaluation_runs_status",
+        ),
+        Index("ix_evaluation_runs_started_at", "started_at"),
+        Index("ix_evaluation_runs_tenant_agent", "tenant_id", "agent_id"),
+    )
+
+    run_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    created_by_admin_id: Mapped[str | None] = mapped_column(
+        String(128),
+        ForeignKey("admin_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    configuration_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON,
+        nullable=False,
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    results_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    summary_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON,
+        nullable=False,
+    )
+    failure_reason: Mapped[str | None] = mapped_column(Text)
+
+
 class User(Base):
     """A customer human identity account."""
 

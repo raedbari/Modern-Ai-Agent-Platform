@@ -177,6 +177,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/evaluation/datasets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Datasets */
+        get: operations["get_datasets_api_admin_evaluation_datasets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/evaluation/datasets/{name}/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset */
+        get: operations["get_dataset_api_admin_evaluation_datasets__name___version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/evaluation/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Runs */
+        get: operations["get_runs_api_admin_evaluation_runs_get"];
+        put?: never;
+        /** Start Evaluation Run */
+        post: operations["start_evaluation_run_api_admin_evaluation_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/evaluation/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_admin_evaluation_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/tenant-applications": {
         parameters: {
             query?: never;
@@ -1028,7 +1097,10 @@ export interface components {
         Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post: {
             /** Agent Id */
             agent_id: string;
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1038,7 +1110,10 @@ export interface components {
         };
         /** Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post */
         Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1048,7 +1123,10 @@ export interface components {
         };
         /** Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post */
         Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1058,7 +1136,10 @@ export interface components {
         };
         /** Body_reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post */
         Body_reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1068,7 +1149,10 @@ export interface components {
         };
         /** Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post */
         Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1357,6 +1441,268 @@ export interface components {
             version_family_id: string;
             /** Version Number */
             version_number: number;
+        };
+        /**
+         * EvaluationCase
+         * @description One independent evaluation scenario.
+         */
+        EvaluationCase: {
+            /** Agent Id */
+            agent_id: string;
+            /** Case Id */
+            case_id: string;
+            /**
+             * Category
+             * @default general
+             */
+            category: string;
+            /** Dialect */
+            dialect?: null | string;
+            /**
+             * Difficulty
+             * @default medium
+             * @enum {string}
+             */
+            difficulty: "easy" | "medium" | "hard";
+            expectations?: components["schemas"]["EvaluationExpectations"];
+            /** Language */
+            language?: ("ar" | "en" | "de") | null;
+            /** Tags */
+            tags?: string[];
+            /** Tenant Id */
+            tenant_id: string;
+            /** User Input */
+            user_input: string;
+        };
+        /**
+         * EvaluationCaseResult
+         * @description Normalized result of executing one evaluation case.
+         */
+        EvaluationCaseResult: {
+            /** Agent Id */
+            agent_id: string;
+            /** Answer Status */
+            answer_status?: null | string;
+            /** Case Id */
+            case_id: string;
+            checks: components["schemas"]["EvaluationChecks"];
+            /**
+             * Completion Tokens
+             * @default 0
+             */
+            completion_tokens: number;
+            /** Error Code */
+            error_code?: ("generation_failed" | "pipeline_failed") | null;
+            /** Finish Reason */
+            finish_reason?: null | string;
+            /** Knowledge Version */
+            knowledge_version?: null | string;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Model */
+            model?: null | string;
+            /** Model Provider */
+            model_provider?: null | string;
+            /**
+             * Prompt Tokens
+             * @default 0
+             */
+            prompt_tokens: number;
+            /** Prompt Version */
+            prompt_version?: null | string;
+            rag_metrics?: components["schemas"]["RAGMetrics"] | null;
+            /** Response Content */
+            response_content?: null | string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "passed" | "failed" | "error";
+            /** Tenant Id */
+            tenant_id: string;
+        };
+        /**
+         * EvaluationChecks
+         * @description Deterministic checks performed against one generated response.
+         */
+        EvaluationChecks: {
+            /** Expected Facts Present */
+            expected_facts_present?: boolean | null;
+            /** Forbidden Claims Absent */
+            forbidden_claims_absent?: boolean | null;
+            /**
+             * Forbidden Substrings Absent
+             * @default true
+             */
+            forbidden_substrings_absent: boolean;
+            /** Language Matches */
+            language_matches?: boolean | null;
+            /** Latency Within Limit */
+            latency_within_limit?: boolean | null;
+            /**
+             * Required Substrings Present
+             * @default true
+             */
+            required_substrings_present: boolean;
+        };
+        /**
+         * EvaluationDataset
+         * @description Metadata and records for one immutable dataset version.
+         */
+        EvaluationDataset: {
+            /** Classification */
+            classification: string;
+            /** Domain */
+            domain: string;
+            /** Name */
+            name: string;
+            /** Owner */
+            owner: string;
+            /** Records */
+            records: components["schemas"]["EvaluationCase"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "active" | "retired";
+            /** Version */
+            version: string;
+        };
+        /** EvaluationDatasetSummaryResponse */
+        EvaluationDatasetSummaryResponse: {
+            /** Case Count */
+            case_count: number;
+            /** Classification */
+            classification: string;
+            /** Domain */
+            domain: string;
+            /** Name */
+            name: string;
+            /** Owner */
+            owner: string;
+            /** Status */
+            status: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * EvaluationExpectations
+         * @description Conditions used later to evaluate a generated response.
+         */
+        EvaluationExpectations: {
+            /** Allowed Variations */
+            allowed_variations?: string[];
+            /** Answerable */
+            answerable?: boolean | null;
+            /** Expected Answer */
+            expected_answer?: null | string;
+            /** Expected Facts */
+            expected_facts?: string[];
+            /** Expected Language */
+            expected_language?: ("ar" | "en" | "de") | null;
+            /** Expected Source Ids */
+            expected_source_ids?: string[];
+            /** Forbidden Claims */
+            forbidden_claims?: string[];
+            /** Forbidden Substrings */
+            forbidden_substrings?: string[];
+            /** Max Latency Ms */
+            max_latency_ms?: number | null;
+            /** Required Substrings */
+            required_substrings?: string[];
+        };
+        /**
+         * EvaluationRunConfiguration
+         * @description Versions required to reproduce an evaluation run.
+         */
+        EvaluationRunConfiguration: {
+            /** Agent Version */
+            agent_version: string;
+            /** Dataset Name */
+            dataset_name: string;
+            /** Dataset Version */
+            dataset_version: string;
+            /** Knowledge Version */
+            knowledge_version?: null | string;
+            /** Model Name */
+            model_name: string;
+            /** Model Provider */
+            model_provider: string;
+            /** Prompt Version */
+            prompt_version: string;
+        };
+        /** EvaluationRunCreateRequest */
+        EvaluationRunCreateRequest: {
+            /** Agent Id */
+            agent_id: string;
+            /** Dataset Name */
+            dataset_name: string;
+            /** Dataset Version */
+            dataset_version: string;
+            /** Tenant Id */
+            tenant_id: string;
+        };
+        /** EvaluationRunResponse */
+        EvaluationRunResponse: {
+            /** Agent Id */
+            agent_id: string;
+            /** Completed At */
+            completed_at?: string | null;
+            configuration: components["schemas"]["EvaluationRunConfiguration"];
+            /** Failure Reason */
+            failure_reason?: null | string;
+            /** Results */
+            results: components["schemas"]["EvaluationCaseResult"][];
+            /** Run Id */
+            run_id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "completed" | "failed";
+            summary: components["schemas"]["EvaluationSummary"];
+            /** Tenant Id */
+            tenant_id: string;
+        };
+        /**
+         * EvaluationSummary
+         * @description Aggregated metrics for one evaluation run.
+         */
+        EvaluationSummary: {
+            /** Average Latency Ms */
+            average_latency_ms: number;
+            /** Citation Accuracy Rate Percent */
+            citation_accuracy_rate_percent?: number | null;
+            /** Correct Refusal Rate Percent */
+            correct_refusal_rate_percent?: number | null;
+            /** Error Cases */
+            error_cases: number;
+            /** Expected Source Rate Percent */
+            expected_source_rate_percent?: number | null;
+            /** Failed Cases */
+            failed_cases: number;
+            /**
+             * Failure Rate Percent
+             * @default 0
+             */
+            failure_rate_percent: number;
+            /** Pass Rate Percent */
+            pass_rate_percent: number;
+            /** Passed Cases */
+            passed_cases: number;
+            /** Retrieval Hit Rate Percent */
+            retrieval_hit_rate_percent?: number | null;
+            /** Total Cases */
+            total_cases: number;
+            /** Total Completion Tokens */
+            total_completion_tokens: number;
+            /** Total Prompt Tokens */
+            total_prompt_tokens: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1674,6 +2020,98 @@ export interface components {
             tenant_id: string;
         };
         /**
+         * RAGMetrics
+         * @description RAG-specific metrics for retrieval quality (Sprint 1).
+         */
+        RAGMetrics: {
+            /** Answer Status */
+            answer_status?: ("grounded" | "generated" | "insufficient_knowledge" | "temporarily_unavailable" | "answered" | "no_results" | "insufficient_evidence" | "refused" | "error") | null;
+            /** Citation Accuracy */
+            citation_accuracy?: boolean | null;
+            /**
+             * Citation Count
+             * @default 0
+             */
+            citation_count: number;
+            /**
+             * Citation Status
+             * @default not_measured
+             * @enum {string}
+             */
+            citation_status: "measured" | "not_measured";
+            /** Cited Source Ids */
+            cited_source_ids?: string[];
+            /** Correct Refusal */
+            correct_refusal?: boolean | null;
+            /** Correctly Cited Expected Source Ids */
+            correctly_cited_expected_source_ids?: string[];
+            /** Estimated Cost */
+            estimated_cost?: number | null;
+            /**
+             * Estimated Cost Status
+             * @default not_measured
+             * @enum {string}
+             */
+            estimated_cost_status: "measured" | "not_measured";
+            /** Expected Source Position */
+            expected_source_position?: number | null;
+            /**
+             * Failure
+             * @default false
+             */
+            failure: boolean;
+            /** Groundedness */
+            groundedness?: boolean | null;
+            /**
+             * Groundedness Status
+             * @default not_measured
+             * @enum {string}
+             */
+            groundedness_status: "measured" | "not_measured";
+            /**
+             * Has Citations
+             * @default false
+             */
+            has_citations: boolean;
+            /** Invalid Citation Ids */
+            invalid_citation_ids?: string[];
+            /** Rerank Count */
+            rerank_count?: number | null;
+            /** Rerank Position Change */
+            rerank_position_change?: number | null;
+            /**
+             * Rerank Status
+             * @default not_measured
+             * @enum {string}
+             */
+            rerank_status: "measured" | "not_measured";
+            /**
+             * Retrieval Count
+             * @default 0
+             */
+            retrieval_count: number;
+            /** Retrieval Hit */
+            retrieval_hit?: boolean | null;
+            /**
+             * Retrieval Status
+             * @default not_measured
+             * @enum {string}
+             */
+            retrieval_status: "measured" | "not_measured";
+            /** Supplied Source Ids */
+            supplied_source_ids?: string[];
+            /**
+             * Token Usage Status
+             * @default measured
+             * @enum {string}
+             */
+            token_usage_status: "measured" | "not_measured";
+            /** Top K Source Presence */
+            top_k_source_presence?: boolean | null;
+            /** Top Similarity Score */
+            top_similarity_score?: number | null;
+        };
+        /**
          * ReadinessResponse
          * @description Public readiness result without infrastructure details.
          */
@@ -1797,10 +2235,6 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (number | string)[];
             /** Message */
@@ -2218,6 +2652,153 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_datasets_api_admin_evaluation_datasets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDatasetSummaryResponse"][];
+                };
+            };
+        };
+    };
+    get_dataset_api_admin_evaluation_datasets__name___version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDataset"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runs_api_admin_evaluation_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationRunResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_evaluation_run_api_admin_evaluation_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationRunCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_admin_evaluation_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationRunResponse"];
                 };
             };
             /** @description Validation Error */

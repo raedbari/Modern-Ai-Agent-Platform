@@ -25,6 +25,7 @@ import {
   CircleAlert,
   ClipboardList,
   Database,
+  FlaskConical,
   KeyRound,
   LayoutDashboard,
   LoaderCircle,
@@ -73,6 +74,7 @@ const copy = {
     "\u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0627\u062a",
   widgetSettings:
     "\u0625\u0639\u062f\u0627\u062f\u0627\u062a \u0627\u0644\u0648\u064a\u062f\u062c\u062a",
+  evaluation: "التقييم",
   apiKeys:
     "\u0645\u0641\u0627\u062a\u064a\u062d API",
   adminUsers:
@@ -149,6 +151,11 @@ const platformNavigation: NavigationItem[] = [
     label: copy.conversations,
     href: "/dashboard/conversations",
     icon: MessageSquareText,
+  },
+  {
+    label: copy.evaluation,
+    href: "/dashboard/evaluation",
+    icon: FlaskConical,
   },
   {
     label: copy.widgetSettings,
