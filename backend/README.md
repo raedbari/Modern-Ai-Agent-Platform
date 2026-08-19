@@ -79,35 +79,32 @@ Interactive API documentation is available at
 ## Reproducible local stack on Windows
 
 The repository includes a local-first Compose stack that keeps PostgreSQL
-private, applies Alembic migrations before the API starts, and connects the API
-and ingestion-worker containers to Ollama running on Windows through
-`host.docker.internal`. Original uploads are retained in a private named
-volume, while the durable ingestion queue is stored in PostgreSQL.
+private and applies Alembic migrations before the API starts. DeepSeek handles
+generation, while Voyage handles embeddings and reranking. Original uploads
+are retained in a private named volume, while the durable ingestion queue is
+stored in PostgreSQL.
 
 Prerequisites:
 
 - Docker Desktop is running.
-- Ollama is running on `127.0.0.1:11434`.
-- `qwen3-embedding:0.6b` is installed.
+- DeepSeek and Voyage API keys are available.
 
-Configure the local Ollama server once per Windows user. This limits Ollama to
-one loaded model and one parallel request, restarts the server, and verifies a
-GPU-safe embedding request using a 1K context and execution batch 64:
+Create the local environment files and replace the provider placeholders with
+real keys. Keep both files uncommitted:
 
 ```powershell
-.\scripts\configure-ollama.ps1
+Copy-Item .env.compose.example .env.compose
+Copy-Item backend\.env.example backend\.env
 ```
 
 Start the stack from PowerShell:
 
 ```powershell
-.\scripts\local-up.ps1 -Build
+docker compose --env-file .env.compose -f compose.local.yaml up -d --build
 ```
 
-The script creates a Git-ignored `.env.compose` with a random database
-password when one does not exist. It also copies `backend/.env.example` to the
-Git-ignored `backend/.env` on first use. Add the real
-`MAAP_DEEPSEEK_API_KEY` to `backend/.env` before testing live generation.
+Set `MAAP_DEEPSEEK_API_KEY` and `MAAP_VOYAGE_API_KEY` in `.env.compose`.
+For a direct, non-Compose backend run, set the same keys in `backend/.env`.
 
 Create the first tenant, agent, and server-side API key:
 
@@ -163,7 +160,7 @@ Available operations:
 Document upload and reindex requests use `multipart/form-data` with a required
 `file` field and an optional `source_name`. Reindexing requires the source file
 again. The synchronous `documents` upload remains a legacy/admin endpoint and
-may return a safe provider error when Ollama is unavailable.
+may return a safe provider error when Voyage is unavailable.
 
 For customer-facing operation, use `document-jobs`. It returns `202`, stores
 the original source in the shared uploads volume, and lets the separate worker
