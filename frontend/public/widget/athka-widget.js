@@ -36,6 +36,11 @@
     "https://api.athkachatbots.com"
   ).replace(/\/+$/, "");
 
+  const pairingCode =
+    script.dataset.pairingCode
+      ?.trim()
+      .toUpperCase() || null;
+
   const instanceId =
     `athka-widget-${widgetId}`;
 
@@ -1018,15 +1023,8 @@
       "??? ????";
   }
 
-  async function refreshPublicConfig() {
-    if (
-      document.visibilityState === "hidden"
-    ) {
-      return;
-    }
-
-    try {
-      const response = await fetch(
+  async function loadPublicConfig() {
+    const response = await fetch(
         `${apiBase}/api/widget/config`,
         {
           method: "POST",
@@ -1040,30 +1038,50 @@
             widget_id: widgetId,
           }),
         },
-      );
+    );
 
-      if (response.status === 403) {
+    if (!response.ok) {
+      const error = new Error(
+        await readError(response),
+      );
+      error.status = response.status;
+      throw error;
+    }
+
+    const configProof = response.headers.get(
+      "X-Widget-Config-Proof",
+    );
+    if (!configProof) {
+      throw new Error(
+        "Public config returned no installation proof.",
+      );
+    }
+
+    const widget = await response.json();
+    applyWidgetConfig(widget);
+    return {
+      widget,
+      configProof,
+    };
+  }
+
+  async function refreshPublicConfig() {
+    if (
+      document.visibilityState === "hidden"
+    ) {
+      return;
+    }
+
+    try {
+      await loadPublicConfig();
+    } catch (error) {
+      if (error?.status === 403) {
         disableWidgetRuntime();
         stopConfigRefresh();
-        return;
-      }
-
-      if (response.status === 404) {
+      } else if (error?.status === 404) {
         disableWidgetRuntime();
-        return;
       }
 
-      if (!response.ok) {
-        throw new Error(
-          await readError(response),
-        );
-      }
-
-      const widget =
-        await response.json();
-
-      applyWidgetConfig(widget);
-    } catch (error) {
       const debug =
         script.dataset.debug === "true";
 
@@ -1182,6 +1200,48 @@
       });
 
     return bootstrapPromise;
+  }
+
+  async function verifyInstallation(
+    token,
+    configProof,
+  ) {
+    if (!pairingCode) {
+      return;
+    }
+
+    const response = await fetch(
+      `${apiBase}/api/widget/connector/verify-installation`,
+      {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "X-Widget-Config-Proof": configProof,
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          pairing_code: pairingCode,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Installation verification failed: ${await readError(response)}`,
+      );
+    }
+  }
+
+  async function initialize() {
+    const { configProof } =
+      await loadPublicConfig();
+    const token = await bootstrap();
+    await verifyInstallation(
+      token,
+      configProof,
+    );
   }
 
   async function sendRequest(
@@ -1374,5 +1434,10 @@
     },
   );
 
-  void bootstrap();
+  void initialize().catch((error) => {
+    console.error(
+      "[Athkachatbots] Widget installation failed.",
+      error,
+    );
+  });
 })();

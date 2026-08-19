@@ -29,7 +29,11 @@ class WidgetTokenContext:
     origin: str
     session_id: str
     jti: str
-    token_type: Literal["widget_session", "widget_preview_session"]
+    token_type: Literal[
+        "widget_session",
+        "widget_preview_session",
+        "widget_config_proof",
+    ]
 
 
 def _secret(settings: Settings) -> str:
@@ -49,6 +53,7 @@ def create_widget_token(
     token_type: Literal[
         "widget_session",
         "widget_preview_session",
+        "widget_config_proof",
     ] = "widget_session",
 ) -> str:
     normalized_origin = normalize_origin(origin)
@@ -108,7 +113,11 @@ def decode_widget_token(
         raise WidgetTokenError("Widget token is invalid or expired.") from exc
 
     token_type = payload.get("token_type")
-    if token_type not in {"widget_session", "widget_preview_session"}:
+    if token_type not in {
+        "widget_session",
+        "widget_preview_session",
+        "widget_config_proof",
+    }:
         raise WidgetTokenError("Widget token type is invalid.")
 
     string_claims = {

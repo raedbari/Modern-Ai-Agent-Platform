@@ -1097,7 +1097,10 @@ export interface components {
         Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post: {
             /** Agent Id */
             agent_id: string;
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1107,7 +1110,10 @@ export interface components {
         };
         /** Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post */
         Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1117,7 +1123,10 @@ export interface components {
         };
         /** Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post */
         Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1127,7 +1136,10 @@ export interface components {
         };
         /** Body_reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post */
         Body_reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1137,7 +1149,10 @@ export interface components {
         };
         /** Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post */
         Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -2220,10 +2235,6 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (number | string)[];
             /** Message */

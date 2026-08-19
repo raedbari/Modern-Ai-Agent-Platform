@@ -6,6 +6,17 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 type Agent = { id: string; name: string; system_prompt: string | null; knowledge_mode: "required" | "preferred" | "disabled"; contact_message: string | null };
 type Source = { citation_id: string; source_name: string; page_number: number };
 type Widget = { public_widget_id: string; is_enabled: boolean; display_name: string | null; greeting: string | null; primary_color: string; text_color: string; launcher_color: string; header_color: string; user_message_color: string; position: "left" | "right"; appearance: "light" | "dark"; allowed_origins: string[] };
+type PairingResult = { pairing_id: string; pairing_code: string; origin: string; expires_at: string; expires_in: number };
+type InstallationState = {
+  pairing_id: string | null;
+  status: "pending" | "verified" | "expired" | "failed" | "retry";
+  origin: string | null;
+  expires_at: string | null;
+  connected_at: string | null;
+  error_code: string | null;
+  detail: string;
+  checks: { script_loaded: boolean; origin_valid: boolean; public_config_loaded: boolean; bootstrap_succeeded: boolean };
+};
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 const WIDGET_SCRIPT = process.env.NEXT_PUBLIC_WIDGET_URL ?? "https://cdn.travel-x.online/widget/v1.js";
@@ -13,7 +24,8 @@ const WIDGET_SCRIPT = process.env.NEXT_PUBLIC_WIDGET_URL ?? "https://cdn.travel-
 export function ChatbotEditor({ agentId }: { agentId: string }) {
   const [agent, setAgent] = useState<Agent | null>(null); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
   const [message, setMessage] = useState(""); const [reply, setReply] = useState(""); const [answerStatus, setAnswerStatus] = useState(""); const [sources, setSources] = useState<Source[]>([]); const conversation = useRef<string | undefined>(undefined);
-  const [widget, setWidget] = useState<Widget | null>(null); const [origins, setOrigins] = useState(""); const [previewToken, setPreviewToken] = useState(""); const [previewMessage, setPreviewMessage] = useState(""); const [previewReply, setPreviewReply] = useState(""); const [pairing, setPairing] = useState("");
+  const [widget, setWidget] = useState<Widget | null>(null); const [origins, setOrigins] = useState(""); const [previewToken, setPreviewToken] = useState(""); const [previewMessage, setPreviewMessage] = useState(""); const [previewReply, setPreviewReply] = useState("");
+  const [installationOrigin, setInstallationOrigin] = useState(""); const [pairingResult, setPairingResult] = useState<PairingResult | null>(null); const [installation, setInstallation] = useState<InstallationState | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -22,7 +34,7 @@ export function ChatbotEditor({ agentId }: { agentId: string }) {
       if (!agentResponse.ok) { setError("تعذر تحميل Chatbot."); return; }
       setAgent(await agentResponse.json() as Agent);
       const widgetResponse = await fetch(`/api/customer/agents/${encodeURIComponent(agentId)}/widget-settings`, { cache: "no-store" });
-      if (widgetResponse.ok) { const value = await widgetResponse.json() as Widget; setWidget(value); setOrigins(value.allowed_origins.join("\n")); }
+      if (widgetResponse.ok) { const value = await widgetResponse.json() as Widget; setWidget(value); setOrigins(value.allowed_origins.join("\n")); const firstOrigin = value.allowed_origins[0] ?? ""; setInstallationOrigin(firstOrigin); if (firstOrigin) { const statusResponse = await fetch(`/api/customer/agents/${encodeURIComponent(agentId)}/widget-settings/installation?origin=${encodeURIComponent(firstOrigin)}`, { cache: "no-store" }); if (statusResponse.ok) setInstallation(await statusResponse.json() as InstallationState); } }
       else if (widgetResponse.status === 404) setWidget({ public_widget_id: "", is_enabled: false, display_name: null, greeting: null, primary_color: "#2563EB", text_color: "#FFFFFF", launcher_color: "#2563EB", header_color: "#2563EB", user_message_color: "#2563EB", position: "right", appearance: "light", allowed_origins: [] });
       else setError("تعذر تحميل إعدادات Widget.");
     } catch { setError("تعذر الاتصال بالخدمة."); }
@@ -45,7 +57,7 @@ export function ChatbotEditor({ agentId }: { agentId: string }) {
     const payload = { is_enabled: enable ?? current.is_enabled, display_name: current.display_name, greeting: current.greeting, primary_color: current.primary_color, text_color: current.text_color, launcher_color: current.launcher_color, header_color: current.header_color, user_message_color: current.user_message_color, position: current.position, appearance: current.appearance, allowed_origins: origins.split(/\r?\n/).map((value) => value.trim()).filter(Boolean) };
     if (payload.is_enabled && payload.allowed_origins.length === 0) { setError("أضف نطاقًا مسموحًا قبل النشر."); return false; }
     const response = await fetch(`/api/customer/agents/${encodeURIComponent(agentId)}/widget-settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    if (!response.ok) { setError("تعذر حفظ إعدادات Widget."); return false; } const saved = await response.json() as Widget; setWidget(saved); setOrigins(saved.allowed_origins.join("\n")); setNotice(saved.is_enabled ? "تم نشر Widget." : "تم حفظ Widget دون نشر."); return true;
+    if (!response.ok) { setError("تعذر حفظ إعدادات Widget."); return false; } const saved = await response.json() as Widget; setWidget(saved); setOrigins(saved.allowed_origins.join("\n")); if (!saved.allowed_origins.includes(installationOrigin)) { setInstallationOrigin(saved.allowed_origins[0] ?? ""); setPairingResult(null); setInstallation(null); } setNotice(saved.is_enabled ? "تم نشر Widget." : "تم حفظ Widget دون نشر."); return true;
   }
   async function preview() { if (!widget?.public_widget_id && !(await saveWidget(false))) return;
     const response = await fetch(`/api/customer/agents/${encodeURIComponent(agentId)}/widget-settings/preview`, { method: "POST" }); const body = await response.json().catch(() => null) as { session_token?: string; detail?: string } | null;
@@ -54,14 +66,19 @@ export function ChatbotEditor({ agentId }: { agentId: string }) {
   async function sendPreview(event: FormEvent) { event.preventDefault(); if (!previewToken || !previewMessage.trim()) return;
     const response = await fetch(`${API_BASE}/api/chat`, { method: "POST", headers: { Authorization: `Bearer ${previewToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ message: previewMessage }) }); const body = await response.json().catch(() => null) as { reply?: string; detail?: string } | null; setPreviewReply(response.ok ? body?.reply ?? "" : body?.detail ?? "تعذر إرسال رسالة المعاينة.");
   }
-  async function createPairing() { const origin = origins.split(/\r?\n/).map((v) => v.trim()).find(Boolean); if (!origin) { setError("أضف نطاقًا مسموحًا أولًا."); return; }
-    const response = await fetch(`/api/customer/agents/${encodeURIComponent(agentId)}/widget-settings/pairings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origin, connector_type: "custom" }) }); const body = await response.json().catch(() => null) as { pairing_code?: string; detail?: string } | null; if (!response.ok) { setError(body?.detail ?? "تعذر إنشاء رمز الربط."); return; } setPairing(body?.pairing_code ?? "");
+  async function createPairing(retrying = false) { const origin = installationOrigin || origins.split(/\r?\n/).map((v) => v.trim()).find(Boolean); if (!origin) { setError("أضف نطاقًا مسموحًا أولًا."); return; }
+    if (retrying) setInstallation((current) => current ? { ...current, status: "retry", detail: "جارٍ إنشاء رمز جديد…" } : null);
+    setError(""); const response = await fetch(`/api/customer/agents/${encodeURIComponent(agentId)}/widget-settings/pairings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origin, connector_type: "custom" }) }); const body = await response.json().catch(() => null) as (PairingResult & { detail?: string }) | null; if (!response.ok || !body?.pairing_code) { setError(body?.detail ?? "تعذر إنشاء رمز الربط. تأكد من تفعيل Widget وصحة النطاق."); setInstallation((current) => current ? { ...current, status: "failed", detail: body?.detail ?? "تعذر إنشاء رمز جديد." } : null); return; } setPairingResult(body); setInstallationOrigin(body.origin); setInstallation({ pairing_id: body.pairing_id, status: "pending", origin: body.origin, expires_at: body.expires_at, connected_at: null, error_code: "installation_not_detected", detail: "انسخ الكود إلى الموقع ثم اضغط تحقق من التثبيت.", checks: { script_loaded: false, origin_valid: true, public_config_loaded: false, bootstrap_succeeded: false } }); setNotice("تم إنشاء كود تثبيت صالح لعشر دقائق.");
+  }
+  async function verifyInstallation() { if (!pairingResult?.pairing_id && !installation?.pairing_id) { setError("أنشئ كود التثبيت أولًا."); return; }
+    const pairingId = pairingResult?.pairing_id ?? installation?.pairing_id; const response = await fetch(`/api/customer/agents/${encodeURIComponent(agentId)}/widget-settings/installation?pairing_id=${encodeURIComponent(pairingId ?? "")}`, { cache: "no-store" }); const body = await response.json().catch(() => null) as (InstallationState & { detail?: string }) | null; if (!response.ok || !body?.status) { setInstallation((current) => current ? { ...current, status: "failed", detail: body?.detail ?? "تعذر التحقق من حالة التثبيت." } : null); return; } setInstallation(body); if (body.status === "verified") { setNotice("تم التحقق من تثبيت Widget بنجاح."); setError(""); }
   }
   async function copyText(value: string, success: string) {
     try { await navigator.clipboard.writeText(value); setNotice(success); setError(""); }
     catch { setError("تعذر النسخ إلى الحافظة."); }
   }
-  const embed = useMemo(() => widget?.public_widget_id ? `<script>window.WidgetConfig={widgetId:"${widget.public_widget_id}",apiBaseUrl:"${API_BASE}",language:"ar",direction:"rtl"};</script>\n<script src="${WIDGET_SCRIPT}" defer></script>` : "", [widget]);
+  const embed = useMemo(() => widget?.public_widget_id && pairingResult ? [`<script`, `  src="${WIDGET_SCRIPT}"`, `  data-widget-id="${widget.public_widget_id}"`, `  data-api-base="${API_BASE}"`, `  data-pairing-code="${pairingResult.pairing_code}"`, `  defer`, `></script>`].join("\n") : "", [widget, pairingResult]);
+  const installationMessage = installation?.status === "verified" ? "تم التحقق: السكربت والنطاق والإعداد العام وبدء Widget تعمل بنجاح." : installation?.status === "expired" ? "انتهت صلاحية الرمز. أنشئ رمزًا جديدًا ثم حدّث الكود في موقعك." : installation?.error_code === "origin_not_allowed" ? "النطاق لم يعد مسموحًا. احفظ النطاق الصحيح ثم أعد المحاولة." : installation?.error_code === "widget_disabled" ? "Widget معطل. فعّله قبل إعادة التحقق." : installation?.error_code === "pairing_reused" ? "استُخدم الرمز سابقًا دون اكتمال التحقق. أنشئ رمزًا جديدًا." : installation?.status === "failed" ? installation.detail : "لم يصل تأكيد من الموقع بعد. تأكد من وجود السكربت وافحص طلبي config وbootstrap في Console/Network.";
 
   if (!agent) return <main className="dashboard-placeholder" dir="rtl"><p>{error || "جاري التحميل…"}</p></main>;
   return <main className="dashboard-placeholder" dir="rtl"><header className="dashboard-placeholder__header"><div><h1>{agent.name}</h1><p>التكوين والاختبار والنشر</p></div><Link href="/app/chatbots">العودة</Link></header>{error ? <p role="alert">{error}</p> : null}{notice ? <p role="status">{notice}</p> : null}
@@ -72,7 +89,13 @@ export function ChatbotEditor({ agentId }: { agentId: string }) {
       <label>موضع المشغّل<select value={widget?.position ?? "right"} onChange={(e) => widget && setWidget({ ...widget, position: e.target.value as Widget["position"] })}><option value="right">يمين</option><option value="left">يسار</option></select></label><label>المظهر<select value={widget?.appearance ?? "light"} onChange={(e) => widget && setWidget({ ...widget, appearance: e.target.value as Widget["appearance"] })}><option value="light">فاتح</option><option value="dark">داكن</option></select></label>
       <label>النطاقات المسموحة — نطاق كامل في كل سطر<textarea rows={4} value={origins} onChange={(e) => setOrigins(e.target.value)} placeholder="https://example.com" /></label><button type="button" onClick={() => void saveWidget(false)}>حفظ دون نشر</button> <button type="button" onClick={() => void preview()}>بدء معاينة حقيقية</button> <button type="button" onClick={() => void saveWidget(true)}>نشر/تفعيل</button>
       {previewToken ? <form onSubmit={(e) => void sendPreview(e)}><input value={previewMessage} onChange={(e) => setPreviewMessage(e.target.value)} placeholder="رسالة المعاينة" /><button type="submit">اختبر Widget</button><p>{previewReply}</p></form> : null}
-      {embed ? <><h3>كود الدمج</h3><textarea readOnly rows={5} value={embed} /><button type="button" onClick={() => void copyText(embed, "تم نسخ كود الدمج.")}>نسخ</button></> : null}
-      <h3>Connector</h3><button type="button" disabled={!widget?.is_enabled} onClick={() => void createPairing()}>إنشاء رمز ربط</button>{pairing ? <p><strong>{pairing}</strong> — صالح لعشر دقائق ويُستخدم مرة واحدة. <button type="button" onClick={() => void copyText(pairing, "تم نسخ رمز الربط.")}>نسخ الرمز</button></p> : null}
+      <h3>تثبيت Widget والتحقق منه</h3>
+      <ol><li>فعّل Widget واحفظ نطاق الموقع الكامل.</li><li>أنشئ كود تثبيت وانسخ كود الدمج قبل انتهاء صلاحيته.</li><li>أضف الكود قبل إغلاق <code>&lt;/body&gt;</code> في موقعك وانشر التغيير.</li><li>افتح الموقع مرة واحدة ثم اضغط «تحقق من التثبيت».</li></ol>
+      <label>نطاق التثبيت<select value={installationOrigin} onChange={(event) => { setInstallationOrigin(event.target.value); setPairingResult(null); setInstallation(null); }}>{widget?.allowed_origins.map((origin) => <option key={origin} value={origin}>{origin}</option>)}</select></label>
+      <button type="button" disabled={!widget?.is_enabled || !installationOrigin || installation?.status === "retry"} onClick={() => void createPairing(Boolean(installation && ["expired", "failed"].includes(installation.status)))}>{installation && ["expired", "failed"].includes(installation.status) ? "إعادة المحاولة برمز جديد" : "إنشاء كود التثبيت"}</button>
+      {pairingResult ? <p><strong dir="ltr">{pairingResult.pairing_code}</strong> — صالح لعشر دقائق ويُستخدم مرة واحدة. <button type="button" onClick={() => void copyText(pairingResult.pairing_code, "تم نسخ رمز الربط.")}>نسخ الرمز</button></p> : null}
+      {embed ? <><h3>كود الدمج</h3><textarea dir="ltr" readOnly rows={8} value={embed} /><button type="button" onClick={() => void copyText(embed, "تم نسخ كود الدمج.")}>نسخ كود الدمج</button></> : null}
+      {installation ? <div role="status" data-installation-state={installation.status}><p><strong>{installation.status === "pending" ? "قيد الانتظار" : installation.status === "verified" ? "تم التحقق" : installation.status === "expired" ? "منتهي" : installation.status === "retry" ? "إعادة المحاولة" : "فشل التحقق"}</strong></p><p>{installationMessage}</p><ul><li>تحميل السكربت: {installation.checks.script_loaded ? "ناجح" : "بانتظار التأكيد"}</li><li>صحة النطاق: {installation.checks.origin_valid ? "ناجح" : "فشل"}</li><li>تحميل public config: {installation.checks.public_config_loaded ? "ناجح" : "بانتظار التأكيد"}</li><li>نجاح bootstrap: {installation.checks.bootstrap_succeeded ? "ناجح" : "بانتظار التأكيد"}</li></ul>{installation.connected_at ? <p>آخر تحقق: {new Date(installation.connected_at).toLocaleString("ar")}</p> : null}</div> : null}
+      <button type="button" disabled={!installation?.pairing_id || installation.status === "retry"} onClick={() => void verifyInstallation()}>تحقق من التثبيت</button>
     </section><p><Link href="/app/knowledge">إدارة قواعد المعرفة والمستندات</Link> · <Link href="/app/conversations">عرض المحادثات</Link></p></main>;
 }

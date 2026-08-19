@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.dependencies import require_tenant_user_jwt
@@ -15,6 +17,8 @@ from backend.app.api.schemas.widget import (
     WidgetBootstrapResponse,
     WidgetConnectorPairingCreate,
     WidgetConnectorPairingCreated,
+    WidgetInstallationChecks,
+    WidgetInstallationStatus,
     WidgetPublicConfig,
     WidgetTheme,
 )
@@ -26,6 +30,7 @@ from backend.app.core.client_ip import get_client_ip
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.rate_limit import RateLimiter, get_rate_limiter
 from backend.app.db.base import get_db
+from backend.app.db.models import WidgetConnectorPairing
 from backend.app.infrastructure.database.tenant_repositories import (
     TenantScopedWidgetRepository,
 )
@@ -279,6 +284,172 @@ async def create_customer_connector_pairing(
         connector_type=pairing.connector_type,
         expires_at=pairing.expires_at,
         expires_in=PAIRING_TTL_SECONDS,
+    )
+
+
+@router.get(
+    "/api/customer/agents/{agent_id}/widget-settings/installation",
+    response_model=WidgetInstallationStatus,
+    dependencies=[
+        Depends(
+            require_tenant_permission(
+                TenantPermission.can_read_agents
+            )
+        )
+    ],
+)
+async def get_customer_widget_installation(
+    agent_id: str,
+    context: Annotated[TenantUserContext, Depends(require_tenant_user_jwt)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    pairing_id: str | None = None,
+    origin: str | None = None,
+) -> WidgetInstallationStatus:
+    """Return persisted, tenant-scoped installation verification state."""
+
+    repository = TenantScopedWidgetRepository(session)
+    result = await repository.get_by_agent(agent_id, context.tenant_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Widget not found.",
+        )
+    widget, allowed_origins = result
+
+    normalized_origin = None
+    if origin is not None:
+        normalized_origin = normalize_origin(origin)
+        if normalized_origin is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="A valid installation origin is required.",
+            )
+
+    statement = select(WidgetConnectorPairing).where(
+        WidgetConnectorPairing.tenant_id == context.tenant_id,
+        WidgetConnectorPairing.agent_id == agent_id,
+    )
+    if pairing_id is not None:
+        statement = statement.where(
+            WidgetConnectorPairing.id == pairing_id
+        )
+    elif normalized_origin is not None:
+        statement = statement.where(
+            WidgetConnectorPairing.origin == normalized_origin
+        )
+
+    pairing = await session.scalar(
+        statement.order_by(
+            WidgetConnectorPairing.created_at.desc(),
+            WidgetConnectorPairing.id.desc(),
+        ).limit(1)
+    )
+    if pairing is None:
+        return WidgetInstallationStatus(
+            status="pending",
+            origin=normalized_origin,
+            error_code="pairing_required",
+            detail="Generate a pairing code and install the generated embed code.",
+            checks=WidgetInstallationChecks(
+                script_loaded=False,
+                origin_valid=normalized_origin in allowed_origins,
+                public_config_loaded=False,
+                bootstrap_succeeded=False,
+            ),
+        )
+
+    common = {
+        "pairing_id": pairing.id,
+        "origin": pairing.origin,
+        "expires_at": pairing.expires_at,
+        "connected_at": pairing.connected_at,
+    }
+    if pairing.connected_at is not None:
+        return WidgetInstallationStatus(
+            **common,
+            status="verified",
+            detail="Widget installation is verified.",
+            checks=WidgetInstallationChecks(
+                script_loaded=True,
+                origin_valid=True,
+                public_config_loaded=True,
+                bootstrap_succeeded=True,
+            ),
+        )
+
+    if not widget.is_enabled:
+        return WidgetInstallationStatus(
+            **common,
+            status="failed",
+            error_code="widget_disabled",
+            detail="Enable the Widget before verifying its installation.",
+            checks=WidgetInstallationChecks(
+                script_loaded=False,
+                origin_valid=pairing.origin in allowed_origins,
+                public_config_loaded=False,
+                bootstrap_succeeded=False,
+            ),
+        )
+
+    if pairing.origin not in allowed_origins:
+        return WidgetInstallationStatus(
+            **common,
+            status="failed",
+            error_code="origin_not_allowed",
+            detail="The installation origin is no longer allowed for this Widget.",
+            checks=WidgetInstallationChecks(
+                script_loaded=False,
+                origin_valid=False,
+                public_config_loaded=False,
+                bootstrap_succeeded=False,
+            ),
+        )
+
+    expires_at = pairing.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= datetime.now(timezone.utc):
+        return WidgetInstallationStatus(
+            **common,
+            status="expired",
+            error_code="pairing_expired",
+            detail="Pairing code expired before the installation completed.",
+            checks=WidgetInstallationChecks(
+                script_loaded=False,
+                origin_valid=True,
+                public_config_loaded=False,
+                bootstrap_succeeded=False,
+            ),
+        )
+
+    if pairing.used_at is not None:
+        return WidgetInstallationStatus(
+            **common,
+            status="failed",
+            error_code="pairing_reused",
+            detail="Pairing code was already used without completing verification.",
+            checks=WidgetInstallationChecks(
+                script_loaded=True,
+                origin_valid=True,
+                public_config_loaded=False,
+                bootstrap_succeeded=False,
+            ),
+        )
+
+    return WidgetInstallationStatus(
+        **common,
+        status="pending",
+        error_code="installation_not_detected",
+        detail=(
+            "Installation has not checked in. Confirm the script is present, "
+            "then inspect public config and bootstrap requests in the site console."
+        ),
+        checks=WidgetInstallationChecks(
+            script_loaded=False,
+            origin_valid=True,
+            public_config_loaded=False,
+            bootstrap_succeeded=False,
+        ),
     )
 
 

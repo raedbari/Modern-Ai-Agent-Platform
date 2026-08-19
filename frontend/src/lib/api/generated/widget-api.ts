@@ -45,6 +45,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/widget/connector/verify-installation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Widget Installation
+         * @description Persist real-site installation after config and bootstrap succeed.
+         */
+        post: operations["verify_widget_installation_api_widget_connector_verify_installation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -188,10 +208,6 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (number | string)[];
             /** Message */
@@ -219,6 +235,29 @@ export interface components {
              */
             token_type: "Bearer";
             widget: components["schemas"]["WidgetPublicConfig"];
+        };
+        /** WidgetConnectorPairingConnected */
+        WidgetConnectorPairingConnected: {
+            /**
+             * Connected
+             * @default true
+             * @constant
+             */
+            connected: true;
+            /**
+             * Connector Type
+             * @enum {string}
+             */
+            connector_type: "wordpress" | "react_next" | "managed" | "custom";
+            /** Origin */
+            origin: string;
+            /** Widget Id */
+            widget_id: string;
+        };
+        /** WidgetConnectorPairingRedeem */
+        WidgetConnectorPairingRedeem: {
+            /** Pairing Code */
+            pairing_code: string;
         };
         /** WidgetPublicConfig */
         WidgetPublicConfig: {
@@ -338,6 +377,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WidgetBootstrapResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_widget_installation_api_widget_connector_verify_installation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Origin?: null | string;
+                Authorization?: null | string;
+                "X-Widget-Config-Proof"?: null | string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetConnectorPairingRedeem"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WidgetConnectorPairingConnected"];
                 };
             };
             /** @description Validation Error */

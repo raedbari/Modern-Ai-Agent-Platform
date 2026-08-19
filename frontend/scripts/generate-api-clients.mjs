@@ -44,6 +44,7 @@ const HTTP_METHODS = new Set([
 
 const WIDGET_PATHS = new Set([
   "/api/widget/bootstrap",
+  "/api/widget/connector/verify-installation",
   "/api/chat",
   "/health",
   "/ready",
