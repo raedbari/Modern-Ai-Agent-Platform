@@ -397,6 +397,7 @@ async def test_customer_preview_and_pairing_hide_cross_tenant_resources(
         tmp_path / "customer-widget-cross-tenant.sqlite3"
     )
     await _seed_widget(sessions)
+    pairing_id = await _seed_pairing(sessions)
     app.dependency_overrides[require_tenant_user_jwt] = lambda: _tenant_context("tenant-b")
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -408,8 +409,13 @@ async def test_customer_preview_and_pairing_hide_cross_tenant_resources(
                 "/api/customer/agents/agent-a/widget-settings/pairings",
                 json={"origin": _ORIGIN, "connector_type": "custom"},
             )
+            installation = await client.get(
+                "/api/customer/agents/agent-a/widget-settings/installation",
+                params={"pairing_id": pairing_id},
+            )
         assert preview.status_code == 404
         assert pairing.status_code == 404
+        assert installation.status_code == 404
     finally:
         await engine.dispose()
 
@@ -953,7 +959,10 @@ async def test_connector_pairing_redeem_connects_once(
 
         assert second.status_code == 400
         assert second.json() == {
-            "detail": "Pairing code is invalid or unavailable."
+            "detail": (
+                "Pairing code has already been used. "
+                "Generate a new code and retry."
+            )
         }
 
         async with sessions() as session:
@@ -1005,9 +1014,136 @@ async def test_connector_pairing_rejects_expired_code(
 
         assert response.status_code == 400
         assert response.json() == {
-            "detail": "Pairing code is invalid or unavailable."
+            "detail": (
+                "Pairing code has expired. "
+                "Generate a new code and retry."
+            )
         }
 
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_real_site_installation_verification_persists_all_checks(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, _ = await _open_widget_app(
+        tmp_path / "installation-verification.sqlite3"
+    )
+    await _seed_widget(sessions)
+    pairing_code = "ATK-INSTALL-VERIFY-CODE-01"
+    pairing_id = await _seed_pairing(
+        sessions,
+        pairing_code=pairing_code,
+        connector_type="custom",
+    )
+    app.dependency_overrides[require_tenant_user_jwt] = _tenant_context
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            public_config = await client.post(
+                "/api/widget/config",
+                json={"widget_id": _WIDGET_ID},
+                headers={"Origin": _ORIGIN},
+            )
+            token, _ = await _bootstrap(client)
+            missing_config_proof = await client.post(
+                "/api/widget/connector/verify-installation",
+                json={"pairing_code": pairing_code},
+                headers={
+                    "Origin": _ORIGIN,
+                    "Authorization": f"Bearer {token}",
+                },
+            )
+            verified = await client.post(
+                "/api/widget/connector/verify-installation",
+                json={"pairing_code": pairing_code},
+                headers={
+                    "Origin": _ORIGIN,
+                    "Authorization": f"Bearer {token}",
+                    "X-Widget-Config-Proof": public_config.headers[
+                        "X-Widget-Config-Proof"
+                    ],
+                },
+            )
+            persisted = await client.get(
+                "/api/customer/agents/agent-a/widget-settings/installation",
+                params={"pairing_id": pairing_id},
+            )
+
+        assert public_config.status_code == 200
+        assert missing_config_proof.status_code == 401
+        assert missing_config_proof.json()["detail"] == (
+            "A successful public Widget config load is required."
+        )
+        assert verified.status_code == 200, verified.text
+        assert verified.json()["widget_id"] == _WIDGET_ID
+        assert persisted.status_code == 200, persisted.text
+        body = persisted.json()
+        assert body["status"] == "verified"
+        assert body["pairing_id"] == pairing_id
+        assert body["origin"] == _ORIGIN
+        assert body["connected_at"] is not None
+        assert body["checks"] == {
+            "script_loaded": True,
+            "origin_valid": True,
+            "public_config_loaded": True,
+            "bootstrap_succeeded": True,
+        }
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_installation_verification_requires_matching_bootstrap_origin(
+    tmp_path: Path,
+) -> None:
+    app, engine, sessions, _, settings = await _open_widget_app(
+        tmp_path / "installation-origin-scope.sqlite3"
+    )
+    await _seed_widget(sessions)
+    pairing_code = "ATK-INSTALL-ORIGIN-CODE-01"
+    pairing_id = await _seed_pairing(
+        sessions,
+        pairing_code=pairing_code,
+        connector_type="custom",
+    )
+    wrong_origin_token = create_widget_token(
+        tenant_id="tenant-a",
+        agent_id="agent-a",
+        public_widget_id=_WIDGET_ID,
+        origin="https://attacker.example",
+        session_id=str(uuid4()),
+        settings=settings,
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/widget/connector/verify-installation",
+                json={"pairing_code": pairing_code},
+                headers={
+                    "Origin": _ORIGIN,
+                    "Authorization": f"Bearer {wrong_origin_token}",
+                },
+            )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == (
+            "Widget bootstrap origin does not match this site."
+        )
+        async with sessions() as session:
+            pairing = await session.get(WidgetConnectorPairing, pairing_id)
+            assert pairing is not None
+            assert pairing.used_at is None
+            assert pairing.connected_at is None
     finally:
         await engine.dispose()
 

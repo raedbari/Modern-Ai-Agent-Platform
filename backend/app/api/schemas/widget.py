@@ -195,3 +195,29 @@ class WidgetConnectorPairingConnected(BaseModel):
     widget_id: PublicWidgetId
     origin: str
     connector_type: ConnectorType
+
+
+WidgetInstallationState = Literal[
+    "pending",
+    "verified",
+    "expired",
+    "failed",
+]
+
+
+class WidgetInstallationChecks(BaseModel):
+    script_loaded: bool
+    origin_valid: bool
+    public_config_loaded: bool
+    bootstrap_succeeded: bool
+
+
+class WidgetInstallationStatus(BaseModel):
+    pairing_id: str | None = None
+    status: WidgetInstallationState
+    origin: str | None = None
+    expires_at: datetime | None = None
+    connected_at: datetime | None = None
+    error_code: str | None = None
+    detail: str
+    checks: WidgetInstallationChecks

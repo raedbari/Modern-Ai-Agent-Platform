@@ -129,6 +129,22 @@ export type CustomerWidgetPreview = {
   };
 };
 
+export type CustomerWidgetInstallation = {
+  pairing_id: string | null;
+  status: "pending" | "verified" | "expired" | "failed";
+  origin: string | null;
+  expires_at: string | null;
+  connected_at: string | null;
+  error_code: string | null;
+  detail: string;
+  checks: {
+    script_loaded: boolean;
+    origin_valid: boolean;
+    public_config_loaded: boolean;
+    bootstrap_succeeded: boolean;
+  };
+};
+
 type ErrorPayload = {
   detail?: unknown;
 };
@@ -334,8 +350,24 @@ export async function bootstrapCustomerWidgetPreview(accessToken: string, agentI
   return requestCustomerResource<CustomerWidgetPreview>(`/api/customer/agents/${encodeURIComponent(agentId)}/widget-settings/preview/bootstrap`, accessToken, { method: "POST", headers: { Origin: origin } });
 }
 
-export async function createCustomerWidgetPairing(accessToken: string, agentId: string, payload: { origin: string; connector_type: "wordpress" | "react_next" | "managed" | "custom" }): Promise<{ pairing_code: string; expires_at: string; origin: string }> {
+export async function createCustomerWidgetPairing(accessToken: string, agentId: string, payload: { origin: string; connector_type: "wordpress" | "react_next" | "managed" | "custom" }): Promise<{ pairing_id: string; pairing_code: string; expires_at: string; expires_in: number; origin: string }> {
   return requestCustomerResource(`/api/customer/agents/${encodeURIComponent(agentId)}/widget-settings/pairings`, accessToken, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function getCustomerWidgetInstallation(
+  accessToken: string,
+  agentId: string,
+  options: { pairingId?: string; origin?: string } = {},
+): Promise<CustomerWidgetInstallation> {
+  const query = new URLSearchParams();
+  if (options.pairingId) query.set("pairing_id", options.pairingId);
+  if (options.origin) query.set("origin", options.origin);
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  return requestCustomerResource<CustomerWidgetInstallation>(
+    `/api/customer/agents/${encodeURIComponent(agentId)}/widget-settings/installation${suffix}`,
+    accessToken,
+    { method: "GET" },
+  );
 }
 
 export async function deleteCustomerKnowledgeBase(

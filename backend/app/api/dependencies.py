@@ -482,6 +482,9 @@ async def require_chat_context(
                 detail="Widget origin mismatch",
             )
 
+        if widget_context.token_type == "widget_config_proof":
+            raise _unauthorized()
+
         if widget_context.token_type == "widget_preview_session":
             resolved = await resolve_preview_widget(
                 session,

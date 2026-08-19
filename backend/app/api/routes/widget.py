@@ -17,7 +17,11 @@ from backend.app.api.schemas.widget import (
     WidgetTheme,
 )
 from backend.app.auth.origin import normalize_origin
-from backend.app.auth.widget_jwt import WidgetTokenError, create_widget_token
+from backend.app.auth.widget_jwt import (
+    WidgetTokenError,
+    create_widget_token,
+    decode_widget_token,
+)
 from backend.app.core.client_ip import get_client_ip
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.rate_limit import RateLimiter, get_rate_limiter
@@ -29,12 +33,40 @@ from backend.app.operations.widget import (
 from backend.app.operations.widget_pairing import (
     WidgetPairingCodeUnavailableError,
     WidgetPairingOriginMismatchError,
+    WidgetPairingScopeMismatchError,
     WidgetPairingTargetUnavailableError,
+    ensure_pairing_matches_widget_session,
     redeem_widget_connector_pairing,
 )
+from backend.app.services.audit import AuditService
 
 
 router = APIRouter(prefix="/api/widget", tags=["widget"])
+
+
+def _widget_session_from_authorization(
+    authorization: str | None,
+    settings: Settings,
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="A successful Widget bootstrap session is required.",
+        )
+    raw_token = authorization.removeprefix("Bearer ").strip()
+    try:
+        context = decode_widget_token(raw_token, settings)
+    except WidgetTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Widget bootstrap session is invalid or expired.",
+        ) from exc
+    if context.token_type != "widget_session":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A public Widget bootstrap session is required.",
+        )
+    return context
 
 
 @router.post(
@@ -85,6 +117,22 @@ async def get_public_widget_config(
 
     request.state.widget_cors_origin = origin
     response.headers["Cache-Control"] = "no-store"
+    try:
+        config_proof = create_widget_token(
+            tenant_id=tenant.id,
+            agent_id=agent.id,
+            public_widget_id=widget.public_widget_id,
+            origin=origin,
+            session_id=str(uuid4()),
+            settings=settings,
+            token_type="widget_config_proof",
+        )
+    except WidgetTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Widget authentication is not configured.",
+        ) from exc
+    response.headers["X-Widget-Config-Proof"] = config_proof
 
     return WidgetPublicConfig(
         widget_id=widget.public_widget_id,
@@ -314,6 +362,161 @@ async def pair_widget_connector(
     request.state.widget_cors_origin = origin
     response.headers["Cache-Control"] = "no-store"
 
+    return WidgetConnectorPairingConnected(
+        connected=True,
+        widget_id=widget.public_widget_id,
+        origin=pairing.origin,
+        connector_type=pairing.connector_type,
+    )
+
+
+@router.post(
+    "/connector/verify-installation",
+    response_model=WidgetConnectorPairingConnected,
+    status_code=status.HTTP_200_OK,
+)
+async def verify_widget_installation(
+    payload: WidgetConnectorPairingRedeem,
+    request: Request,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+    origin_header: Annotated[str | None, Header(alias="Origin")] = None,
+    authorization: Annotated[
+        str | None,
+        Header(alias="Authorization"),
+    ] = None,
+    config_proof_header: Annotated[
+        str | None,
+        Header(alias="X-Widget-Config-Proof"),
+    ] = None,
+) -> WidgetConnectorPairingConnected:
+    """Persist real-site installation after config and bootstrap succeed."""
+
+    origin = normalize_origin(origin_header)
+    if origin is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A valid Origin header is required.",
+        )
+
+    widget_context = _widget_session_from_authorization(
+        authorization,
+        settings,
+    )
+    if widget_context.origin != origin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Widget bootstrap origin does not match this site.",
+        )
+
+    if not config_proof_header:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="A successful public Widget config load is required.",
+        )
+    try:
+        config_context = decode_widget_token(config_proof_header, settings)
+    except WidgetTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Widget public config proof is invalid or expired.",
+        ) from exc
+    if (
+        config_context.token_type != "widget_config_proof"
+        or config_context.tenant_id != widget_context.tenant_id
+        or config_context.agent_id != widget_context.agent_id
+        or config_context.public_widget_id != widget_context.public_widget_id
+        or config_context.origin != widget_context.origin
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Widget public config proof does not match this installation.",
+        )
+
+    client_ip = get_client_ip(request, settings)
+    try:
+        code_limit = await rate_limiter.check(
+            bucket="widget-installation-code",
+            identity=payload.pairing_code,
+            limit=settings.widget_pairing_rate_limit_per_code,
+            window_seconds=settings.widget_pairing_rate_limit_window_seconds,
+        )
+        ip_limit = await rate_limiter.check(
+            bucket="widget-installation-ip",
+            identity=client_ip or "unknown",
+            limit=settings.widget_pairing_rate_limit_per_ip,
+            window_seconds=settings.widget_pairing_rate_limit_window_seconds,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Widget installation verification is temporarily unavailable.",
+        ) from exc
+
+    if not code_limit.allowed or not ip_limit.allowed:
+        retry_after = max(
+            code_limit.retry_after_seconds,
+            ip_limit.retry_after_seconds,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many Widget installation verification attempts.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    try:
+        pairing, widget = await redeem_widget_connector_pairing(
+            session,
+            pairing_code=payload.pairing_code,
+            origin=origin,
+        )
+        ensure_pairing_matches_widget_session(
+            pairing,
+            widget,
+            tenant_id=widget_context.tenant_id,
+            agent_id=widget_context.agent_id,
+            public_widget_id=widget_context.public_widget_id,
+            origin=widget_context.origin,
+        )
+        await AuditService.write(
+            session,
+            event_type="widget_installation_verified",
+            outcome="success",
+            target_type="agent",
+            target_id=pairing.agent_id,
+            client_ip=client_ip,
+            detail={
+                "tenant_id": pairing.tenant_id,
+                "pairing_id": pairing.id,
+                "widget_id": widget.public_widget_id,
+                "origin": pairing.origin,
+            },
+        )
+        await session.commit()
+        await session.refresh(pairing)
+    except WidgetPairingCodeUnavailableError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except (WidgetPairingOriginMismatchError, WidgetPairingScopeMismatchError) as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except WidgetPairingTargetUnavailableError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    request.state.widget_cors_origin = origin
+    response.headers["Cache-Control"] = "no-store"
     return WidgetConnectorPairingConnected(
         connected=True,
         widget_id=widget.public_widget_id,

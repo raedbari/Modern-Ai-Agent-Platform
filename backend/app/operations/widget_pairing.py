@@ -138,6 +138,10 @@ class WidgetPairingTargetUnavailableError(ValueError):
     """Raised when the paired Widget, Agent, or Tenant is unavailable."""
 
 
+class WidgetPairingScopeMismatchError(ValueError):
+    """Raised when bootstrap proof does not match the pairing target."""
+
+
 async def redeem_widget_connector_pairing(
     session: AsyncSession,
     *,
@@ -168,12 +172,14 @@ async def redeem_widget_connector_pairing(
             tzinfo=timezone.utc
         )
 
-    if (
-        pairing.used_at is not None
-        or expires_at <= now
-    ):
+    if pairing.used_at is not None:
         raise WidgetPairingCodeUnavailableError(
-            "Pairing code is invalid or unavailable."
+            "Pairing code has already been used. Generate a new code and retry."
+        )
+
+    if expires_at <= now:
+        raise WidgetPairingCodeUnavailableError(
+            "Pairing code has expired. Generate a new code and retry."
         )
 
     if pairing.origin != origin:
@@ -228,3 +234,27 @@ async def redeem_widget_connector_pairing(
     await session.flush()
 
     return pairing, resolved_widget
+
+
+def ensure_pairing_matches_widget_session(
+    pairing: WidgetConnectorPairing,
+    widget: AgentWidgetSettings,
+    *,
+    tenant_id: str,
+    agent_id: str,
+    public_widget_id: str,
+    origin: str,
+) -> None:
+    """Bind installation proof to one tenant, Agent, Widget, and origin."""
+
+    if (
+        pairing.tenant_id != tenant_id
+        or pairing.agent_id != agent_id
+        or pairing.origin != origin
+        or widget.tenant_id != tenant_id
+        or widget.agent_id != agent_id
+        or widget.public_widget_id != public_widget_id
+    ):
+        raise WidgetPairingScopeMismatchError(
+            "Widget bootstrap proof does not match this installation code."
+        )
