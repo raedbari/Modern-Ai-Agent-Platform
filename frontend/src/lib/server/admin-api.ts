@@ -268,6 +268,20 @@ export async function getAdminEvaluationDataset(
   );
 }
 
+export async function uploadAdminEvaluationDataset(
+  accessToken: string,
+  formData: FormData,
+): Promise<EvaluationDataset> {
+  return requestAdminApi<EvaluationDataset>(
+    "/api/admin/evaluation/datasets",
+    {
+      method: "POST",
+      headers: bearerHeaders(accessToken),
+      body: formData,
+    },
+  );
+}
+
 export async function listAdminEvaluationRuns(
   accessToken: string,
 ): Promise<EvaluationRun[]> {

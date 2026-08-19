@@ -1,12 +1,22 @@
 .page { display: grid; gap: 22px; direction: rtl; }
 .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .header span { display: inline-flex; align-items: center; gap: 8px; color: #a78bfa; font-size: 12px; font-weight: 700; }
-.header span svg, .sectionTitle svg, .refresh svg, .start svg, .state svg, .empty svg, .error svg { width: 17px; height: 17px; }
+.header span svg, .sectionTitle svg, .refresh svg, .uploadButton svg, .start svg, .state svg, .empty svg, .error svg, .successMessage svg { width: 17px; height: 17px; }
 .header h2 { margin: 9px 0 0; color: #fff; font-size: 27px; }
 .header p, .sectionTitle p { margin: 7px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.7; }
-.refresh, .state button { display: inline-flex; min-height: 40px; align-items: center; gap: 8px; padding: 0 14px; border: 1px solid var(--border); border-radius: 11px; background: rgba(148,163,184,.045); color: var(--text-soft); cursor: pointer; }
-.launcher, .history, .detail { border: 1px solid var(--border); border-radius: 18px; background: rgba(13,16,34,.78); box-shadow: 0 18px 50px rgba(0,0,0,.14); }
+.headerActions { display: flex; gap: 9px; }
+.refresh, .uploadButton, .state button { display: inline-flex; min-height: 40px; align-items: center; gap: 8px; padding: 0 14px; border: 1px solid var(--border); border-radius: 11px; background: rgba(148,163,184,.045); color: var(--text-soft); cursor: pointer; }
+.uploadButton { border-color: rgba(139,92,246,.38); background: rgba(139,92,246,.12); color: #ddd6fe; font-weight: 700; }
+.launcher, .uploadPanel, .history, .detail { border: 1px solid var(--border); border-radius: 18px; background: rgba(13,16,34,.78); box-shadow: 0 18px 50px rgba(0,0,0,.14); }
 .launcher { padding: 20px; }
+.uploadPanel { padding: 20px; }
+.uploadForm { display: grid; grid-template-columns: minmax(180px,1fr) minmax(130px,.55fr) minmax(220px,1.2fr) auto; align-items: end; gap: 12px; margin-top: 18px; }
+.uploadForm label { display: grid; gap: 8px; color: var(--text-muted); font-size: 11px; }
+.uploadForm input { min-width: 0; min-height: 43px; box-sizing: border-box; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; outline: none; background: #11152b; color: var(--text-soft); }
+.uploadForm input[type="file"] { padding: 9px 10px; }
+.uploadForm input:focus { border-color: var(--border-strong); }
+.uploadActions { display: flex; gap: 8px; }
+.cancel { min-height: 43px; padding: 0 13px; border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--text-muted); cursor: pointer; }
 .sectionTitle { display: flex; align-items: center; gap: 11px; }
 .sectionTitle > span { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 11px; background: rgba(139,92,246,.12); color: #c4b5fd; }
 .sectionTitle h3 { margin: 0; color: #f8fafc; font-size: 15px; }
@@ -64,6 +74,7 @@
 .responseBlock p { margin: 7px 0 0; color: var(--text-soft); font-size: 11px; line-height: 1.8; white-space: pre-wrap; }
 .caseMetrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin-top: 12px; }
 .error { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border: 1px solid rgba(251,113,133,.2); border-radius: 10px; background: rgba(251,113,133,.065); color: #fda4af; font-size: 11px; }
+.successMessage { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border: 1px solid rgba(45,212,191,.2); border-radius: 10px; background: rgba(45,212,191,.065); color: #5eead4; font-size: 11px; }
 .runningNotice { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: #67e8f9; font-size: 10px; }
 .state, .empty { display: grid; min-height: 260px; place-items: center; align-content: center; gap: 10px; color: var(--text-muted); text-align: center; }
 .state h2, .empty p { margin: 0; font-size: 13px; }
@@ -72,12 +83,15 @@
 .spinner { animation: spin .9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 1050px) {
+  .uploadForm { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .grid { grid-template-columns: 1fr; }
   .history { min-height: 0; }
   .runList { grid-template-columns: repeat(2,minmax(0,1fr)); max-height: none; }
 }
 @media (max-width: 760px) {
   .header, .detailHeader { flex-direction: column; }
+  .headerActions { width: 100%; flex-wrap: wrap; }
+  .uploadForm { grid-template-columns: 1fr; }
   .formRow { grid-template-columns: 1fr; }
   .metrics, .caseMetrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .runList { grid-template-columns: 1fr; }

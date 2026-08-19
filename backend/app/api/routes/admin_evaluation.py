@@ -10,11 +10,15 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Depends,
+    File,
+    Form,
     HTTPException,
     Query,
+    UploadFile,
     status,
 )
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -43,6 +47,7 @@ from backend.app.evaluation.catalog import (
     list_evaluation_datasets,
 )
 from backend.app.evaluation.loader import EvaluationDatasetError
+from backend.app.evaluation.loader import parse_evaluation_upload
 from backend.app.evaluation.models import (
     EvaluationCaseResult,
     EvaluationDataset,
@@ -51,6 +56,7 @@ from backend.app.evaluation.models import (
     RunStatus,
 )
 from backend.app.evaluation.persistence import (
+    create_evaluation_dataset,
     create_running_evaluation,
     list_evaluation_runs,
     mark_evaluation_failed,
@@ -67,6 +73,7 @@ from backend.app.telemetry import TelemetrySink
 
 
 LOGGER = logging.getLogger(__name__)
+MAX_DATASET_UPLOAD_BYTES = 5 * 1024 * 1024
 
 router = APIRouter(
     prefix="/api/admin/evaluation",
@@ -171,7 +178,9 @@ async def _execute_evaluation_run(
     response_model=list[EvaluationDatasetSummaryResponse],
     dependencies=[Depends(require_permission("evaluation:read"))],
 )
-async def get_datasets() -> list[EvaluationDatasetSummaryResponse]:
+async def get_datasets(
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> list[EvaluationDatasetSummaryResponse]:
     return [
         EvaluationDatasetSummaryResponse(
             name=item.name,
@@ -182,8 +191,83 @@ async def get_datasets() -> list[EvaluationDatasetSummaryResponse]:
             classification=item.classification,
             case_count=len(item.records),
         )
-        for item in list_evaluation_datasets()
+        for item in await list_evaluation_datasets(session)
     ]
+
+
+@router.post(
+    "/datasets",
+    response_model=EvaluationDataset,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("evaluation:write"))],
+)
+async def upload_dataset(
+    name: Annotated[str, Form(min_length=1, max_length=128)],
+    version: Annotated[str, Form(min_length=1, max_length=64)],
+    file: Annotated[UploadFile, File()],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    context: Annotated[AdminContext | None, Depends(require_admin_access)],
+) -> EvaluationDataset:
+    """Import one immutable JSON/CSV dataset version."""
+
+    dataset_name = name.strip()
+    dataset_version = version.strip()
+    if not dataset_name or not dataset_version:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Dataset name and version are required",
+        )
+    try:
+        await get_evaluation_dataset(session, dataset_name, dataset_version)
+    except EvaluationDatasetError:
+        pass
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A dataset with this name and version already exists",
+        )
+
+    file_name = file.filename or ""
+    try:
+        content = await file.read(MAX_DATASET_UPLOAD_BYTES + 1)
+    finally:
+        await file.close()
+    if len(content) > MAX_DATASET_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Dataset file exceeds the 5 MB limit",
+        )
+    try:
+        records = parse_evaluation_upload(content, file_name=file_name)
+    except EvaluationDatasetError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+    dataset = EvaluationDataset(
+        name=dataset_name,
+        version=dataset_version,
+        owner=context.username if context is not None else "platform-admin",
+        domain="uploaded",
+        status="active",
+        classification="admin-provided",
+        records=records,
+    )
+    try:
+        await create_evaluation_dataset(
+            session,
+            dataset=dataset,
+            admin_id=context.admin_id if context is not None else None,
+        )
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A dataset with this name and version already exists",
+        ) from exc
+    return dataset
 
 
 @router.get(
@@ -191,9 +275,13 @@ async def get_datasets() -> list[EvaluationDatasetSummaryResponse]:
     response_model=EvaluationDataset,
     dependencies=[Depends(require_permission("evaluation:read"))],
 )
-async def get_dataset(name: str, version: str) -> EvaluationDataset:
+async def get_dataset(
+    name: str,
+    version: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> EvaluationDataset:
     try:
-        return get_evaluation_dataset(name, version)
+        return await get_evaluation_dataset(session, name, version)
     except EvaluationDatasetError as exc:
         raise _dataset_not_found() from exc
 
@@ -215,7 +303,8 @@ async def start_evaluation_run(
     rerank_provider=Depends(get_rerank_provider),
 ) -> EvaluationRunResponse:
     try:
-        dataset = get_evaluation_dataset(
+        dataset = await get_evaluation_dataset(
+            session,
             payload.dataset_name,
             payload.dataset_version,
         )

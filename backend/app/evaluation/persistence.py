@@ -5,12 +5,38 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.db.models import EvaluationRunRecord
+from backend.app.db.models import EvaluationDatasetRecord, EvaluationRunRecord
 from backend.app.evaluation.models import (
+    EvaluationDataset,
     EvaluationRun,
     EvaluationRunConfiguration,
     EvaluationSummary,
 )
+
+
+async def create_evaluation_dataset(
+    session: AsyncSession,
+    *,
+    dataset: EvaluationDataset,
+    admin_id: str | None,
+) -> EvaluationDatasetRecord:
+    row = EvaluationDatasetRecord(
+        name=dataset.name,
+        version=dataset.version,
+        owner=dataset.owner,
+        domain=dataset.domain,
+        status=dataset.status,
+        classification=dataset.classification,
+        records_json=[
+            case.model_dump(mode="json") for case in dataset.records
+        ],
+        created_by_admin_id=(
+            admin_id if admin_id and admin_id != "legacy" else None
+        ),
+    )
+    session.add(row)
+    await session.flush()
+    return row
 
 
 def empty_evaluation_summary() -> EvaluationSummary:

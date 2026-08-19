@@ -9,9 +9,11 @@ import {
   LoaderCircle,
   Play,
   RefreshCw,
+  Upload,
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 
 import type { components } from "@/lib/api/generated/admin-api";
 import type {
@@ -62,9 +64,15 @@ function statusIcon(status: string) {
 
 async function responseError(response: Response): Promise<string> {
   const payload = await response.json().catch(() => null) as { detail?: unknown } | null;
-  return typeof payload?.detail === "string"
-    ? payload.detail
-    : "تعذر إكمال الطلب. حاول مجددًا.";
+  if (typeof payload?.detail === "string") return payload.detail;
+  if (Array.isArray(payload?.detail)) {
+    const issue = payload.detail[0] as { loc?: unknown[]; msg?: unknown } | undefined;
+    if (typeof issue?.msg === "string") {
+      const field = Array.isArray(issue.loc) ? issue.loc.at(-1) : null;
+      return `${field ? `${String(field)}: ` : ""}${issue.msg}`;
+    }
+  }
+  return "تعذر إكمال الطلب. حاول مجددًا.";
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -149,6 +157,12 @@ export function EvaluationDashboard() {
   const [datasetDetailLoading, setDatasetDetailLoading] = useState(false);
   const [selectedRun, setSelectedRun] = useState<EvaluationRun | null>(null);
   const [starting, setStarting] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadName, setUploadName] = useState("");
+  const [uploadVersion, setUploadVersion] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async () => {
     setLoadError(null);
@@ -257,6 +271,54 @@ export function EvaluationDashboard() {
     }
   }
 
+  async function uploadDataset(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!uploadName.trim() || !uploadVersion.trim() || uploadFile === null) {
+      setActionError("اسم Dataset والنسخة والملف حقول مطلوبة.");
+      return;
+    }
+    setUploading(true);
+    setActionError(null);
+    setUploadSuccess(null);
+    const formData = new FormData();
+    formData.set("name", uploadName.trim());
+    formData.set("version", uploadVersion.trim());
+    formData.set("file", uploadFile);
+    try {
+      const dataset = await fetchJson<Dataset>("/api/evaluation/datasets", {
+        method: "POST",
+        body: formData,
+      });
+      const summary: DatasetSummary = {
+        name: dataset.name,
+        owner: dataset.owner,
+        domain: dataset.domain,
+        version: dataset.version,
+        status: dataset.status,
+        classification: dataset.classification,
+        case_count: dataset.records.length,
+      };
+      setData((current) => current ? {
+        ...current,
+        datasets: [...current.datasets, summary].sort((left, right) =>
+          `${left.name}::${left.version}`.localeCompare(`${right.name}::${right.version}`),
+        ),
+      } : current);
+      const key = `${dataset.name}::${dataset.version}`;
+      setSelectedDatasetKey(key);
+      setDatasetDetail(dataset);
+      setUploadSuccess(`تم رفع ${dataset.name} · ${dataset.version} بنجاح.`);
+      setUploadName("");
+      setUploadVersion("");
+      setUploadFile(null);
+      setShowUpload(false);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "تعذر رفع Dataset.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function openRun(runId: string): Promise<void> {
     setActionError(null);
     try {
@@ -293,14 +355,50 @@ export function EvaluationDashboard() {
           <h2>لوحة التقييم</h2>
           <p>شغّل Dataset مع وكيل حقيقي واستعرض النتائج المحفوظة دون مقاييس افتراضية.</p>
         </div>
-        <button type="button" className={styles.refresh} onClick={() => void loadDashboard()}>
-          <RefreshCw aria-hidden="true" />تحديث
-        </button>
+        <div className={styles.headerActions}>
+          <button type="button" className={styles.uploadButton} onClick={() => {
+            setShowUpload((current) => !current);
+            setActionError(null);
+          }}>
+            <Upload aria-hidden="true" />رفع Dataset
+          </button>
+          <button type="button" className={styles.refresh} onClick={() => void loadDashboard()}>
+            <RefreshCw aria-hidden="true" />تحديث
+          </button>
+        </div>
       </header>
 
       {actionError && <div className={styles.error} role="alert">
         <AlertTriangle aria-hidden="true" />{actionError}
       </div>}
+      {uploadSuccess && <div className={styles.successMessage} role="status">
+        <CheckCircle2 aria-hidden="true" />{uploadSuccess}
+      </div>}
+
+      {showUpload && <section className={styles.uploadPanel} aria-label="رفع Dataset">
+        <div className={styles.sectionTitle}>
+          <span><Upload aria-hidden="true" /></span>
+          <div><h3>استيراد Dataset</h3><p>ملف JSON أو CSV، بحد أقصى 5 MB.</p></div>
+        </div>
+        <form className={styles.uploadForm} onSubmit={(event) => void uploadDataset(event)}>
+          <label>اسم Dataset
+            <input required maxLength={128} value={uploadName} onChange={(event) => setUploadName(event.target.value)} />
+          </label>
+          <label>النسخة
+            <input required maxLength={64} value={uploadVersion} onChange={(event) => setUploadVersion(event.target.value)} />
+          </label>
+          <label>الملف
+            <input required type="file" accept=".json,.csv,application/json,text/csv" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />
+          </label>
+          <div className={styles.uploadActions}>
+            <button type="button" className={styles.cancel} disabled={uploading} onClick={() => setShowUpload(false)}>إلغاء</button>
+            <button type="submit" className={styles.start} disabled={uploading}>
+              {uploading ? <LoaderCircle className={styles.spinner} aria-hidden="true" /> : <Upload aria-hidden="true" />}
+              {uploading ? "جاري الرفع" : "رفع واستيراد"}
+            </button>
+          </div>
+        </form>
+      </section>}
 
       <section className={styles.launcher}>
         <div className={styles.sectionTitle}>

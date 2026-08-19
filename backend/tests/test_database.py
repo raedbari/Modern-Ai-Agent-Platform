@@ -67,6 +67,7 @@ def test_metadata_defines_expected_tables() -> None:
         "admin_users",
         "admin_refresh_sessions",
         "admin_audit_log",
+        "evaluation_datasets",
         "evaluation_runs",
         # Browser Widget configuration tables added in Wave 2
         "agent_widget_settings",

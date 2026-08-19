@@ -231,6 +231,45 @@ class EvaluationRunRecord(Base):
     failure_reason: Mapped[str | None] = mapped_column(Text)
 
 
+class EvaluationDatasetRecord(Base):
+    """Durable uploaded Evaluation dataset version."""
+
+    __tablename__ = "evaluation_datasets"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "name",
+            "version",
+            name="pk_evaluation_datasets",
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'active', 'retired')",
+            name="ck_evaluation_datasets_status",
+        ),
+        Index("ix_evaluation_datasets_created_at", "created_at"),
+    )
+
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    owner: Mapped[str] = mapped_column(String(128), nullable=False)
+    domain: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    classification: Mapped[str] = mapped_column(String(128), nullable=False)
+    records_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON,
+        nullable=False,
+    )
+    created_by_admin_id: Mapped[str | None] = mapped_column(
+        String(128),
+        ForeignKey("admin_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class User(Base):
     """A customer human identity account."""
 

@@ -187,7 +187,11 @@ export interface paths {
         /** Get Datasets */
         get: operations["get_datasets_api_admin_evaluation_datasets_get"];
         put?: never;
-        post?: never;
+        /**
+         * Upload Dataset
+         * @description Import one immutable JSON/CSV dataset version.
+         */
+        post: operations["upload_dataset_api_admin_evaluation_datasets_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1097,7 +1101,10 @@ export interface components {
         Body_queue_admin_document_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents_post: {
             /** Agent Id */
             agent_id: string;
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1107,7 +1114,10 @@ export interface components {
         };
         /** Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post */
         Body_queue_admin_document_replacement_api_admin_tenants__tenant_id__knowledge_bases__knowledge_base_id__documents__document_id__replace_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1117,7 +1127,10 @@ export interface components {
         };
         /** Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post */
         Body_queue_document_api_knowledge_bases__knowledge_base_id__document_jobs_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1127,7 +1140,10 @@ export interface components {
         };
         /** Body_reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post */
         Body_reindex_document_api_knowledge_bases__knowledge_base_id__documents__document_id__reindex_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -1135,9 +1151,24 @@ export interface components {
              */
             source_name: string;
         };
+        /** Body_upload_dataset_api_admin_evaluation_datasets_post */
+        Body_upload_dataset_api_admin_evaluation_datasets_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+        };
         /** Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post */
         Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Source Name
@@ -2220,10 +2251,6 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (number | string)[];
             /** Message */
@@ -2670,6 +2697,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvaluationDatasetSummaryResponse"][];
+                };
+            };
+        };
+    };
+    upload_dataset_api_admin_evaluation_datasets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_dataset_api_admin_evaluation_datasets_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDataset"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
