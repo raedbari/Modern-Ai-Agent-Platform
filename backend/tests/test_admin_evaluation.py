@@ -1,5 +1,6 @@
 """Integration coverage for the Platform Admin Evaluation slice."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from backend.app.api.dependencies import (
     get_core_ai_runtime,
     require_admin_access,
 )
+from backend.app.auth.admin_context import AdminContext
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.base import Base, get_db
 from backend.app.db.models import Agent, EvaluationRunRecord, Tenant
@@ -50,6 +52,8 @@ def test_evaluation_routes_and_role_boundaries_are_registered() -> None:
             security = operation.get("security", [])
             assert security
             assert all("TenantApiKey" not in item for item in security)
+
+    assert "post" in paths["/api/admin/evaluation/datasets"]
 
 
 async def _test_app(
@@ -170,5 +174,153 @@ async def test_run_rejects_agent_outside_requested_tenant(
                 },
             )
         assert response.status_code == 404
+    finally:
+        await engine.dispose()
+
+
+def _case(case_id: str = "uploaded-1") -> dict:
+    return {
+        "case_id": case_id,
+        "tenant_id": "source-tenant",
+        "agent_id": "source-agent",
+        "user_input": "ما هي سياسة الاسترجاع؟",
+        "language": "ar",
+        "expectations": {"expected_language": "ar"},
+        "tags": ["upload"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_admin_can_upload_json_and_csv_datasets_and_reload_them(
+    tmp_path: Path,
+) -> None:
+    app, engine, _sessions = await _test_app(tmp_path / "datasets.db")
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            json_upload = await client.post(
+                "/api/admin/evaluation/datasets",
+                data={"name": "arabic-support", "version": "v2"},
+                files={
+                    "file": (
+                        "cases.json",
+                        json.dumps([_case()]).encode(),
+                        "application/json",
+                    )
+                },
+            )
+            assert json_upload.status_code == 201
+            assert json_upload.json()["records"][0]["case_id"] == "uploaded-1"
+
+            csv_upload = await client.post(
+                "/api/admin/evaluation/datasets",
+                data={"name": "csv-support", "version": "2026-08"},
+                files={
+                    "file": (
+                        "cases.csv",
+                        (
+                            "case_id,tenant_id,agent_id,user_input,language,expectations,tags\n"
+                            'csv-1,source-tenant,source-agent,Hello,en,"{""expected_language"":""en""}","[""csv""]"\n'
+                        ).encode(),
+                        "text/csv",
+                    )
+                },
+            )
+            assert csv_upload.status_code == 201
+            assert csv_upload.json()["records"][0]["tags"] == ["csv"]
+
+            run = await client.post(
+                "/api/admin/evaluation/runs",
+                json={
+                    "dataset_name": "arabic-support",
+                    "dataset_version": "v2",
+                    "tenant_id": "tenant-eval",
+                    "agent_id": "agent-eval",
+                },
+            )
+            assert run.status_code == 202
+            assert run.json()["configuration"]["dataset_name"] == "arabic-support"
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as reloaded_client:
+            catalog = await reloaded_client.get(
+                "/api/admin/evaluation/datasets"
+            )
+            keys = {
+                (item["name"], item["version"])
+                for item in catalog.json()
+            }
+            assert ("golden-questions", "v1") in keys
+            assert ("arabic-support", "v2") in keys
+            assert ("csv-support", "2026-08") in keys
+
+            detail = await reloaded_client.get(
+                "/api/admin/evaluation/datasets/arabic-support/v2"
+            )
+            assert detail.status_code == 200
+            assert detail.json()["records"][0]["user_input"] == "ما هي سياسة الاسترجاع؟"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_dataset_upload_returns_schema_validation_and_conflict_errors(
+    tmp_path: Path,
+) -> None:
+    app, engine, _sessions = await _test_app(tmp_path / "invalid.db")
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            invalid = await client.post(
+                "/api/admin/evaluation/datasets",
+                data={"name": "invalid", "version": "v1"},
+                files={
+                    "file": (
+                        "cases.json",
+                        json.dumps([{"case_id": "missing-fields"}]),
+                        "application/json",
+                    )
+                },
+            )
+            assert invalid.status_code == 422
+            assert "tenant_id" in invalid.json()["detail"]
+
+            reserved = await client.post(
+                "/api/admin/evaluation/datasets",
+                data={"name": "golden-questions", "version": "v1"},
+                files={"file": ("cases.json", json.dumps([_case()]))},
+            )
+            assert reserved.status_code == 409
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_auditor_cannot_upload_evaluation_dataset(
+    tmp_path: Path,
+) -> None:
+    app, engine, _sessions = await _test_app(tmp_path / "auditor.db")
+    app.dependency_overrides[require_admin_access] = lambda: AdminContext(
+        admin_id="auditor-1",
+        username="auditor",
+        role="auditor",
+    )
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/admin/evaluation/datasets",
+                data={"name": "forbidden", "version": "v1"},
+                files={"file": ("cases.json", json.dumps([_case()]))},
+            )
+        assert response.status_code == 403
     finally:
         await engine.dispose()

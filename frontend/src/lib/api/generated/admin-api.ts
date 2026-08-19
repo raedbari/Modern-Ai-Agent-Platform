@@ -187,7 +187,11 @@ export interface paths {
         /** Get Datasets */
         get: operations["get_datasets_api_admin_evaluation_datasets_get"];
         put?: never;
-        post?: never;
+        /**
+         * Upload Dataset
+         * @description Import one immutable JSON/CSV dataset version.
+         */
+        post: operations["upload_dataset_api_admin_evaluation_datasets_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1134,6 +1138,15 @@ export interface components {
              * @default upload
              */
             source_name: string;
+        };
+        /** Body_upload_dataset_api_admin_evaluation_datasets_post */
+        Body_upload_dataset_api_admin_evaluation_datasets_post: {
+            /** File */
+            file: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
         };
         /** Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post */
         Body_upload_document_api_knowledge_bases__knowledge_base_id__documents_post: {
@@ -2670,6 +2683,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvaluationDatasetSummaryResponse"][];
+                };
+            };
+        };
+    };
+    upload_dataset_api_admin_evaluation_datasets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_dataset_api_admin_evaluation_datasets_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDataset"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
