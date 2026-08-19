@@ -15,6 +15,18 @@ export type LoginResponse =
 export type AdminProfile =
   components["schemas"]["AdminProfileResponse"];
 
+export type EvaluationDatasetSummary =
+  components["schemas"]["EvaluationDatasetSummaryResponse"];
+
+export type EvaluationDataset =
+  components["schemas"]["EvaluationDataset"];
+
+export type EvaluationRun =
+  components["schemas"]["EvaluationRunResponse"];
+
+export type EvaluationRunCreatePayload =
+  components["schemas"]["EvaluationRunCreateRequest"];
+
 
 export type TenantAdmin =
   components["schemas"]["TenantAdminResponse"];
@@ -221,6 +233,75 @@ export async function getAdminProfile(
 ): Promise<AdminProfile> {
   return requestAdminApi<AdminProfile>(
     "/api/admin/auth/me",
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function listAdminEvaluationDatasets(
+  accessToken: string,
+): Promise<EvaluationDatasetSummary[]> {
+  return requestAdminApi<EvaluationDatasetSummary[]>(
+    "/api/admin/evaluation/datasets",
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function getAdminEvaluationDataset(
+  accessToken: string,
+  name: string,
+  version: string,
+): Promise<EvaluationDataset> {
+  return requestAdminApi<EvaluationDataset>(
+    `/api/admin/evaluation/datasets/${
+      encodeURIComponent(name)
+    }/${encodeURIComponent(version)}`,
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function listAdminEvaluationRuns(
+  accessToken: string,
+): Promise<EvaluationRun[]> {
+  return requestAdminApi<EvaluationRun[]>(
+    "/api/admin/evaluation/runs",
+    {
+      method: "GET",
+      headers: bearerHeaders(accessToken),
+    },
+  );
+}
+
+export async function createAdminEvaluationRun(
+  accessToken: string,
+  payload: EvaluationRunCreatePayload,
+): Promise<EvaluationRun> {
+  return requestAdminApi<EvaluationRun>(
+    "/api/admin/evaluation/runs",
+    {
+      method: "POST",
+      headers: bearerHeaders(accessToken),
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function getAdminEvaluationRun(
+  accessToken: string,
+  runId: string,
+): Promise<EvaluationRun> {
+  return requestAdminApi<EvaluationRun>(
+    `/api/admin/evaluation/runs/${
+      encodeURIComponent(runId)
+    }`,
     {
       method: "GET",
       headers: bearerHeaders(accessToken),

@@ -7,6 +7,7 @@ import pytest
 from backend.app.ai.chat_workflow import ChatWorkflow
 from backend.app.ai.contracts import GenerationResult
 from backend.app.ai.runtime import CoreAIRuntime
+from backend.app.auth.context import ChatExecutionContext
 from backend.app.evaluation.loader import load_evaluation_dataset
 from backend.app.evaluation.models import EvaluationRunConfiguration
 from backend.app.evaluation.runner import EvaluationRunner
@@ -21,7 +22,7 @@ from backend.tests.evaluation.deterministic_rag import (
 )
 
 
-def _stack(generation_provider=None):
+def _stack(generation_provider=None, execution_context=None):
     embedding = DeterministicEmbeddingProvider()
     generation = generation_provider or DeterministicGenerationProvider()
     rerank = DeterministicRerankProvider()
@@ -54,7 +55,11 @@ def _stack(generation_provider=None):
         model_provider="deterministic",
         model_name="deterministic-generation-v1",
     )
-    runner = EvaluationRunner(workflow, configuration)
+    runner = EvaluationRunner(
+        workflow,
+        configuration,
+        execution_context=execution_context,
+    )
     dataset = load_evaluation_dataset(
         dataset_directory() / "golden_questions_v1.jsonl",
         dataset_directory() / "golden_questions_v1.json",
@@ -181,6 +186,29 @@ async def test_prompt_provider_model_and_optional_knowledge_context_propagate() 
     assert event.output_tokens == 9
     assert event.latency_ms is not None and event.latency_ms >= 0
     assert event.error_type is None
+
+
+@pytest.mark.asyncio
+async def test_selected_agent_execution_context_is_used_when_provided() -> None:
+    selected_context = ChatExecutionContext(
+        tenant_id="placeholder-tenant",
+        agent_id="placeholder-agent",
+        system_prompt="Selected production agent instructions.",
+        prompt_version="ignored-by-runner-configuration",
+        knowledge_mode="required",
+    )
+    runner, dataset, generation, *_ = _stack(
+        execution_context=selected_context,
+    )
+
+    result = await runner.run_case(dataset.records[0])
+
+    request = generation.requests[0]
+    assert request.messages[0].content == "Selected production agent instructions."
+    assert request.context.tenant_id == "eval-tenant-a"
+    assert request.context.agent_id == "eval-agent-a"
+    assert request.context.prompt_version == "prompt-v7"
+    assert result.tenant_id == "eval-tenant-a"
 
 
 class InvalidCitationGenerationProvider(DeterministicGenerationProvider):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from time import perf_counter
 from uuid import uuid4
@@ -26,17 +27,31 @@ class EvaluationRunner:
         self,
         workflow: ChatWorkflow,
         configuration: EvaluationRunConfiguration,
+        *,
+        execution_context: ChatExecutionContext | None = None,
     ) -> None:
         self._workflow = workflow
         self._configuration = configuration
+        self._execution_context = execution_context
 
     async def run_case(self, case: EvaluationCase) -> EvaluationCaseResult:
         """Execute one full RAG case and derive metrics from its observation."""
 
         started_at = perf_counter()
         try:
-            execution = await self._workflow.execute(
-                context=ChatExecutionContext(
+            context = (
+                replace(
+                    self._execution_context,
+                    tenant_id=case.tenant_id,
+                    agent_id=case.agent_id,
+                    request_id=str(uuid4()),
+                    product_id="athkachatbots",
+                    prompt_version=self._configuration.prompt_version,
+                    knowledge_version=self._configuration.knowledge_version,
+                    model_provider=self._configuration.model_provider,
+                )
+                if self._execution_context is not None
+                else ChatExecutionContext(
                     tenant_id=case.tenant_id,
                     agent_id=case.agent_id,
                     system_prompt="Use verified evaluation evidence only.",
@@ -46,7 +61,10 @@ class EvaluationRunner:
                     knowledge_version=self._configuration.knowledge_version,
                     model_provider=self._configuration.model_provider,
                     knowledge_mode="required",
-                ),
+                )
+            )
+            execution = await self._workflow.execute(
+                context=context,
                 message=case.user_input,
             )
         except Exception:

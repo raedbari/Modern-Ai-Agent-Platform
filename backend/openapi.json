@@ -1815,6 +1815,797 @@
         "title": "DocumentResponse",
         "type": "object"
       },
+      "EvaluationCase": {
+        "additionalProperties": false,
+        "description": "One independent evaluation scenario.",
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "case_id": {
+            "minLength": 1,
+            "title": "Case Id",
+            "type": "string"
+          },
+          "category": {
+            "default": "general",
+            "title": "Category",
+            "type": "string"
+          },
+          "dialect": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Dialect"
+          },
+          "difficulty": {
+            "default": "medium",
+            "enum": [
+              "easy",
+              "medium",
+              "hard"
+            ],
+            "title": "Difficulty",
+            "type": "string"
+          },
+          "expectations": {
+            "$ref": "#/components/schemas/EvaluationExpectations"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ar",
+                  "en",
+                  "de"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "tenant_id": {
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_input": {
+            "minLength": 1,
+            "title": "User Input",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "tenant_id",
+          "agent_id",
+          "user_input"
+        ],
+        "title": "EvaluationCase",
+        "type": "object"
+      },
+      "EvaluationCaseResult": {
+        "description": "Normalized result of executing one evaluation case.",
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "answer_status": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Answer Status"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "checks": {
+            "$ref": "#/components/schemas/EvaluationChecks"
+          },
+          "completion_tokens": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "generation_failed",
+                  "pipeline_failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "finish_reason": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Finish Reason"
+          },
+          "knowledge_version": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Knowledge Version"
+          },
+          "latency_ms": {
+            "minimum": 0.0,
+            "title": "Latency Ms",
+            "type": "number"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Model"
+          },
+          "model_provider": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Model Provider"
+          },
+          "prompt_tokens": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Prompt Version"
+          },
+          "rag_metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RAGMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "response_content": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Response Content"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "failed",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "tenant_id",
+          "agent_id",
+          "status",
+          "latency_ms",
+          "checks"
+        ],
+        "title": "EvaluationCaseResult",
+        "type": "object"
+      },
+      "EvaluationChecks": {
+        "description": "Deterministic checks performed against one generated response.",
+        "properties": {
+          "expected_facts_present": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Facts Present"
+          },
+          "forbidden_claims_absent": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forbidden Claims Absent"
+          },
+          "forbidden_substrings_absent": {
+            "default": true,
+            "title": "Forbidden Substrings Absent",
+            "type": "boolean"
+          },
+          "language_matches": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Matches"
+          },
+          "latency_within_limit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Within Limit"
+          },
+          "required_substrings_present": {
+            "default": true,
+            "title": "Required Substrings Present",
+            "type": "boolean"
+          }
+        },
+        "title": "EvaluationChecks",
+        "type": "object"
+      },
+      "EvaluationDataset": {
+        "additionalProperties": false,
+        "description": "Metadata and records for one immutable dataset version.",
+        "properties": {
+          "classification": {
+            "minLength": 1,
+            "title": "Classification",
+            "type": "string"
+          },
+          "domain": {
+            "minLength": 1,
+            "title": "Domain",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "minLength": 1,
+            "title": "Owner",
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationCase"
+            },
+            "minItems": 1,
+            "title": "Records",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "owner",
+          "domain",
+          "version",
+          "status",
+          "classification",
+          "records"
+        ],
+        "title": "EvaluationDataset",
+        "type": "object"
+      },
+      "EvaluationDatasetSummaryResponse": {
+        "properties": {
+          "case_count": {
+            "minimum": 1.0,
+            "title": "Case Count",
+            "type": "integer"
+          },
+          "classification": {
+            "title": "Classification",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "owner",
+          "domain",
+          "version",
+          "status",
+          "classification",
+          "case_count"
+        ],
+        "title": "EvaluationDatasetSummaryResponse",
+        "type": "object"
+      },
+      "EvaluationExpectations": {
+        "additionalProperties": false,
+        "description": "Conditions used later to evaluate a generated response.",
+        "properties": {
+          "allowed_variations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Variations",
+            "type": "array"
+          },
+          "answerable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answerable"
+          },
+          "expected_answer": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Expected Answer"
+          },
+          "expected_facts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Expected Facts",
+            "type": "array"
+          },
+          "expected_language": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ar",
+                  "en",
+                  "de"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Language"
+          },
+          "expected_source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Expected Source Ids",
+            "type": "array"
+          },
+          "forbidden_claims": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Forbidden Claims",
+            "type": "array"
+          },
+          "forbidden_substrings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Forbidden Substrings",
+            "type": "array"
+          },
+          "max_latency_ms": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Latency Ms"
+          },
+          "required_substrings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Substrings",
+            "type": "array"
+          }
+        },
+        "title": "EvaluationExpectations",
+        "type": "object"
+      },
+      "EvaluationRunConfiguration": {
+        "additionalProperties": false,
+        "description": "Versions required to reproduce an evaluation run.",
+        "properties": {
+          "agent_version": {
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "dataset_name": {
+            "title": "Dataset Name",
+            "type": "string"
+          },
+          "dataset_version": {
+            "title": "Dataset Version",
+            "type": "string"
+          },
+          "knowledge_version": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Knowledge Version"
+          },
+          "model_name": {
+            "title": "Model Name",
+            "type": "string"
+          },
+          "model_provider": {
+            "title": "Model Provider",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_name",
+          "dataset_version",
+          "agent_version",
+          "prompt_version",
+          "model_provider",
+          "model_name"
+        ],
+        "title": "EvaluationRunConfiguration",
+        "type": "object"
+      },
+      "EvaluationRunCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "dataset_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Dataset Name",
+            "type": "string"
+          },
+          "dataset_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Dataset Version",
+            "type": "string"
+          },
+          "tenant_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_name",
+          "dataset_version",
+          "tenant_id",
+          "agent_id"
+        ],
+        "title": "EvaluationRunCreateRequest",
+        "type": "object"
+      },
+      "EvaluationRunResponse": {
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "configuration": {
+            "$ref": "#/components/schemas/EvaluationRunConfiguration"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationCaseResult"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/EvaluationSummary"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "tenant_id",
+          "agent_id",
+          "configuration",
+          "started_at",
+          "status",
+          "results",
+          "summary"
+        ],
+        "title": "EvaluationRunResponse",
+        "type": "object"
+      },
+      "EvaluationSummary": {
+        "description": "Aggregated metrics for one evaluation run.",
+        "properties": {
+          "average_latency_ms": {
+            "minimum": 0.0,
+            "title": "Average Latency Ms",
+            "type": "number"
+          },
+          "citation_accuracy_rate_percent": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citation Accuracy Rate Percent"
+          },
+          "correct_refusal_rate_percent": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correct Refusal Rate Percent"
+          },
+          "error_cases": {
+            "minimum": 0.0,
+            "title": "Error Cases",
+            "type": "integer"
+          },
+          "expected_source_rate_percent": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Source Rate Percent"
+          },
+          "failed_cases": {
+            "minimum": 0.0,
+            "title": "Failed Cases",
+            "type": "integer"
+          },
+          "failure_rate_percent": {
+            "default": 0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Failure Rate Percent",
+            "type": "number"
+          },
+          "pass_rate_percent": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Pass Rate Percent",
+            "type": "number"
+          },
+          "passed_cases": {
+            "minimum": 0.0,
+            "title": "Passed Cases",
+            "type": "integer"
+          },
+          "retrieval_hit_rate_percent": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Hit Rate Percent"
+          },
+          "total_cases": {
+            "minimum": 0.0,
+            "title": "Total Cases",
+            "type": "integer"
+          },
+          "total_completion_tokens": {
+            "minimum": 0.0,
+            "title": "Total Completion Tokens",
+            "type": "integer"
+          },
+          "total_prompt_tokens": {
+            "minimum": 0.0,
+            "title": "Total Prompt Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_cases",
+          "passed_cases",
+          "failed_cases",
+          "error_cases",
+          "pass_rate_percent",
+          "total_prompt_tokens",
+          "total_completion_tokens",
+          "average_latency_ms"
+        ],
+        "title": "EvaluationSummary",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2613,6 +3404,254 @@
           "created_at"
         ],
         "title": "MessageResponse",
+        "type": "object"
+      },
+      "RAGMetrics": {
+        "description": "RAG-specific metrics for retrieval quality (Sprint 1).",
+        "properties": {
+          "answer_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "grounded",
+                  "generated",
+                  "insufficient_knowledge",
+                  "temporarily_unavailable",
+                  "answered",
+                  "no_results",
+                  "insufficient_evidence",
+                  "refused",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Status"
+          },
+          "citation_accuracy": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citation Accuracy"
+          },
+          "citation_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Citation Count",
+            "type": "integer"
+          },
+          "citation_status": {
+            "default": "not_measured",
+            "enum": [
+              "measured",
+              "not_measured"
+            ],
+            "title": "Citation Status",
+            "type": "string"
+          },
+          "cited_source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Cited Source Ids",
+            "type": "array"
+          },
+          "correct_refusal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correct Refusal"
+          },
+          "correctly_cited_expected_source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Correctly Cited Expected Source Ids",
+            "type": "array"
+          },
+          "estimated_cost": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost"
+          },
+          "estimated_cost_status": {
+            "default": "not_measured",
+            "enum": [
+              "measured",
+              "not_measured"
+            ],
+            "title": "Estimated Cost Status",
+            "type": "string"
+          },
+          "expected_source_position": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Source Position"
+          },
+          "failure": {
+            "default": false,
+            "title": "Failure",
+            "type": "boolean"
+          },
+          "groundedness": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groundedness"
+          },
+          "groundedness_status": {
+            "default": "not_measured",
+            "enum": [
+              "measured",
+              "not_measured"
+            ],
+            "title": "Groundedness Status",
+            "type": "string"
+          },
+          "has_citations": {
+            "default": false,
+            "title": "Has Citations",
+            "type": "boolean"
+          },
+          "invalid_citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Invalid Citation Ids",
+            "type": "array"
+          },
+          "rerank_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerank Count"
+          },
+          "rerank_position_change": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerank Position Change"
+          },
+          "rerank_status": {
+            "default": "not_measured",
+            "enum": [
+              "measured",
+              "not_measured"
+            ],
+            "title": "Rerank Status",
+            "type": "string"
+          },
+          "retrieval_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Retrieval Count",
+            "type": "integer"
+          },
+          "retrieval_hit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Hit"
+          },
+          "retrieval_status": {
+            "default": "not_measured",
+            "enum": [
+              "measured",
+              "not_measured"
+            ],
+            "title": "Retrieval Status",
+            "type": "string"
+          },
+          "supplied_source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supplied Source Ids",
+            "type": "array"
+          },
+          "token_usage_status": {
+            "default": "measured",
+            "enum": [
+              "measured",
+              "not_measured"
+            ],
+            "title": "Token Usage Status",
+            "type": "string"
+          },
+          "top_k_source_presence": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top K Source Presence"
+          },
+          "top_similarity_score": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Similarity Score"
+          }
+        },
+        "title": "RAGMetrics",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -4660,6 +5699,252 @@
         "summary": "Rotate admin refresh token",
         "tags": [
           "admin-auth"
+        ]
+      }
+    },
+    "/api/admin/evaluation/datasets": {
+      "get": {
+        "operationId": "get_datasets_api_admin_evaluation_datasets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluationDatasetSummaryResponse"
+                  },
+                  "title": "Response Get Datasets Api Admin Evaluation Datasets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Get Datasets",
+        "tags": [
+          "admin-evaluation"
+        ]
+      }
+    },
+    "/api/admin/evaluation/datasets/{name}/{version}": {
+      "get": {
+        "operationId": "get_dataset_api_admin_evaluation_datasets__name___version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationDataset"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Get Dataset",
+        "tags": [
+          "admin-evaluation"
+        ]
+      }
+    },
+    "/api/admin/evaluation/runs": {
+      "get": {
+        "operationId": "get_runs_api_admin_evaluation_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluationRunResponse"
+                  },
+                  "title": "Response Get Runs Api Admin Evaluation Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Get Runs",
+        "tags": [
+          "admin-evaluation"
+        ]
+      },
+      "post": {
+        "operationId": "start_evaluation_run_api_admin_evaluation_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationRunCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Start Evaluation Run",
+        "tags": [
+          "admin-evaluation"
+        ]
+      }
+    },
+    "/api/admin/evaluation/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_admin_evaluation_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "InternalAdminKey": []
+          },
+          {
+            "AdminJWT": []
+          }
+        ],
+        "summary": "Get Run",
+        "tags": [
+          "admin-evaluation"
         ]
       }
     },
