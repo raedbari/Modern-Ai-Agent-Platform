@@ -7,26 +7,27 @@ Docker، والـAPI لا يستمع إلا على `127.0.0.1` حتى نضيف �
 ## المتطلبات
 
 - Docker Desktop يعمل.
-- Ollama يعمل على `http://127.0.0.1:11434`.
-- نموذج `qwen3-embedding:0.6b` مثبت.
-- مفتاح DeepSeek الحقيقي محفوظ داخل `backend/.env` فقط.
+- مفتاحا DeepSeek وVoyage متاحان ومحفوظان في ملفات البيئة المحلية فقط.
 
 ## بدء البيئة
 
 من جذر المشروع في PowerShell:
 
 ```powershell
-.\scripts\local-up.ps1 -Build
+Copy-Item .env.compose.example .env.compose
+Copy-Item backend\.env.example backend\.env
 ```
 
-السكربت يقوم آليًا بما يلي:
+استبدل القيم المؤقتة للمتغيرين `MAAP_DEEPSEEK_API_KEY` و
+`MAAP_VOYAGE_API_KEY` داخل `.env.compose`، ثم شغّل البيئة:
 
-1. يتحقق من Docker وOllama ونموذج Embeddings.
-2. ينشئ `.env.compose` بكلمة مرور عشوائية إذا لم يكن موجودًا.
-3. يشغّل PostgreSQL 16 مع `pgvector 0.8.6`.
-4. يطبق Alembic migrations.
-5. يشغّل FastAPI وWorker منفصلًا لمعالجة الملفات.
-6. يتحقق من `/ready` ومن استمرار تشغيل الـWorker.
+```powershell
+docker compose --env-file .env.compose -f compose.local.yaml up -d --build
+```
+
+يشغّل Compose قاعدة PostgreSQL 16 مع `pgvector 0.8.6`، ويطبق Alembic
+migrations، ثم يشغّل FastAPI وWorker منفصلًا لمعالجة الملفات. يستخدم DeepSeek
+للتوليد وVoyage للـEmbeddings وإعادة الترتيب.
 
 ## إنشاء أول عميل وChatbot
 
@@ -59,7 +60,7 @@ GET /api/knowledge-bases/{knowledge_base_id}/document-jobs/{job_id}
 ```
 
 الـAPI يحتفظ بالملف الأصلي داخل Volume خاص، والـWorker ينفذ Parsing وChunking
-وOllama Embeddings. لا ينتظر طلب HTTP انتهاء الفهرسة.
+وVoyage Embeddings. لا ينتظر طلب HTTP انتهاء الفهرسة.
 
 ## المحادثة ورسالة التواصل
 

@@ -4,19 +4,15 @@ x-api-environment: &api-environment
   MAAP_DATABASE_URL: >-
     postgresql+asyncpg://${MAAP_POSTGRES_USER:-maap}:${MAAP_POSTGRES_PASSWORD:?Set MAAP_POSTGRES_PASSWORD in .env.compose}@postgres:5432/${MAAP_POSTGRES_DB:-maap}
   MAAP_ENVIRONMENT: ${MAAP_RUNTIME_ENVIRONMENT:-development}
-  MAAP_OLLAMA_BASE_URL: http://host.docker.internal:11434
-  MAAP_OLLAMA_EMBEDDING_MODEL: qwen3-embedding:0.6b
+  MAAP_DEEPSEEK_BASE_URL: ${MAAP_DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+  MAAP_DEEPSEEK_MODEL: ${MAAP_DEEPSEEK_MODEL:-deepseek-v4-flash}
   MAAP_EMBEDDING_DIMENSION: "1024"
-  MAAP_OLLAMA_EMBEDDING_NUM_CTX: "1024"
-  MAAP_OLLAMA_EMBEDDING_NUM_BATCH: "64"
-  MAAP_OLLAMA_EMBEDDING_KEEP_ALIVE: 10m
-  MAAP_OLLAMA_EMBEDDING_MAX_RETRIES: "2"
-  MAAP_OLLAMA_EMBEDDING_RETRY_BASE_SECONDS: "0.5"
   MAAP_EMBEDDING_BATCH_SIZE: "8"
 
   MAAP_VOYAGE_API_KEY: ${MAAP_VOYAGE_API_KEY:?Set MAAP_VOYAGE_API_KEY in .env.compose}
-  MAAP_VOYAGE_MODEL: voyage-4-large
-  MAAP_VOYAGE_RERANK_MODEL: rerank-2.5
+  MAAP_VOYAGE_BASE_URL: ${MAAP_VOYAGE_BASE_URL:-https://api.voyageai.com/v1}
+  MAAP_VOYAGE_MODEL: ${MAAP_VOYAGE_MODEL:-voyage-4-large}
+  MAAP_VOYAGE_RERANK_MODEL: ${MAAP_VOYAGE_RERANK_MODEL:-rerank-2.5}
   MAAP_RETRIEVAL_CANDIDATE_COUNT: "20"
 
   MAAP_UPLOAD_STORAGE_ROOT: /var/lib/maap/uploads
@@ -131,8 +127,6 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     healthcheck:
       test:
         [
@@ -177,8 +171,6 @@ services:
         condition: service_completed_successfully
       storage-init:
         condition: service_completed_successfully
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     read_only: true
     tmpfs:
       - /tmp
